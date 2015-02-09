@@ -30,6 +30,7 @@ add_swift_library(swiftSIL
   SILValueProjection.cpp
   Mangle.cpp
   Linker.cpp
+  SILAttr.cpp
   LINK_LIBRARIES
     swiftSerialization
     swiftSema)

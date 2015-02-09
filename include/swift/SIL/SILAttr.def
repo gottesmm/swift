@@ -1,0 +1,139 @@
+//===--- SILAttr.def ------------------------------------------------------===//
+//
+// This source file is part of the Swift.org open source project
+//
+// Copyright (c) 2014 - 2015 Apple Inc. and the Swift project authors
+// Licensed under Apache License v2.0 with Runtime Library Exception
+//
+// See http://swift.org/LICENSE.txt for license information
+// See http://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file defines macros used for macro-metaprogramming with SIL attributes.
+///
+//===----------------------------------------------------------------------===//
+
+/// ATTRIBUTE(Location, Name)
+///   A general attribute.
+///
+///   Location is where the attribute is located. Must be one of 'Function',
+///   'Parameter', or 'Return'.  Name is the name of the attribute.
+#ifndef ATTRIBUTE
+#define ATTRIBUTE(Location, Name)
+#endif
+
+/// FUNCTION_ATTRIBUTE(Name)
+///   A function attribute.
+///
+///   Name is the name of the attribute. By default just calls ATTRIBUTE passing
+///   in a location of Function.
+#ifndef FUNCTION_ATTRIBUTE
+#define FUNCTION_ATTRIBUTE(Name) ATTRIBUTE(Function, Name)
+#endif
+
+/// FUNCTION_ATTRIBUTE_STRING
+///   A function level string attribute. Name is the name of the attribute.
+#ifndef FUNCTION_ATTRIBUTE_STRING
+#define FUNCTION_ATTRIBUTE_STRING(Name) FUNCTION_ATTRIBUTE(Name)
+#endif
+
+/// FUNCTION_ATTRIBUTE_INTEGER
+///   A function level singleton enum attribute.
+///
+///   This is an enum which can have at most one value.
+#ifndef FUNCTION_ATTRIBUTE_INTEGER
+#define FUNCTION_ATTRIBUTE_INTEGER(Name) FUNCTION_ATTRIBUTE(Name)
+#endif
+
+/// FUNCTION_ATTRIBUTE_INTEGER_VALUE
+///   A function level singleton enum attribute value.
+///
+///   This is meant to represent one value that a singleton enum can take. Name
+///   is the name of the enum and Value is the name of the enum Value. Becomes
+///   Name ## _ ## Value
+#ifndef FUNCTION_ATTRIBUTE_INTEGER_VALUE
+#define FUNCTION_ATTRIBUTE_INTEGER_VALUE(Name, Value)
+#endif
+
+/// FUNCTION_ATTRIBUTE_ENUM_SINGLETON_VALUE_RANGE
+///   A function level singleton enum attribute value range.
+///
+///   Represents a range of values that a singleton can take. Name is the enum
+///   name. Start and End are the enum values in SILAttrEnumValue that specify
+///   the values this enum can take on.
+#ifndef FUNCTION_ATTRIBUTE_INTEGER_VALUE_RANGE
+#define FUNCTION_ATTRIBUTE_INTEGER_VALUE_RANGE(Name, Start, End)
+#endif
+
+
+/// FUNCTION_ATTRIBUTE_BOOLEAN
+///   A function level boolean attribute. Name is the name of the attribute.
+#ifndef FUNCTION_ATTRIBUTE_BOOLEAN
+#define FUNCTION_ATTRIBUTE_BOOLEAN(Name)                    \
+  FUNCTION_ATTRIBUTE_INTEGER(Name)                          \
+  FUNCTION_ATTRIBUTE_INTEGER_VALUE(Name, False, 0)          \
+  FUNCTION_ATTRIBUTE_INTEGER_VALUE(Name, True, 1)           \
+  FUNCTION_ATTRIBUTE_INTEGER_VALUE_RANGE(Name, False, True)
+#endif
+
+/// FUNCTION_ATTRIBUTE_INTEGER_SET
+///   A function level enum attribute that can take on a set of enum values.
+#ifndef FUNCTION_ATTRIBUTE_INTEGER_SET
+#define FUNCTION_ATTRIBUTE_INTEGER_SET(Name) FUNCTION_ATTRIBUTE(Name)
+#endif
+
+/// FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE
+///   A function level set enum attribute value.
+///
+///   A value that the set enum specified by Name can take on. Becomes
+///   SILAttrEnumValue::Name ## Value.
+#ifndef FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE
+#define FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE(Name, Value)
+#endif
+
+/// FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE
+///   A function level set enum attribute value range.
+///
+///   A value that a set enum can have in one of its sets.
+#ifndef FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE
+#define FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE(Name, Start, End)
+#endif
+
+FUNCTION_ATTRIBUTE_BOOLEAN(Bare)
+FUNCTION_ATTRIBUTE_BOOLEAN(Transparent)
+FUNCTION_ATTRIBUTE_BOOLEAN(Fragile)
+FUNCTION_ATTRIBUTE_BOOLEAN(Thunk)
+
+FUNCTION_ATTRIBUTE_INTEGER(ClassVisibility)
+FUNCTION_ATTRIBUTE_INTEGER_VALUE(ClassVisibility, PublicClass, 0)
+FUNCTION_ATTRIBUTE_INTEGER_VALUE(ClassVisibility, InternalClass, 1)
+FUNCTION_ATTRIBUTE_INTEGER_VALUE(ClassVisibility, NotRelevent, 2)
+FUNCTION_ATTRIBUTE_INTEGER_VALUE_RANGE(ClassVisibility, PublicClass, InternalClass)
+
+FUNCTION_ATTRIBUTE_BOOLEAN(GlobalInit)
+
+FUNCTION_ATTRIBUTE_INTEGER(Inline)
+FUNCTION_ATTRIBUTE_INTEGER_VALUE(Inline, NoInline, 0)
+FUNCTION_ATTRIBUTE_INTEGER_VALUE(Inline, AlwaysInline, 1)
+FUNCTION_ATTRIBUTE_INTEGER_VALUE_RANGE(Inline, NoInline, AlwaysInline)
+
+FUNCTION_ATTRIBUTE_STRING(Semantics)
+
+FUNCTION_ATTRIBUTE_INTEGER_SET(Effects)
+FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE(Effects, ReadNone, 1)
+FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE(Effects, ReadOnly, 2)
+FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE(Effects, ReadWrite, 4)
+FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE(Effects, ReadNone, ReadWrite)
+
+#undef FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE
+#undef FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE
+#undef FUNCTION_ATTRIBUTE_INTEGER_SET
+#undef FUNCTION_ATTRIBUTE_INTEGER_VALUE_RANGE
+#undef FUNCTION_ATTRIBUTE_INTEGER_VALUE
+#undef FUNCTION_ATTRIBUTE_INTEGER
+#undef FUNCTION_ATTRIBUTE_BOOLEAN
+#undef FUNCTION_ATTRIBUTE_STRING
+#undef FUNCTION_ATTRIBUTE
+#undef ATTRIBUTE

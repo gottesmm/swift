@@ -24,16 +24,13 @@ SILAttrValueKind swift::getValueKindForAttrKind(SILAttrKind Kind) {
 #define FUNCTION_ATTRIBUTE_STRING(Name) case SILAttrKind::Function_##Name:
 #include "swift/SIL/SILAttr.def"
     return SILAttrValueKind::String;
-#define FUNCTION_ATTRIBUTE_BOOLEAN(Name) case SILAttrKind::Function_##Name:
-#include "swift/SIL/SILAttr.def"
-    return SILAttrValueKind::Boolean;
-#define FUNCTION_ATTRIBUTE_SINGLETON_ENUM(Name)                                \
+#define FUNCTION_ATTRIBUTE_OPTION(Name)         \
   case SILAttrKind::Function_##Name:
 #include "swift/SIL/SILAttr.def"
-    return SILAttrValueKind::SingletonEnum;
-#define FUNCTION_ATTRIBUTE_SET_ENUM(Name) case SILAttrKind::Function_##Name:
+    return SILAttrValueKind::Option;
+#define FUNCTION_ATTRIBUTE_OPTIONSET(Name) case SILAttrKind::Function_##Name:
 #include "swift/SIL/SILAttr.def"
-    return SILAttrValueKind::SetEnum;
+    return SILAttrValueKind::OptionSet;
   }
 }
 

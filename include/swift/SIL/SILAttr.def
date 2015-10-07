@@ -57,7 +57,7 @@
 #define FUNCTION_ATTRIBUTE_INTEGER_VALUE(Name, Value)
 #endif
 
-/// FUNCTION_ATTRIBUTE_ENUM_SINGLETON_VALUE_RANGE
+/// FUNCTION_ATTRIBUTE_VALUE_RANGE
 ///   A function level singleton enum attribute value range.
 ///
 ///   Represents a range of values that a singleton can take. Name is the enum
@@ -84,16 +84,16 @@
 #define FUNCTION_ATTRIBUTE_INTEGER_SET(Name) FUNCTION_ATTRIBUTE(Name)
 #endif
 
-/// FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE
-///   A function level set enum attribute value.
+/// FUNCTION_ATTRIBUTE_OPTIONSET_VALUE
+///   A function level set option set attribute value.
 ///
 ///   A value that the set enum specified by Name can take on. Becomes
 ///   SILAttrEnumValue::Name ## Value.
-#ifndef FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE
-#define FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE(Name, Value)
+#ifndef FUNCTION_ATTRIBUTE_OPTIONSET_VALUE
+#define FUNCTION_ATTRIBUTE_OPTIONSET_VALUE(Name, Value)
 #endif
 
-/// FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE
+/// FUNCTION_ATTRIBUTE_OPTIONSET_VALUE_RANGE
 ///   A function level set enum attribute value range.
 ///
 ///   A value that a set enum can have in one of its sets.
@@ -127,9 +127,9 @@ FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE(Effects, ReadOnly, 2)
 FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE(Effects, ReadWrite, 4)
 FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE(Effects, ReadNone, ReadWrite)
 
-#undef FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE_RANGE
-#undef FUNCTION_ATTRIBUTE_INTEGER_SET_VALUE
-#undef FUNCTION_ATTRIBUTE_INTEGER_SET
+#undef FUNCTION_ATTRIBUTE_OPTIONSET_VALUE_RANGE
+#undef FUNCTION_ATTRIBUTE_OPTIONSET_VALUE
+#undef FUNCTION_ATTRIBUTE_OPTIONSET
 #undef FUNCTION_ATTRIBUTE_INTEGER_VALUE_RANGE
 #undef FUNCTION_ATTRIBUTE_INTEGER_VALUE
 #undef FUNCTION_ATTRIBUTE_INTEGER

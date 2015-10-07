@@ -61,7 +61,7 @@ enum class SILAttrValueKind : uint8_t {
   String,
   Boolean,
   Integer,
-  Enum,
+  OptionSet,
 };
 
 SILAttrValueKind getValueKindForAttrKind(SILAttrKind Kind);

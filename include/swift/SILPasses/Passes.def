@@ -90,6 +90,9 @@ PASS(FunctionSignatureOpts, "function-signature-opts",
 PASS(ARCSequenceOpts, "arc-sequence-opts",
      "Optimize sequences of retain/release opts by removing redundant inner "
      "retain/release sequenes")
+PASS(ARCOpts, "arc-opts",
+     "Perform all loop arc optimizations. This currently is just "
+     "ARCSequenceOpts")
 PASS(RedundantLoadElimination, "redundant-load-elim",
      "Multiple basic block redundant load elimination")
 PASS(DeadStoreElimination, "dead-store-elim",

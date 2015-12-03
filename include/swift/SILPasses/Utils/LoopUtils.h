@@ -18,6 +18,8 @@
 #ifndef SWIFT_SILPASSES_UTILS_LOOPUTILS_H
 #define SWIFT_SILPASSES_UTILS_LOOPUTILS_H
 
+#include <memory>
+
 namespace swift {
 
 class SILFunction;
@@ -51,6 +53,35 @@ public:
 
   virtual void runOnLoop(SILLoop *L) = 0;
   virtual void runOnFunction(SILFunction *F) = 0;
+};
+
+/// A visitor that visits all of the loops in a function in bottom up order,
+/// applying a list of subloop visitors.
+class SILLoopVisitorSet {
+  /// The list of transformations that we will apply.
+  ///
+  /// *NOTE* For now the small vector small count is 3 since the only use case
+  /// *where this is used will only have 3 such transforms.
+  llvm::SmallVector<std::unique_ptr<SILLoopVisitor>, 3> Visitors;
+
+public:
+  SILLoopVisitorSet(SILFunction *Func, SILLoopInfo *LInfo)
+    : SILLoopVisitorSet(Func, LInfo) {}
+  ~SILLoopVisitorSet() {}
+
+  void addVisitor(SILLoopVisitor *V) { Visitors.push_back(V); }
+
+  void runOnLoop(SILLoop *L) override {
+    for (auto &V : Visitors) {
+      V.runOnLoop(L);
+    }
+  }
+
+  void runOnFunction(SILFunction *F) override {
+    for (auto &V : Visitors) {
+      V.runOnFunction(F);
+    }
+  }
 };
 
 } // end swift namespace

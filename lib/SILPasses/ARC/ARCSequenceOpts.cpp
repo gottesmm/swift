@@ -216,6 +216,7 @@ namespace {
 class ARCSequenceOpts : public SILFunctionTransform {
   /// The entry point to the transformation.
   void run() override {
+
     auto *F = getFunction();
 
     // If ARC optimizations are disabled, don't optimize anything and bail.

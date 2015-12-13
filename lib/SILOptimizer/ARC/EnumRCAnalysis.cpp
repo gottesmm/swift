@@ -728,31 +728,25 @@ getEnumRCDataForInstruction(SILInstruction *I,
 //                          EnumRCFunctionInfoPImpl
 //===----------------------------------------------------------------------===//
 
-class EnumRCBBState {};
-
 class EnumRCFunctionInfo::EnumRCFunctionInfoPImpl : public EnumRCFunctionInfo {
   SILFunction *F;
 
   PostOrderFunctionInfo *PO;
 
-  std::vector<BBEnumTagDataflowState> BBToStateVec;
-
-  /// Map from a specific SILValue to its bit vector index.
-  llvm::DenseMap<SILValue, unsigned> ValueToIndexMap;
-
-  llvm::BitVector
-
-  /// A map from an enum SILValue to the offset in the large bitset that
-  /// corresponds to this SILValue.
-  llvm::DenseMap<SILBasicBlock *, llvm::SmallBitVector> BBToBitsetMap;
+  llvm::SmallDenseMap<SILValue, unsigned, 4> ValueToIndexMap;
+  llvm::SmallVector<llvm::SparseBitVector, 16> Data;
 
 public:
   EnumRCFunctionInfoPImpl(SILFunction *F, PostOrderFunctionInfo *PO);
 
   bool doesEnumNeedRCAtBB(SILBasicBlock *BB, SILValue V) const {
-    auto Iter = BBToNoRCValueMap.find(BB);
-    if (Iter == BBToNO
+    auto Iter = ValueToIndexMap.find(V);
+    if (Iter == ValueToIndexMap.end())
+      return true;
+
     if (auto ID = PO->getRPONum(BB)) {
+
+      
       auto Iter = ValueToNoRCMap.find(V);
       if (Iter == ValueToNoRCMap.end())
         return true;

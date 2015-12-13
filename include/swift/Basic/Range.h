@@ -292,6 +292,11 @@ none_of(Range R, Predicate P) {
   return std::none_of(R.begin(), R.end(), P);
 }
 
+// An adaptor of std::distance for ranges.
+template <class Range> inline unsigned distance(Range &&R) {
+  return std::distance(R.begin(), R.end());
+}
+
 } // namespace swift
 
 #endif

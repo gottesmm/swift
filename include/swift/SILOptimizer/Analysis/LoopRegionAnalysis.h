@@ -535,9 +535,26 @@ public:
       OptionalTransformRange<InnerSuccRange, SuccessorID::ToLiveLocalSucc>;
   using NonLocalSuccRange =
       OptionalTransformRange<InnerSuccRange, SuccessorID::ToLiveNonLocalSucc>;
+
   SuccRange getSuccs() const;
+
   LocalSuccRange getLocalSuccs() const;
+
+  /// Return true if this region has successors that are in the same loop.
+  bool hasLocalSuccs() const {
+    auto Range = getLocalSuccs();
+    return Range.begin() != Range.end();
+  }
+
   NonLocalSuccRange getNonLocalSuccs() const;
+
+  /// Return true if this region has successors that are not in the same loop
+  /// and can be accessed via traversing up the loop nest hierarchy's non-local
+  /// successor edges.
+  bool hasNonLocalSuccs() const {
+    auto Range = getNonLocalSuccs();
+    return Range.begin() != Range.end();
+  }
 
   BlockTy *getBlock() const;
   LoopTy *getLoop() const;

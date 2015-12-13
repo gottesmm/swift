@@ -503,11 +503,9 @@ rewriteLoopHeaderPredecessors(LoopTy *SubLoop, RegionTy *SubLoopRegion) {
   return SubLoopHeaderRegion;
 }
 
-static void
-getExitingRegions(LoopRegionFunctionInfo *LRFI,
-                  SILLoop *Loop,
-                  LoopRegion *LRegion,
-                  llvm::SmallVectorImpl<LoopRegion *> &ExitingRegions) {
+static void getExitingRegions(LoopRegionFunctionInfo *LRFI, SILLoop *Loop,
+                              LoopRegion *LRegion,
+                              llvm::SmallVectorImpl<unsigned> &ExitingRegions) {
   llvm::SmallVector<SILBasicBlock *, 8> ExitingBlocks;
   Loop->getExitingBlocks(ExitingBlocks);
 
@@ -520,7 +518,7 @@ getExitingRegions(LoopRegionFunctionInfo *LRFI,
       Region = LRFI->getRegion(RegionParentID);
       RegionParentID = Region->getParentID();
     }
-    ExitingRegions.push_back(Region);
+    ExitingRegions.push_back(Region->getID());
   }
 
   // We can have a loop subregion that has multiple exiting edges from the
@@ -548,14 +546,15 @@ getExitingRegions(LoopRegionFunctionInfo *LRFI,
 void
 LoopRegionFunctionInfo::
 rewriteLoopExitingBlockSuccessors(LoopTy *Loop, RegionTy *LRegion) {
-  llvm::SmallVector<RegionTy *, 8> ExitingRegions;
-  getExitingRegions(this, Loop, LRegion, ExitingRegions);
+  auto &ExitingSubregions = LRegion->getSubregionData().ExitingSubregions;
+  getExitingRegions(this, Loop, LRegion, ExitingSubregions);
 
   DEBUG(llvm::dbgs() << "    Visiting Exit Blocks...\n");
-  for (auto *ExitingRegion : ExitingRegions) {
+  for (unsigned ExitingSubregionID : ExitingSubregions) {
+    auto *ExitingSubregion = getRegion(ExitingSubregionID);
     DEBUG(llvm::dbgs() << "        Exiting Region: "
-          << ExitingRegion->getID() << "\n");
-    for (auto SuccID : ExitingRegion->getSuccs()) {
+                       << ExitingSubregion->getID() << "\n");
+    for (auto SuccID : ExitingSubregion->getSuccs()) {
       DEBUG(llvm::dbgs() << "            Succ: " << SuccID.ID
                          << ". IsNonLocal: "
                          << (SuccID.IsNonLocal ? "true" : "false") << "\n");
@@ -563,21 +562,21 @@ rewriteLoopExitingBlockSuccessors(LoopTy *Loop, RegionTy *LRegion) {
       auto *SuccRegion = getRegion(SuccID.ID);
       if (!LRegion->containsSubregion(SuccRegion)) {
         DEBUG(llvm::dbgs() << "            Is not a subregion, replacing.\n");
-        SuccRegion->replacePred(ExitingRegion->ID, LRegion->ID);
-        if (ExitingRegion->IsUnknownControlFlowEdgeTail)
+        SuccRegion->replacePred(ExitingSubregion->ID, LRegion->ID);
+        if (ExitingSubregion->IsUnknownControlFlowEdgeTail)
           LRegion->IsUnknownControlFlowEdgeTail = true;
         // If the successor region is already in this LRegion this returns that
         // regions index. Otherwise it returns a new index.
         unsigned Index = LRegion->addSucc(SuccRegion);
-        ExitingRegion->replaceSucc(SuccID,
-                                   LoopRegion::SuccessorID(Index, true));
-        propagateLivenessDownNonLocalSuccessorEdges(ExitingRegion);
+        ExitingSubregion->replaceSucc(SuccID,
+                                      LoopRegion::SuccessorID(Index, true));
+        propagateLivenessDownNonLocalSuccessorEdges(ExitingSubregion);
         continue;
       }
 
       // If the rpo number of the successor is less than the RPO number of the
       // BB, then we know that it is not a backedge.
-      if (SuccRegion->getRPONumber() > ExitingRegion->getRPONumber()) {
+      if (SuccRegion->getRPONumber() > ExitingSubregion->getRPONumber()) {
         DEBUG(llvm::dbgs() << "            Is a subregion, but not a "
               "backedge, not removing.\n");
         continue;
@@ -585,8 +584,8 @@ rewriteLoopExitingBlockSuccessors(LoopTy *Loop, RegionTy *LRegion) {
       DEBUG(llvm::dbgs() << "            Is a subregion and a backedge, "
             "removing.\n");
       auto Iter =
-        std::remove(SuccRegion->Preds.begin(), SuccRegion->Preds.end(),
-                    ExitingRegion->getID());
+          std::remove(SuccRegion->Preds.begin(), SuccRegion->Preds.end(),
+                      ExitingSubregion->getID());
       SuccRegion->Preds.erase(Iter);
     }
   }
@@ -787,6 +786,21 @@ void LoopRegionFunctionInfo::print(raw_ostream &os) const {
     os << "    (non-local-succs";
     for (unsigned I : SortedSuccs) {
       os << "\n        (parentindex:" << I << ")";
+    }
+    os << ")\n";
+
+    os << "    (exiting-sub-regions";
+    if (!R->isBlock()) {
+      llvm::SmallVector<unsigned, 4> ExitingSubregions;
+      auto ExitingSubRegs = R->getExitingSubregions();
+      std::copy(ExitingSubRegs.begin(), ExitingSubRegs.end(),
+                std::back_inserter(ExitingSubregions));
+      std::sort(ExitingSubregions.begin(), ExitingSubregions.begin());
+      for (unsigned SubregionID : ExitingSubregions) {
+        os << "\n        ";
+        LoopRegion *Subregion = getRegion(SubregionID);
+        Subregion->print(os, true);
+      }
     }
     os << "))\n";
   }

@@ -789,7 +789,7 @@ void LoopRegionFunctionInfo::print(raw_ostream &os) const {
     }
     os << ")\n";
 
-    os << "    (exiting-sub-regions";
+    os << "    (exiting-subregs";
     if (!R->isBlock()) {
       llvm::SmallVector<unsigned, 4> ExitingSubregions;
       auto ExitingSubRegs = R->getExitingSubregions();

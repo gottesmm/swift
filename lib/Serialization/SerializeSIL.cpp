@@ -882,6 +882,7 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   case ValueKind::LoadInst:
   case ValueKind::LoadUnownedInst:
   case ValueKind::LoadWeakInst:
+  case ValueKind::LoadStrongInst:
   case ValueKind::MarkUninitializedInst:
   case ValueKind::FixLifetimeInst:
   case ValueKind::CopyBlockInst:
@@ -903,6 +904,8 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
       Attr = LWI->isTake();
     else if (auto *LUI = dyn_cast<LoadUnownedInst>(&SI))
       Attr = LUI->isTake();
+    else if (auto *LSI = dyn_cast<LoadStrongInst>(&SI))
+      Attr = LSI->isTake();
     else if (auto *MUI = dyn_cast<MarkUninitializedInst>(&SI))
       Attr = (unsigned)MUI->getKind();
     else if (auto *DRI = dyn_cast<DeallocRefInst>(&SI))
@@ -1121,6 +1124,7 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   case ValueKind::AssignInst:
   case ValueKind::CopyAddrInst:
   case ValueKind::StoreInst:
+  case ValueKind::StoreStrongInst:
   case ValueKind::StoreUnownedInst:
   case ValueKind::StoreWeakInst: {
     SILValue operand, value;
@@ -1129,6 +1133,10 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
       Attr = cast<StoreWeakInst>(&SI)->isInitializationOfDest();
       operand = cast<StoreWeakInst>(&SI)->getDest();
       value = cast<StoreWeakInst>(&SI)->getSrc();
+    } else if (SI.getKind() == ValueKind::StoreStrongInst) {
+      Attr = cast<StoreStrongInst>(&SI)->isInitializationOfDest();
+      operand = cast<StoreStrongInst>(&SI)->getDest();
+      value = cast<StoreStrongInst>(&SI)->getSrc();
     } else if (SI.getKind() == ValueKind::StoreUnownedInst) {
       Attr = cast<StoreUnownedInst>(&SI)->isInitializationOfDest();
       operand = cast<StoreUnownedInst>(&SI)->getDest();

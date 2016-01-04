@@ -354,6 +354,7 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
     case ValueKind::LoadInst:
     case ValueKind::LoadUnownedInst:
     case ValueKind::LoadWeakInst:
+    case ValueKind::LoadStrongInst:
     case ValueKind::OpenExistentialAddrInst:
     case ValueKind::OpenExistentialBoxInst:
     case ValueKind::OpenExistentialMetatypeInst:
@@ -364,6 +365,7 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
     case ValueKind::RefToUnmanagedInst:
     case ValueKind::RefToUnownedInst:
     case ValueKind::StoreInst:
+    case ValueKind::StoreStrongInst:
     case ValueKind::StoreUnownedInst:
     case ValueKind::StoreWeakInst:
     case ValueKind::StrongPinInst:

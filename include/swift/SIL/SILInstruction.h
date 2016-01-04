@@ -1523,6 +1523,27 @@ public:
   }
 };
 
+/// Represents a load to an @strong memory location.
+class LoadStrongInst
+  : public LoadReferenceInstBase<ValueKind::LoadStrongInst>
+{
+  friend class SILBuilder;
+
+  LoadStrongInst(SILDebugLocation *loc, SILValue lvalue, IsTake_t isTake)
+      : LoadReferenceInstBase(loc, lvalue, isTake) {}
+};
+
+/// Represents a store to an @strong memory location.
+class StoreStrongInst
+  : public StoreReferenceInstBase<ValueKind::StoreStrongInst>
+{
+  friend class SILBuilder;
+
+  StoreStrongInst(SILDebugLocation *loc, SILValue src, SILValue dest,
+                  IsInitialization_t isInit)
+    : StoreReferenceInstBase(loc, src, dest, isInit) {}
+};
+
 /// Represents a load from a @weak memory location.
 class LoadWeakInst
   : public LoadReferenceInstBase<ValueKind::LoadWeakInst>

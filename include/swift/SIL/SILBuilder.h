@@ -439,6 +439,17 @@ public:
                                              F.getModule(), Var));
   }
 
+  LoadStrongInst *createLoadStrong(SILLocation Loc, SILValue src, IsTake_t isTake) {
+    return insert(new (F.getModule())
+                      LoadStrongInst(createSILDebugLocation(Loc), src, isTake));
+  }
+
+  StoreStrongInst *createStoreStrong(SILLocation Loc, SILValue value, SILValue dest,
+                                 IsInitialization_t isInit) {
+    return insert(new (F.getModule()) StoreStrongInst(createSILDebugLocation(Loc),
+                                                    value, dest, isInit));
+  }
+
   LoadWeakInst *createLoadWeak(SILLocation Loc, SILValue src, IsTake_t isTake) {
     return insert(new (F.getModule())
                       LoadWeakInst(getSILDebugLocation(Loc), src, isTake));

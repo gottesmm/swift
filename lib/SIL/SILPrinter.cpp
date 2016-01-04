@@ -920,6 +920,19 @@ public:
     printDebugVar(DVAI->getVarInfo());
   }
 
+  void visitLoadStrongInst(LoadStrongInst *LI) {
+    *this << "load_strong ";
+    if (LI->isTake())
+      *this << "[take] ";
+    *this << getIDAndType(LI->getOperand());
+  }
+  void visitStoreStrongInst(StoreStrongInst *SI) {
+    *this << "store_strong " << getID(SI->getSrc()) << " to ";
+    if (SI->isInitializationOfDest())
+      *this << "[initialization] ";
+    *this << getIDAndType(SI->getDest());
+  }
+
   void visitLoadUnownedInst(LoadUnownedInst *LI) {
     *this << "load_unowned ";
     if (LI->isTake())

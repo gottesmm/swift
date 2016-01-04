@@ -715,6 +715,8 @@ public:
   }
   void visitDebugValueInst(DebugValueInst *i);
   void visitDebugValueAddrInst(DebugValueAddrInst *i);
+  void visitLoadStrongInst(LoadStrongInst *i);
+  void visitStoreStrongInst(StoreStrongInst *i);
   void visitLoadWeakInst(LoadWeakInst *i);
   void visitStoreWeakInst(StoreWeakInst *i);
   void visitRetainValueInst(RetainValueInst *i);
@@ -3220,6 +3222,33 @@ void IRGenSILFunction::visitDebugValueAddrInst(DebugValueAddrInst *i) {
       emitShadowCopy(Addr, i->getDebugScope(), Name, ArgNo), DbgTy,
       i->getDebugScope(), Name, ArgNo,
       DbgTy.isImplicitlyIndirect() ? DirectValue : IndirectValue);
+}
+
+
+void IRGenSILFunction::visitLoadStrongInst(swift::LoadStrongInst *i) {
+  Address source = getLoweredAddress(i->getOperand());
+  auto &loadableTI =
+    cast<LoadableTypeInfo>(getTypeInfo(i->getType().getObjectType()));
+  Explosion result;
+  if (i->isTake()) {
+    loadableTI.loadAsTake(*this, source, result);
+  } else {
+    loadableTI.loadAsCopy(*this, source, result);
+  }
+  setLoweredExplosion(SILValue(i, 0), result);
+}
+
+void IRGenSILFunction::visitStoreStrongInst(swift::StoreStrongInst *i) {
+  Explosion source = getLoweredExplosion(i->getSrc());
+  Address dest = getLoweredAddress(i->getDest());
+  auto &loadableTI =
+    cast<LoadableTypeInfo>(getTypeInfo(i->getSrc().getType().getObjectType()));
+
+  if (i->isInitializationOfDest()) {
+    loadableTI.initialize(*this, source, dest);
+  } else {
+    loadableTI.assign(*this, source, dest);
+  }
 }
 
 void IRGenSILFunction::visitLoadWeakInst(swift::LoadWeakInst *i) {

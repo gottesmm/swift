@@ -1789,6 +1789,7 @@ bool SILParser::parseSILInstruction(SILBasicBlock *BB) {
    break;
  }
 
+ case ValueKind::LoadStrongInst:
  case ValueKind::LoadUnownedInst:
  case ValueKind::LoadWeakInst: {
    bool isTake = false;
@@ -1804,12 +1805,21 @@ bool SILParser::parseSILInstruction(SILBasicBlock *BB) {
      }
      ResultVal = B.createLoadUnowned(InstLoc, Val, IsTake_t(isTake));
 
-   } else {
-     if (!Val->getType().is<WeakStorageType>()) {
+   } else if (Opcode == ValueKind::LoadWeakInst) {
+     if (!Val.getType().is<WeakStorageType>()) {
        P.diagnose(addrLoc, diag::sil_operand_not_weak_address, "source",
                   OpcodeName);
      }
      ResultVal = B.createLoadWeak(InstLoc, Val, IsTake_t(isTake));
+   } else if (Opcode == ValueKind::LoadStrongInst) {
+     if (Val.getType().is<WeakStorageType>() ||
+         Val.getType().is<UnownedStorageType>()) {
+       P.diagnose(addrLoc, diag::sil_operand_not_strong_address, "source",
+                  OpcodeName);
+     }
+     ResultVal = B.createLoadStrong(InstLoc, Val, IsTake_t(isTake));
+   } else {
+     llvm_unreachable("Unhandled opcode");
    }
 
    break;
@@ -2104,6 +2114,7 @@ bool SILParser::parseSILInstruction(SILBasicBlock *BB) {
 
   case ValueKind::AssignInst:
   case ValueKind::StoreInst:
+  case ValueKind::StoreStrongInst:
   case ValueKind::StoreUnownedInst:
   case ValueKind::StoreWeakInst: {
     UnresolvedValueName from;
@@ -2160,7 +2171,15 @@ bool SILParser::parseSILInstruction(SILBasicBlock *BB) {
       break;
     }
 
-    SILType ValType = addrVal->getType().getObjectType();
+    if (Opcode == ValueKind::StoreStrongInst) {
+      SILType valueTy = addrVal.getType().getObjectType();
+      ResultVal = B.createStoreStrong(InstLoc,
+                                      getLocalValue(from, valueTy, InstLoc, B),
+                                      addrVal, IsInitialization_t(isInit));
+      break;
+    }
+
+    SILType ValType = addrVal.getType().getObjectType();
 
     if (Opcode == ValueKind::StoreInst) {
       ResultVal = B.createStore(InstLoc,

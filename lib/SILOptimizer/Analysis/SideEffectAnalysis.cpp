@@ -14,6 +14,7 @@
 #include "swift/SILOptimizer/Analysis/SideEffectAnalysis.h"
 #include "swift/SILOptimizer/Analysis/BasicCalleeAnalysis.h"
 #include "swift/SILOptimizer/Analysis/FunctionOrder.h"
+#include "swift/SILOptimizer/Analysis/RCIdentityAnalysis.h"
 #include "swift/SILOptimizer/PassManager/PassManager.h"
 #include "swift/SIL/SILArgument.h"
 
@@ -261,9 +262,10 @@ void SideEffectAnalysis::analyzeFunction(FunctionInfo *FInfo,
   DEBUG(llvm::dbgs() << "  >> analyze " << FInfo->F->getName() << '\n');
 
   // Check all instructions of the function
+  auto *RCFI = RCIA->get(FInfo->F);
   for (auto &BB : *FInfo->F) {
     for (auto &I : BB) {
-      analyzeInstruction(FInfo, &I, BottomUpOrder, RecursionDepth);
+      analyzeInstruction(FInfo, &I, BottomUpOrder, RecursionDepth, RCFI);
     }
   }
   DEBUG(llvm::dbgs() << "  << finished " << FInfo->F->getName() << '\n');
@@ -272,7 +274,8 @@ void SideEffectAnalysis::analyzeFunction(FunctionInfo *FInfo,
 void SideEffectAnalysis::analyzeInstruction(FunctionInfo *FInfo,
                                             SILInstruction *I,
                                             FunctionOrder &BottomUpOrder,
-                                            int RecursionDepth) {
+                                            int RecursionDepth,
+                                            RCIdentityFunctionInfo *RCFI) {
   if (FullApplySite FAS = FullApplySite::isa(I)) {
     // Is this a call to a semantics function?
     ArraySemanticsCall ASC(I);
@@ -318,18 +321,22 @@ void SideEffectAnalysis::analyzeInstruction(FunctionInfo *FInfo,
     case ValueKind::StrongRetainInst:
     case ValueKind::StrongRetainUnownedInst:
     case ValueKind::RetainValueInst:
-    case ValueKind::UnownedRetainInst:
-      FInfo->FE.getEffectsOn(I->getOperand(0))->Retains = true;
+    case ValueKind::UnownedRetainInst: {
+      SILValue RCId = RCFI->getRCIdentityRoot(I->getOperand(0));
+      FInfo->FE.getEffectsOn(RCId)->Retains = true;
       return;
+    }
     case ValueKind::StrongReleaseInst:
     case ValueKind::ReleaseValueInst:
-    case ValueKind::UnownedReleaseInst:
-      FInfo->FE.getEffectsOn(I->getOperand(0))->Releases = true;
-      
+    case ValueKind::UnownedReleaseInst: {
+      SILValue RCId = RCFI->getRCIdentityRoot(I->getOperand(0));
+      FInfo->FE.getEffectsOn(RCId)->Releases = true;
+
       // TODO: Check the call graph to be less conservative about what
       // destructors might be called.
       FInfo->FE.setWorstEffects();
       return;
+    }
     case ValueKind::LoadInst:
       FInfo->FE.getEffectsOn(cast<LoadInst>(I)->getOperand())->Reads = true;
       return;
@@ -390,6 +397,7 @@ void SideEffectAnalysis::analyzeInstruction(FunctionInfo *FInfo,
 
 void SideEffectAnalysis::initialize(SILPassManager *PM) {
   BCA = PM->getAnalysis<BasicCalleeAnalysis>();
+  RCIA = PM->getAnalysis<RCIdentityAnalysis>();
 }
 
 void SideEffectAnalysis::recompute(FunctionInfo *Initial) {

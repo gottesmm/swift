@@ -24,7 +24,8 @@
 namespace swift {
 
 class BasicCalleeAnalysis;
-
+class RCIdentityAnalysis;
+class RCIdentityFunctionInfo;
 
 /// An enum to represent the kind of scan we perform when we calculate
 /// side effects.
@@ -318,6 +319,10 @@ private:
   /// Callee analysis, used for determining the callees at call sites.
   BasicCalleeAnalysis *BCA;
 
+  /// RC Identity analysis, used for propagating retain/release/mayreadrc
+  /// information to arguments.
+  RCIdentityAnalysis *RCIA;
+
   /// Get the side-effects of a function, which has an @effects attribute.
   /// Returns true if \a F has an @effects attribute which could be handled.
   static bool getDefinedEffects(FunctionEffects &Effects, SILFunction *F);
@@ -336,10 +341,9 @@ private:
   /// Analyze the side-effects of a single SIL instruction \p I.
   /// Visited callees are added to \p BottomUpOrder until \p RecursionDepth
   /// reaches MaxRecursionDepth.
-  void analyzeInstruction(FunctionInfo *FInfo,
-                          SILInstruction *I,
-                          FunctionOrder &BottomUpOrder,
-                          int RecursionDepth);
+  void analyzeInstruction(FunctionInfo *FInfo, SILInstruction *I,
+                          FunctionOrder &BottomUpOrder, int RecursionDepth,
+                          RCIdentityFunctionInfo *RCFI);
 
   /// Gets or creates FunctionEffects for \p F.
   FunctionInfo *getFunctionInfo(SILFunction *F) {
@@ -356,7 +360,8 @@ private:
 
 public:
   SideEffectAnalysis()
-      : BottomUpIPAnalysis(AnalysisKind::SideEffect) {}
+      : BottomUpIPAnalysis(AnalysisKind::SideEffect), BCA(nullptr),
+        RCIA(nullptr) {}
 
   static bool classof(const SILAnalysis *S) {
     return S->getKind() == AnalysisKind::SideEffect;

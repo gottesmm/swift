@@ -57,6 +57,8 @@ private:
   SILValue stripOneRCIdentityIncomingValue(SILArgument *Arg, SILValue V);
   bool findDominatingNonPayloadedEdge(SILBasicBlock *IncomingEdgeBB,
                                       SILValue RCIdentity);
+  SILValue stripRCIdentityPreservingInsts(SILValue V);
+  SILValue stripSinglePredecessorArg(SILArgument *Arg);
 };
 
 class RCIdentityAnalysis : public FunctionAnalysisBase<RCIdentityFunctionInfo> {

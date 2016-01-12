@@ -64,7 +64,35 @@ static bool dominatesArgument(DominanceInfo *DI, SILArgument *A,
   return DI->dominates(OtherBB, A->getParent());
 }
 
-static SILValue stripRCIdentityPreservingInsts(SILValue V) {
+SILValue RCIdentityFunctionInfo::stripSinglePredecessorArg(SILArgument *Arg) {
+  SILBasicBlock *SinglePred = Arg->getParent()->getSinglePredecessor();
+  if (!SinglePred)
+    return SILValue();
+
+  auto *TI = SinglePred->getTerminator();
+  switch (TI->getTermKind()) {
+  case TermKind::CheckedCastBranchInst:
+  case TermKind::SwitchEnumInst:
+    // TODO: Is it necessary to track if we have visited /these/ sorts of
+    // arguments?
+    if (!VisitedArgs.insert(Arg).second)
+      return SILValue();
+    return TI->getOperand(0);
+  case TermKind::UnreachableInst:
+  case TermKind::ReturnInst:
+  case TermKind::ThrowInst:
+  case TermKind::TryApplyInst:
+  case TermKind::BranchInst:
+  case TermKind::CondBranchInst:
+  case TermKind::SwitchValueInst:
+  case TermKind::SwitchEnumAddrInst:
+  case TermKind::DynamicMethodBranchInst:
+  case TermKind::CheckedCastAddrBranchInst:
+    return SILValue();
+  }
+}
+
+SILValue RCIdentityFunctionInfo::stripRCIdentityPreservingInsts(SILValue V) {
   // First strip off RC identity preserving casts.
   if (isRCIdentityPreservingCast(V->getKind()))
     return cast<SILInstruction>(V.getDef())->getOperand(0);
@@ -107,6 +135,15 @@ static SILValue stripRCIdentityPreservingInsts(SILValue V) {
   if (auto *TI = dyn_cast<TupleInst>(V))
     if (SILValue NewValue = TI->getUniqueNonTrivialElt())
       return NewValue;
+
+  // If we have a SILArgument with only one predecessor and that predecessor is
+  // a value producing terminator, then the SILArgument is RCIdentical with that
+  // terminator.
+  if (auto *A = dyn_cast<SILArgument>(V)) {
+    if (SILValue Result = stripSinglePredecessorArg(A)) {
+      return Result;
+    }
+  }
 
   return SILValue();
 }
@@ -301,11 +338,15 @@ SILValue RCIdentityFunctionInfo::stripRCIdentityPreservingArgs(SILValue V,
   if (i == IVListSize)
     return SILValue();
 
+  auto FirstIncomingValue = IncomingValues[i].second;
   SILValue FirstIV =
-      stripOneRCIdentityIncomingValue(A, IncomingValues[i].second);
+      stripOneRCIdentityIncomingValue(A, FirstIncomingValue);
   if (!FirstIV)
     return SILValue();
 
+  // Now process the rest of the RC Identity values and make sure that they all
+  // match.
+  ++i;
   while (i < IVListSize) {
     SILBasicBlock *IVBB;
     SILValue IV;

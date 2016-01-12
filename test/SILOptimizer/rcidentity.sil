@@ -52,10 +52,20 @@ enum E1 {
   case Case3(Builtin.Word)
 }
 
+enum FakeOptional<T> {
+case None
+case Some(T)
+}
+
+struct FakeOptionalContainer<T> {
+  var _value: FakeOptional<T>
+}
+
 ///////////
 // Tests //
 ///////////
 
+/*
 // Make sure that we see all the way through the chain of casts that %9 has an RCIdentity of %0 and that %12 is really the partial apply.
 // CHECK-LABEL: @test_rcid_preserving_casts@
 // CHECK: RESULT #9: 9 = 0
@@ -108,3 +118,61 @@ bb0(%0 : $Builtin.NativeObject, %1 : $Builtin.Word):
   %5 = tuple(%1 : $Builtin.Word, %4 : $(Builtin.Word, Builtin.NativeObject, Builtin.NativeObject), %1 : $Builtin.Word)
   return undef : $()
 }
+*/
+
+sil @test_swift_enum_1 : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
+bb0(%0 : $Builtin.NativeObject):
+  %2 = enum $FakeOptional<Builtin.NativeObject>, #FakeOptional.Some!enumelt.1, %0 : $Builtin.NativeObject
+  %3 = struct $FakeOptionalContainer<Builtin.NativeObject>(%2 : $FakeOptional<Builtin.NativeObject>)
+  %4 = struct_extract %3 : $FakeOptionalContainer<Builtin.NativeObject>, #FakeOptionalContainer._value
+  switch_enum %4 : $FakeOptional<Builtin.NativeObject>, case #FakeOptional.Some!enumelt.1: bb1, case #FakeOptional.None!enumelt: bb2
+
+bb1(%5 : $Builtin.NativeObject):
+  %6 = unchecked_ref_cast %5 : $Builtin.NativeObject to $E
+  %7 = enum $FakeOptional<E>, #FakeOptional.Some!enumelt.1, %6 : $E
+  br bb3(%7 : $FakeOptional<E>)
+
+bb2:
+  %8 = enum $FakeOptional<E>, #FakeOptional.None!enumelt
+  br bb3(%8 : $FakeOptional<E>)
+
+bb3(%9 : $FakeOptional<E>):
+  release_value %9 : $FakeOptional<E>
+  %10 = tuple()
+  return %10 : $()
+}
+
+/*
+sil @test_switch_enum_2 : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
+bb0(%0 : $Builtin.NativeObject):
+  %2 = enum $FakeOptional<Builtin.NativeObject>, #FakeOptional.Some!enumelt.1, %0 : $Builtin.NativeObject
+  %3 = struct $FakeOptionalContainer<Builtin.NativeObject>(%2 : $FakeOptional<Builtin.NativeObject>)
+  %4 = struct_extract %3 : $FakeOptionalContainer<Builtin.NativeObject>, #FakeOptionalContainer._value
+  switch_enum %4 : $FakeOptional<Builtin.NativeObject>, case #FakeOptional.Some!enumelt.1: bb1, case #FakeOptional.None!enumelt: bb2
+
+bb1(%5 : $Builtin.NativeObject):
+  %6 = unchecked_ref_cast %5 : $Builtin.NativeObject to $E
+  %7 = enum $FakeOptional<E>, #FakeOptional.Some!enumelt.1, %6 : $E
+  br bb3(%7 : $FakeOptional<E>)
+
+bb2:
+  %8 = enum $FakeOptional<E>, #FakeOptional.None!enumelt
+  br bb3(%8 : $FakeOptional<E>)
+
+bb3(%9 : $FakeOptional<E>):
+  switch_enum %9 : $FakeOptional<E>, case #FakeOptional.Some!enumelt.1: bb4, case #FakeOptional.None!enumelt: bb5
+
+bb4(%10 : $E):
+  %11 = unchecked_ref_cast %10 : $E to $Builtin.NativeObject
+  %12 = enum $FakeOptional<Builtin.NativeObject>, #FakeOptional.Some!enumelt.1, %11 : $Builtin.NativeObject
+  br bb6(%12 : $FakeOptional<Builtin.NativeObject>)
+
+bb5:
+  %13 = enum $FakeOptional<Builtin.NativeObject>, #FakeOptional.None!enumelt
+  br bb6(%13 : $FakeOptional<Builtin.NativeObject>)
+
+bb6(%14 : $FakeOptional<Builtin.NativeObject>):
+  %15 = tuple()
+  return %15 : $()
+}
+*/

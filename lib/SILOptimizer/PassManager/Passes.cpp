@@ -64,7 +64,7 @@ bool swift::runSILDiagnosticPasses(SILModule &Module) {
 
   // If we parsed a .sil file that is already in canonical form, don't rerun
   // the diagnostic passes.
-  if (Module.getStage() == SILStage::Canonical)
+  if (!isRawSILStage(Module.getStage()))
     return false;
 
   auto &Ctx = Module.getASTContext();

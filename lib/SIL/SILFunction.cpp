@@ -165,7 +165,7 @@ ASTContext &SILFunction::getASTContext() const {
 }
 
 bool SILFunction::shouldOptimize() const {
-  if (Module.getStage() == SILStage::Raw)
+  if (isRawSILStage(Module.getStage()))
     return true;
   return !hasSemanticsAttr("optimize.sil.never");
 }

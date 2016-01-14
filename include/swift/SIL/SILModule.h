@@ -63,14 +63,40 @@ enum class SILStage {
   /// dataflow errors.
   Raw,
 
-  /// \brief Canonical SIL, which has been run through at least the guaranteed
+  /// \brief "Canonical" SIL, which has been run through at least the guaranteed
   /// optimization and diagnostic passes.
   ///
   /// Canonical SIL has stricter invariants than raw SIL. It must not contain
   /// dataflow errors, and some instructions must be canonicalized to simpler
-  /// forms.
+  /// forms. It still preserves the invariant that low level ARC forms are not
+  /// present.
   Canonical,
+
+  /// \brief "LowLevel" SIL, which has run through guaranteed optimization,
+  /// diagnostic passes and further lowering passes. Low level ARC forms are now
+  /// allowed.
+  LowLevel,
 };
+
+bool isRawSILStage(SILStage stage) {
+  switch (stage) {
+  case SILStage::Raw:
+    return true;
+  case SILStage::LowLevel:
+  case SILStage::Canonical:
+    return false;
+  }
+}
+
+bool isCanonicalSILStage(SILStage stage) {
+  switch (stage) {
+  case SILStage::Raw:
+    return true;
+  case SILStage::LowLevel:
+  case SILStage::Canonical:
+    return false;
+  }
+}
 
 /// \brief A SIL module. The SIL module owns all of the SILFunctions generated
 /// when a Swift compilation context is lowered to SIL.

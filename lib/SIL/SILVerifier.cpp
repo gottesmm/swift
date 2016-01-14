@@ -735,8 +735,8 @@ public:
 
     // Check that if the apply is of a noreturn callee, make sure that an
     // unreachable is the next instruction.
-    if (AI->getModule().getStage() == SILStage::Raw ||
-        !AI->getCallee()->getType().getAs<SILFunctionType>()->isNoReturn())
+    if (isRawSILStage(AI->getModule().getStage()) ||
+        !AI->getCallee().getType().getAs<SILFunctionType>()->isNoReturn())
       return;
     require(isa<UnreachableInst>(std::next(SILBasicBlock::iterator(AI))),
             "No return apply without an unreachable as a next instruction.");
@@ -980,7 +980,7 @@ public:
 
   void checkAssignInst(AssignInst *AI) {
     SILValue Src = AI->getSrc(), Dest = AI->getDest();
-    require(AI->getModule().getStage() == SILStage::Raw,
+    require(isRawSILStage(AI->getModule().getStage()),
             "assign instruction can only exist in raw SIL");
     require(Src->getType().isObject(), "Can't assign from an address source");
     require(Dest->getType().isAddress(), "Must store to an address dest");
@@ -1044,7 +1044,7 @@ public:
 
   void checkMarkUninitializedInst(MarkUninitializedInst *MU) {
     SILValue Src = MU->getOperand();
-    require(MU->getModule().getStage() == SILStage::Raw,
+    require(isRawSILStage(MU->getModule().getStage()),
             "mark_uninitialized instruction can only exist in raw SIL");
     require(Src->getType().isAddress() ||
             Src->getType().getSwiftRValueType()->getClassOrBoundGenericClass(),
@@ -1052,7 +1052,7 @@ public:
     require(Src->getType() == MU->getType(),"operand and result type mismatch");
   }
   void checkMarkFunctionEscapeInst(MarkFunctionEscapeInst *MFE) {
-    require(MFE->getModule().getStage() == SILStage::Raw,
+    require(isRawSILStage(MFE->getModule().getStage()),
             "mark_function_escape instruction can only exist in raw SIL");
     for (auto Elt : MFE->getElements())
       require(Elt->getType().isAddress(), "MFE must refer to variable addrs");
@@ -2923,7 +2923,7 @@ public:
 
   void verifyBranches(SILFunction *F) {
     // If we are not in canonical SIL return early.
-    if (F->getModule().getStage() != SILStage::Canonical)
+    if (!isCanonicalSILStage(F->getModule().getStage()))
       return;
 
     // Verify that there is no non_condbr critical edge.

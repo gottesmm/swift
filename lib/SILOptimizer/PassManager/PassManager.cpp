@@ -168,7 +168,7 @@ SILPassManager::SILPassManager(SILModule *M, llvm::StringRef Stage) :
 }
 
 bool SILPassManager::continueTransforming() {
-  return Mod->getStage() == SILStage::Raw ||
+  return isRawSILStage(Mod->getStage()) ||
          NumPassesRun < SILNumOptPassesToRun;
 }
 

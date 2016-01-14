@@ -3587,6 +3587,9 @@ bool Parser::parseDeclSILStage() {
   } else if (Tok.isContextualKeyword("canonical")) {
     stage = SILStage::Canonical;
     consumeToken();
+  } else if (Tok.isContextualKeyword("lowlevel")) {
+    stage = SILStage::LowLevel;
+    consumeToken();
   } else {
     diagnose(Tok, diag::expected_sil_stage_name);
     consumeToken();

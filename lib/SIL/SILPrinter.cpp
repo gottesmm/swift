@@ -1888,6 +1888,9 @@ void SILModule::print(llvm::raw_ostream &OS, bool Verbose,
   case SILStage::Canonical:
     OS << "canonical";
     break;
+  case SILStage::LowLevel:
+    OS << "lowlevel";
+    break;
   }
   
   OS << "\n\nimport Builtin\nimport " << STDLIB_NAME

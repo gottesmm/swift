@@ -98,6 +98,16 @@ bool isCanonicalSILStage(SILStage stage) {
   }
 }
 
+bool isLowLevelSILStage(SILStage stage) {
+  switch (stage) {
+  case SILStage::Raw:
+  case SILStage::Canonical:
+    return false;
+  case SILStage::LowLevel:
+    return true;
+  }
+}
+
 /// \brief A SIL module. The SIL module owns all of the SILFunctions generated
 /// when a Swift compilation context is lowered to SIL.
 class SILModule {

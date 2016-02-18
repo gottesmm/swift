@@ -51,9 +51,9 @@ public:
   /// unchecked_trivial_bit_cast.
   void getRCUsers(SILValue V, llvm::SmallVectorImpl<SILInstruction *> &Users);
 
-  void handleDeleteNotification(SILInstruction *I) {
+  void handleDeleteNotification(SILValue V) {
     // Check the cache. If we don't find it, there is nothing to do.
-    auto Iter = Cache.find(SILValue(I));
+    auto Iter = Cache.find(V);
     if (Iter == Cache.end())
       return;
 
@@ -96,19 +96,19 @@ public:
   }
 
   virtual void handleDeleteNotification(ValueBase *V) override {
-    auto *I = dyn_cast<SILInstruction>(V);
-    // We are only interesting in SILInstructions.
-    if (!I || !I->getParentBB())
+    auto *ParentBB = V->getParentBB();
+    // We are only interesting in SILInstructions and SILArgument.
+    if (!ParentBB)
       return;
 
     // If the parent function of this instruction was just turned into an
     // external declaration, bail. This happens during SILFunction destruction,
     // when
-    SILFunction *F = I->getFunction();
+    SILFunction *F = ParentBB->getParent();
     if (F->isExternalDeclaration()) {
       return;
     }
-    get(F)->handleDeleteNotification(I);
+    get(F)->handleDeleteNotification(SILValue(V));
   }
 
   virtual bool needsNotifications() override { return true; }

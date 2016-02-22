@@ -967,10 +967,10 @@ public:
             "Load operand type and result type mismatch");
     // If we are not at the low level SIL stage, we can not use load on
     // non-trivial values.
-    if (!isLowLevelSILStage(LI->getModule().getStage())) {
-      require(LI->getType().isTrivial(LI->getModule()),
-              "Can not load non-trivial values in non-low level SIL");
-    }
+    //if (!isLowLevelSILStage(LI->getModule().getStage())) {
+    //  require(LI->getType().isTrivial(LI->getModule()),
+    //          "Can not load non-trivial values in non-low level SIL");
+    //}
   }
 
   void checkStoreInst(StoreInst *SI) {
@@ -982,10 +982,10 @@ public:
             "Must store to an address dest");
     require(SI->getDest()->getType().getObjectType() == SI->getSrc()->getType(),
             "Store operand type and dest type mismatch");
-    if (!isLowLevelSILStage(SI->getModule().getStage())) {
-      require(SI->getSrc()->getType().isTrivial(SI->getModule()),
-              "Can not store non-trivial values in non-low level SIL");
-    }
+    //if (!isLowLevelSILStage(SI->getModule().getStage())) {
+    //  require(SI->getSrc()->getType().isTrivial(SI->getModule()),
+    //          "Can not store non-trivial values in non-low level SIL");
+    //}
   }
 
   void checkAssignInst(AssignInst *AI) {

@@ -1469,21 +1469,17 @@ public:
   };
 };
 
-
-/// An abstract class representing a load from some kind of reference storage.
+/// An abstract class representing a load from some kind of non-trivial
+/// storage. This means reference types and aggregates that contain reference
+/// types.
 template <ValueKind K>
-class LoadReferenceInstBase : public UnaryInstructionBase<K> {
-  static SILType getResultType(SILType operandTy) {
-    assert(operandTy.isAddress() && "loading from non-address operand?");
-    auto refType = cast<ReferenceStorageType>(operandTy.getSwiftRValueType());
-    return SILType::getPrimitiveObjectType(refType.getReferentType());
-  }
-
+class LoadNonTrivialInstBase : public UnaryInstructionBase<K> {
   unsigned IsTake : 1; // FIXME: pack this somewhere
 
 protected:
-  LoadReferenceInstBase(SILDebugLocation loc, SILValue lvalue, IsTake_t isTake)
-    : UnaryInstructionBase<K>(loc, lvalue, getResultType(lvalue->getType())),
+  LoadNonTrivialInstBase(SILDebugLocation loc, SILValue lvalue, SILType type,
+                         IsTake_t isTake)
+    : UnaryInstructionBase<K>(loc, lvalue, type),
       IsTake(unsigned(isTake)) {
   }
 
@@ -1491,15 +1487,31 @@ public:
   IsTake_t isTake() const { return IsTake_t(IsTake); }
 };
 
-/// An abstract class representing a store to some kind of reference storage.
+/// An abstract class representing a load from some kind of reference storage.
 template <ValueKind K>
-class StoreReferenceInstBase : public SILInstruction {
+class LoadReferenceInstBase : public LoadNonTrivialInstBase<K> {
+  static SILType getResultType(SILType operandTy) {
+    assert(operandTy.isAddress() && "loading from non-address operand?");
+    auto refType = cast<ReferenceStorageType>(operandTy.getSwiftRValueType());
+    return SILType::getPrimitiveObjectType(refType.getReferentType());
+  }
+
+protected:
+  LoadReferenceInstBase(SILDebugLocation loc, SILValue lvalue, IsTake_t isTake)
+      : LoadNonTrivialInstBase<K>(loc, lvalue, getResultType(lvalue->getType()),
+                                  isTake) {
+  }
+};
+
+/// An abstract class representing a store to some kind of non-trivial
+template <ValueKind K>
+class StoreNonTrivialInstBase : public SILInstruction {
   enum { Src, Dest };
   FixedOperandList<2> Operands;
   unsigned IsInitializationOfDest : 1; // FIXME: pack this somewhere
 protected:
-  StoreReferenceInstBase(SILDebugLocation loc, SILValue src, SILValue dest,
-                         IsInitialization_t isInit)
+  StoreNonTrivialInstBase(SILDebugLocation loc, SILValue src, SILValue dest,
+                          IsInitialization_t isInit)
     : SILInstruction(K, loc), Operands(this, src, dest),
       IsInitializationOfDest(unsigned(isInit)) {
   }
@@ -1525,23 +1537,23 @@ public:
 
 /// Represents a load to an @strong memory location.
 class LoadStrongInst
-  : public LoadReferenceInstBase<ValueKind::LoadStrongInst>
+  : public LoadNonTrivialInstBase<ValueKind::LoadStrongInst>
 {
   friend class SILBuilder;
 
   LoadStrongInst(SILDebugLocation loc, SILValue lvalue, IsTake_t isTake)
-      : LoadReferenceInstBase(loc, lvalue, isTake) {}
+      : LoadNonTrivialInstBase(loc, lvalue, lvalue->getType().getObjectType(), isTake) {}
 };
 
 /// Represents a store to an @strong memory location.
 class StoreStrongInst
-  : public StoreReferenceInstBase<ValueKind::StoreStrongInst>
+  : public StoreNonTrivialInstBase<ValueKind::StoreStrongInst>
 {
   friend class SILBuilder;
 
   StoreStrongInst(SILDebugLocation loc, SILValue src, SILValue dest,
                   IsInitialization_t isInit)
-    : StoreReferenceInstBase(loc, src, dest, isInit) {}
+    : StoreNonTrivialInstBase(loc, src, dest, isInit) {}
 };
 
 /// Represents a load from a @weak memory location.
@@ -1559,13 +1571,13 @@ class LoadWeakInst
 
 /// Represents a store to a @weak memory location.
 class StoreWeakInst
-  : public StoreReferenceInstBase<ValueKind::StoreWeakInst>
+  : public StoreNonTrivialInstBase<ValueKind::StoreWeakInst>
 {
   friend class SILBuilder;
 
   StoreWeakInst(SILDebugLocation loc, SILValue src, SILValue dest,
                 IsInitialization_t isInit)
-    : StoreReferenceInstBase(loc, src, dest, isInit) {}
+    : StoreNonTrivialInstBase(loc, src, dest, isInit) {}
 };
 
 /// Represents a load from an @unowned memory location.
@@ -1589,13 +1601,13 @@ class LoadUnownedInst
 /// This is only required for address-only unowned references; for loadable
 /// unowned references, it's better to use a ref_to_unowned and a store.
 class StoreUnownedInst
-  : public StoreReferenceInstBase<ValueKind::StoreUnownedInst>
+  : public StoreNonTrivialInstBase<ValueKind::StoreUnownedInst>
 {
   friend class SILBuilder;
 
   StoreUnownedInst(SILDebugLocation loc, SILValue src, SILValue dest,
                    IsInitialization_t isInit)
-    : StoreReferenceInstBase(loc, src, dest, isInit) {}
+    : StoreNonTrivialInstBase(loc, src, dest, isInit) {}
 };
 
 /// CopyAddrInst - Represents a copy from one memory location to another. This

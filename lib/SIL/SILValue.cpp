@@ -38,3 +38,4 @@ SILBasicBlock *ValueBase::getParentBB() {
     return Arg->getParent();
   return nullptr;
 }
+

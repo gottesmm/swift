@@ -28,6 +28,7 @@
 #include "swift/Basic/Range.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
 using namespace swift;
@@ -449,6 +450,11 @@ public:
     checkInstructionsSILLocation(I);
 
     checkLegalType(I->getFunction(), I);
+
+    // Make sure our result convention is compatible with all of our operand's
+    // operand conventions.
+    require(checkInstructionResultConvention(I), "Instruction has an invalid "
+            "result convention");
   }
 
   void checkSILInstruction(SILInstruction *I) {
@@ -583,6 +589,10 @@ public:
               "Caller's generic param list.");
     });
   }
+
+  // Check the compatibility of this instruction's result convention with its
+  // operand conventions.
+  bool checkInstructionResultConvention(SILInstruction *I);
 
   /// Check that this operand appears in the use-chain of the value it uses.
   static bool isInValueUses(const Operand *operand) {
@@ -2932,8 +2942,8 @@ public:
   }
 
   void verifyBranches(SILFunction *F) {
-    // If we are not in canonical SIL return early.
-    if (!isCanonicalSILStage(F->getModule().getStage()))
+    // If we are in raw SIL return early.
+    if (isRawSILStage(F->getModule().getStage()))
       return;
 
     // Verify that there is no non_condbr critical edge.
@@ -3050,6 +3060,194 @@ public:
   }
 };
 } // end anonymous namespace
+
+static llvm::Optional<SILInstruction::OperandConvention>
+mergeConventions(llvm::Optional<SILInstruction::OperandConvention> OpC1,
+                 SILInstruction::OperandConvention C2) {
+  using OperandConvention = SILInstruction::OperandConvention;  
+
+  if (!OpC1)
+    return C2;
+
+  auto C1 = *OpC1;
+
+  // If either of our conventions are None, return None.
+  if (C1 == OperandConvention::None || C2 == OperandConvention::None)
+    return OperandConvention::None;
+
+  assert((C1 != OperandConvention::Propagate &&
+          C2 != OperandConvention::Propagate) &&
+         "Can not merge propagate conventions, this should only be used with"
+         " propagate results");
+
+  // Otherwise, they all need to match...
+  if (C1 != C2)
+    return None;
+
+  return C1;
+}
+
+static SILInstruction::OperandConvention
+getPropagatedOperandConventionForResultConvention(
+    SILInstruction::ResultConvention C) {
+  using OperandConvention = SILInstruction::OperandConvention;
+  using ResultConvention = SILInstruction::ResultConvention;
+
+  switch (C) {
+  case ResultConvention::None:
+    return OperandConvention::None;
+  case ResultConvention::Unsafe:
+    return OperandConvention::Unsafe;
+  case SILInstruction::ResultConvention::StrongOwned:
+    return OperandConvention::Consume;
+  case SILInstruction::ResultConvention::StrongGuaranteed:
+    return OperandConvention::Guaranteed;
+  case SILInstruction::ResultConvention::StrongUnsafe:
+    llvm_unreachable("Not supported");
+  case SILInstruction::ResultConvention::Propagate:
+    llvm_unreachable("Can not hit a propagate here");
+  case SILInstruction::ResultConvention::Trivial:
+    return OperandConvention::Trivial;
+  }
+}
+
+SILInstruction::OperandConvention
+swift::stripOffPropagateOperandConvention(const Operand &Op) {
+  using OperandConvention = SILInstruction::OperandConvention;
+  using ResultConvention = SILInstruction::ResultConvention;
+  {
+    auto C = Op.getUser()->getOperandConvention(Op.getOperandNumber());
+    if (C != OperandConvention::Propagate) {
+      return C;
+    }
+  }
+
+  llvm::SmallVector<const ValueBase *, 32> Worklist;
+  Worklist.push_back(&*Op.get());
+
+  llvm::Optional<OperandConvention> Result;
+
+  while (!Worklist.empty()) {
+    if (Result.hasValue() && Result.getValue() == OperandConvention::None)
+      return OperandConvention::None;
+
+    auto *I = dyn_cast<const SILInstruction>(Worklist.pop_back_val());
+    if (!I)
+      return OperandConvention::None;
+
+    // If we do not have a propagate convention, return the corresponding
+    // conservative operand type.
+    if (I->getResultConvention() != ResultConvention::Propagate) {
+      auto RConv = I->getResultConvention();
+      auto OConv = getPropagatedOperandConventionForResultConvention(RConv);
+      Result = mergeConventions(Result, OConv);
+    }
+    
+    // Operands with a propagate convention must always be matched with a result
+    // convention that propagates and vis-a-versa.
+    auto Operands = I->getAllOperands();
+
+    for (unsigned i : indices(Operands)) {
+      auto NewOpC = I->getOperandConvention(i);
+      if (NewOpC == OperandConvention::Propagate) {
+        Worklist.push_back(&*Operands[i].get());
+        continue;
+      }
+
+      Result = mergeConventions(Result, NewOpC);
+    }
+  }
+
+  // We should never not have a result. The optional is just for lazy
+  // initialization. This is a hard failure.
+  return Result.getValue();
+}
+
+bool SILVerifier::checkInstructionResultConvention(SILInstruction *I) {
+  using ResultConvention = SILInstruction::ResultConvention;
+  using OperandConvention = SILInstruction::OperandConvention;
+  
+  switch (I->getResultConvention()) {
+  case ResultConvention::None:
+  case ResultConvention::Trivial:
+    // Everything can be paired with a None or a Trivial.
+    return true;
+  case ResultConvention::Unsafe:
+    // Things that are unsafe can not pair with Guaranteed, or Consumed. Just None and Unsafe.
+    return all_of(I->getAllOperands(),
+                  [](const Operand &Op) -> bool {
+                    switch (stripOffPropagateOperandConvention(Op)) {
+                    case OperandConvention::None:
+                    case OperandConvention::Unsafe:                      
+                      return true;
+                    case OperandConvention::Propagate:
+                    case OperandConvention::Consume:
+                    case OperandConvention::Guaranteed:                      
+                    case OperandConvention::Trivial:
+                      return false;
+                    }
+                  });    
+  case ResultConvention::StrongOwned:
+    return all_of(I->getAllOperands(),
+                  [](const Operand &Op) -> bool {
+                    switch (stripOffPropagateOperandConvention(Op)) {
+                    case OperandConvention::None:
+                    case OperandConvention::Consume:
+                    case OperandConvention::Guaranteed:
+                      return true;
+                    case OperandConvention::Unsafe:
+                    case OperandConvention::Propagate:
+                    case OperandConvention::Trivial:
+                      return false;
+                    }
+                  });
+  case ResultConvention::StrongGuaranteed:
+    return all_of(I->getAllOperands(),
+                  [](const Operand &Op) -> bool {
+                    switch (stripOffPropagateOperandConvention(Op)) {
+                    case OperandConvention::None:
+                    case OperandConvention::Guaranteed:
+                      return true;
+                    case OperandConvention::Unsafe:
+                    case OperandConvention::Consume:
+                    case OperandConvention::Propagate:
+                    case OperandConvention::Trivial:                      
+                      return false;
+                    }
+                  });
+    // I don't think I need this.
+  case ResultConvention::StrongUnsafe:
+    return all_of(I->getAllOperands(),
+                    [](const Operand &Op) -> bool {
+                    switch (stripOffPropagateOperandConvention(Op)) {
+                    case OperandConvention::None:
+                    case OperandConvention::Unsafe:
+                    case OperandConvention::Propagate:
+                      return true;
+                    case OperandConvention::Consume:
+                    case OperandConvention::Guaranteed:
+                    case OperandConvention::Trivial:
+                      return false;
+                    }
+                  });
+  case ResultConvention::Propagate:    
+    return all_of(I->getAllOperands(),
+                  [](const Operand &Op) -> bool {
+                    switch (Op.getUser()->getOperandConvention(Op.getOperandNumber())) {
+                    // A propagate result convention must only have propagate operands.
+                    case OperandConvention::Propagate:
+                      return true;
+                    case OperandConvention::None:
+                    case OperandConvention::Unsafe:                      
+                    case OperandConvention::Consume:
+                    case OperandConvention::Guaranteed:
+                    case OperandConvention::Trivial:
+                      return false;
+                    }
+                  });
+  }
+}
+
 
 #undef require
 #undef requireObjectType

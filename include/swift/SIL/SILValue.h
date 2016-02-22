@@ -211,6 +211,7 @@ class Operand {
       : TheValue(theValue), Owner(owner) {
     insertIntoCurrent();
   }
+
   template<unsigned N> friend class FixedOperandList;
   template<unsigned N> friend class TailAllocatedOperandList;
 

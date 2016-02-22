@@ -57,7 +57,7 @@ STATISTIC(TotalSpecializedInsts, "Number of instructions (of all types) in "
           "specialized functions");
 
 // Individual instruction statistics
-#define INST(Id, Parent, MemBehavior, ReleasingBehavior) \
+#define INST(Id, Parent, MemBehavior, ReleasingBehavior, ResultConvention)       \
   STATISTIC(Num ## Id, "Number of " #Id);
 #include "swift/SIL/SILNodes.def"
 
@@ -80,7 +80,7 @@ struct InstCountVisitor : SILVisitor<InstCountVisitor> {
 
   void visitValueBase(ValueBase *V) { }
 
-#define INST(Id, Parent, MemBehavior, ReleasingBehavior)                       \
+#define INST(Id, Parent, MemBehavior, ReleasingBehavior, ResultConvention)               \
   void visit##Id(Id *I) {                                                      \
     ++Num##Id;                                                                 \
     ++InstCount;                                                               \

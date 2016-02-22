@@ -119,6 +119,49 @@ public:
     MayRelease,
   };
 
+  /// Conventions for apply operands and function-entry arguments in SIL.
+  ///
+  /// By design, this is exactly the same as ParameterConvention, plus
+  ///
+  /// TODO: Fill in unowned/weak.
+  enum class ResultConvention : uint8_t {
+    None,
+    Unsafe,
+    StrongOwned,
+    StrongGuaranteed,
+    StrongUnsafe,
+    Trivial,
+    Propagate,
+  };
+
+  enum class OperandConvention : uint8_t {
+    // Placeholder for now.
+    None,
+
+    // This instruction uses its operand in an unsafe way. It does not guarantee
+    // that its use is safe in the face of object deallocation.
+    Unsafe,
+
+    // This argument's RC identity is propagated into this SILInstruction's
+    // result. All this allows one to assume is that a retain_value on the
+    // result will result in the SILValue being retained.
+    //
+    // Can be defined by any result convention. Any SILInstruction with this
+    // convention, must have at least one propagate argument.
+    Propagate,
+
+    // This argument's RC identity is consumed by the given instruction. Can
+    // only be defined by a StrongOwned value.
+    Consume,
+
+    // This argument's RC identity is guaranteed to live over the lifetime of
+    // the given instruction. Can be defined by StrongGuaranteed or StrongOwned.
+    Guaranteed,
+
+    // This argument is a trivial value without any ARC semantics.
+    Trivial,
+  };
+
   const SILBasicBlock *getParent() const { return ParentBB; }
   SILBasicBlock *getParent() { return ParentBB; }
 
@@ -175,6 +218,16 @@ public:
 
   MemoryBehavior getMemoryBehavior() const;
   ReleasingBehavior getReleasingBehavior() const;
+  ResultConvention getResultConvention() const;
+
+  using operand_convention_range =
+    TransformRange<IntRange<unsigned>, std::function<OperandConvention (unsigned)>>;
+  operand_convention_range getOperandConventions() {
+    std::function<OperandConvention (unsigned)> F = [this](unsigned i) { return getOperandConvention(i); };
+    return makeTransformRange(range(getNumOperands()), F);
+  }
+
+  OperandConvention getOperandConvention(unsigned i) const;
 
   /// Returns true if the instruction may release any object.
   bool mayRelease() const;
@@ -294,6 +347,11 @@ combineMemoryBehavior(SILInstruction::MemoryBehavior B1,
 /// Pretty-print the MemoryBehavior.
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
                               SILInstruction::MemoryBehavior B);
+/// Pretty-print the ResultConvention.
+llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+                              SILInstruction::ResultConvention C);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              SILInstruction::OperandConvention c);
 #endif
 
 /// A template base class for instructions that take a single SILValue operand
@@ -4584,6 +4642,9 @@ public:
             inst->getKind() == ValueKind::TryApplyInst);
   }
 };
+
+SILInstruction::OperandConvention
+stripOffPropagateOperandConvention(const Operand &Op);
 
 } // end swift namespace
 

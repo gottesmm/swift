@@ -637,7 +637,7 @@ namespace {
     ArrayRef<Operand> visit##CLASS(const CLASS *I) {                    \
       llvm_unreachable("accessing non-instruction " #CLASS);            \
     }
-#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR) \
+#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR, RESULTCONVENTION)            \
     ArrayRef<Operand> visit##CLASS(const CLASS *I) {                    \
       ASSERT_IMPLEMENTS(CLASS, SILInstruction, getAllOperands,          \
                         ArrayRef<Operand>() const);                     \
@@ -654,7 +654,7 @@ namespace {
     MutableArrayRef<Operand> visit##CLASS(const CLASS *I) {             \
       llvm_unreachable("accessing non-instruction " #CLASS);            \
     }
-#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR) \
+#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR, RESULTCONVENTION) \
     MutableArrayRef<Operand> visit##CLASS(CLASS *I) {                   \
       ASSERT_IMPLEMENTS(CLASS, SILInstruction, getAllOperands,          \
                         MutableArrayRef<Operand>());                    \
@@ -676,6 +676,18 @@ MutableArrayRef<Operand> SILInstruction::getAllOperands() {
 /// using instruction.
 unsigned Operand::getOperandNumber() const {
   return this - &cast<SILInstruction>(getUser())->getAllOperands()[0];
+}
+
+SILInstruction::ResultConvention SILInstruction::getResultConvention() const {
+  switch (getKind()) {
+#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR, RESULTCONVENTION) \
+  case ValueKind::CLASS: return ResultConvention::RESULTCONVENTION;
+#include "swift/SIL/SILNodes.def"
+  case ValueKind::SILArgument:
+  case ValueKind::SILUndef:
+    llvm_unreachable("Non-instructions are unreachable.");
+  }
+  llvm_unreachable("We've just exhausted the switch.");
 }
 
 SILInstruction::MemoryBehavior SILInstruction::getMemoryBehavior() const {
@@ -710,7 +722,7 @@ SILInstruction::MemoryBehavior SILInstruction::getMemoryBehavior() const {
                  : MemoryBehavior::MayHaveSideEffects;
 
   switch (getKind()) {
-#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR) \
+#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR, RESULTCONVENTION) \
   case ValueKind::CLASS: return MemoryBehavior::MEMBEHAVIOR;
 #include "swift/SIL/SILNodes.def"
   case ValueKind::SILArgument:
@@ -722,7 +734,7 @@ SILInstruction::MemoryBehavior SILInstruction::getMemoryBehavior() const {
 
 SILInstruction::ReleasingBehavior SILInstruction::getReleasingBehavior() const {
   switch (getKind()) {
-#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR) \
+#define INST(CLASS, PARENT, MEMBEHAVIOR, RELEASINGBEHAVIOR, RESULTCONVENTION) \
   case ValueKind::CLASS: return ReleasingBehavior::RELEASINGBEHAVIOR;
 #include "swift/SIL/SILNodes.def"
  case ValueKind::SILArgument:
@@ -937,6 +949,44 @@ llvm::raw_ostream &swift::operator<<(llvm::raw_ostream &OS,
       return OS << "MayReadWrite";
     case SILInstruction::MemoryBehavior::MayHaveSideEffects:
       return OS << "MayHaveSideEffects";
+  }
+}
+
+llvm::raw_ostream &swift::operator<<(llvm::raw_ostream &OS,
+                                     SILInstruction::ResultConvention B) {
+  switch (B) {
+  case SILInstruction::ResultConvention::None:
+    return OS << "None";
+  case SILInstruction::ResultConvention::Unsafe:
+    return OS << "Unsafe";
+  case SILInstruction::ResultConvention::StrongOwned:
+    return OS << "StrongOwned";
+  case SILInstruction::ResultConvention::StrongGuaranteed:
+    return OS << "StrongGuaranteed";
+  case SILInstruction::ResultConvention::StrongUnsafe:
+    return OS << "StrongUnsafe";
+  case SILInstruction::ResultConvention::Propagate:
+    return OS << "Propagate";
+  case SILInstruction::ResultConvention::Trivial:
+    return OS << "Trivial";
+  }
+}
+
+llvm::raw_ostream &swift::operator<<(llvm::raw_ostream &os,
+                                     SILInstruction::OperandConvention c) {
+  switch (c) {
+  case SILInstruction::OperandConvention::None:
+    return os << "None";
+  case SILInstruction::OperandConvention::Unsafe:
+    return os << "Unsafe";
+  case SILInstruction::OperandConvention::Propagate:
+    return os << "Propagate";
+  case SILInstruction::OperandConvention::Consume:
+    return os << "Consume";
+  case SILInstruction::OperandConvention::Guaranteed:
+    return os << "Guaranteed";
+  case SILInstruction::OperandConvention::Trivial:
+    return os << "Trivial";
   }
 }
 #endif

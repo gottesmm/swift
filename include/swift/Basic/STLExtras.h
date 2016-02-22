@@ -26,6 +26,7 @@
 #include <iterator>
 #include <type_traits>
 #include <algorithm>
+#include <numeric>
 
 namespace swift {
 
@@ -689,6 +690,18 @@ inline bool is_sorted_and_uniqued(IterTy II, IterTy IE) {
 template <typename Container>
 inline bool is_sorted_and_uniqued(const Container &C) {
   return is_sorted_and_uniqued(C.begin(), C.end());
+}
+
+// Range adaptor for std::accumulate.
+template <typename Container, typename T>
+inline T accumulate(const Container &c, T init) {
+  return std::accumulate(c.begin(), c.end(), init);
+}
+
+// Range adaptor for std::accumulate.
+template <typename Container, typename T, typename BinaryOperation>
+inline T accumulate(const Container &c, T init, BinaryOperation op) {
+  return std::accumulate(c.begin(), c.end(), init, op);
 }
 
 } // end namespace swift

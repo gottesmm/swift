@@ -1274,3 +1274,60 @@ ArrayRef<ProtocolConformanceRef>
 InitExistentialMetatypeInst::getConformances() const {
   return {getTrailingObjects<ProtocolConformanceRef>(), NumConformances};
 }
+
+//===----------------------------------------------------------------------===//
+//                         Operand Convention Lookup
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+using OperandConvention = SILInstruction::OperandConvention;
+
+struct OperandConventionVisitor : SILInstructionVisitor<OperandConventionVisitor,
+                                                        OperandConvention> {
+  unsigned OpNum;
+
+  OperandConventionVisitor(unsigned OpNum) : OpNum(OpNum) {}
+  OperandConvention visitValueBase(ValueBase *V) {
+    //llvm_unreachable("Unimplemented operand convention visitor?!");
+    return SILInstruction::OperandConvention::None;
+  }
+
+#define ONE_VALUE_INST(Inst, Convention) \
+  OperandConvention visit ## Inst(Inst *) { return OperandConvention::Convention; }
+
+#define STRONG_CONSUME_INST(Inst) ONE_VALUE_INST(Inst, Consume)
+  STRONG_CONSUME_INST(StrongReleaseInst)
+  STRONG_CONSUME_INST(ReleaseValueInst)
+#undef STRONG_CONSUME_INST
+
+#define PROPAGATE_INST(Inst) ONE_VALUE_INST(Inst, Propagate)
+
+  PROPAGATE_INST(TupleInst)
+  PROPAGATE_INST(TupleExtractInst)
+  PROPAGATE_INST(TupleElementAddrInst)
+  PROPAGATE_INST(StructInst)
+  PROPAGATE_INST(StructExtractInst)
+  PROPAGATE_INST(StructElementAddrInst)
+  PROPAGATE_INST(RefElementAddrInst)
+  PROPAGATE_INST(EnumInst)
+  PROPAGATE_INST(UncheckedEnumDataInst)
+  PROPAGATE_INST(SelectEnumInst)
+  PROPAGATE_INST(SelectValueInst)
+  PROPAGATE_INST(InitExistentialRefInst)
+  PROPAGATE_INST(OpenExistentialRefInst)
+  PROPAGATE_INST(UpcastInst)
+  PROPAGATE_INST(UncheckedRefCastInst)
+  PROPAGATE_INST(RefToBridgeObjectInst)
+  PROPAGATE_INST(BridgeObjectToRefInst)
+  PROPAGATE_INST(UnconditionalCheckedCastInst)
+#undef PROPAGATE_INST
+#undef ONE_VALUE_INST
+};
+
+} // end anonymous namespace
+
+OperandConvention SILInstruction::getOperandConvention(unsigned i) const {
+  OperandConventionVisitor Visitor{i};
+  return Visitor.visit(const_cast<SILInstruction *>(this));
+}

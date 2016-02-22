@@ -3,6 +3,7 @@ set(UTILITYPASSES_SOURCES
   UtilityPasses/BasicCalleePrinter.cpp
   UtilityPasses/ComputeDominanceInfo.cpp
   UtilityPasses/ComputeLoopInfo.cpp
+  UtilityPasses/ConventionDump.cpp
   UtilityPasses/CFGPrinter.cpp
   UtilityPasses/EpilogueRetainReleaseMatcherDumper.cpp
   UtilityPasses/EscapeAnalysisDumper.cpp

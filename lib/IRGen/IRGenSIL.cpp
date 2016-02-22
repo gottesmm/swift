@@ -3235,14 +3235,14 @@ void IRGenSILFunction::visitLoadStrongInst(swift::LoadStrongInst *i) {
   } else {
     loadableTI.loadAsCopy(*this, source, result);
   }
-  setLoweredExplosion(SILValue(i, 0), result);
+  setLoweredExplosion(i, result);
 }
 
 void IRGenSILFunction::visitStoreStrongInst(swift::StoreStrongInst *i) {
   Explosion source = getLoweredExplosion(i->getSrc());
   Address dest = getLoweredAddress(i->getDest());
   auto &loadableTI =
-    cast<LoadableTypeInfo>(getTypeInfo(i->getSrc().getType().getObjectType()));
+    cast<LoadableTypeInfo>(getTypeInfo(i->getSrc()->getType().getObjectType()));
 
   if (i->isInitializationOfDest()) {
     loadableTI.initialize(*this, source, dest);

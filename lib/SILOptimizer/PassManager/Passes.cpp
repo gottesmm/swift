@@ -246,6 +246,8 @@ void swift::runSILOptimizationPasses(SILModule &Module) {
     return;
   }
 
+  Module.setStage(SILStage::LowLevel);
+
   SILPassManager PM(&Module, "PreSpecialize");
 
   // Get rid of apparently dead functions as soon as possible so that

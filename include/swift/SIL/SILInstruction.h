@@ -1529,7 +1529,7 @@ class LoadStrongInst
 {
   friend class SILBuilder;
 
-  LoadStrongInst(SILDebugLocation *loc, SILValue lvalue, IsTake_t isTake)
+  LoadStrongInst(SILDebugLocation loc, SILValue lvalue, IsTake_t isTake)
       : LoadReferenceInstBase(loc, lvalue, isTake) {}
 };
 
@@ -1539,7 +1539,7 @@ class StoreStrongInst
 {
   friend class SILBuilder;
 
-  StoreStrongInst(SILDebugLocation *loc, SILValue src, SILValue dest,
+  StoreStrongInst(SILDebugLocation loc, SILValue src, SILValue dest,
                   IsInitialization_t isInit)
     : StoreReferenceInstBase(loc, src, dest, isInit) {}
 };

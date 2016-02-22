@@ -736,7 +736,7 @@ public:
     // Check that if the apply is of a noreturn callee, make sure that an
     // unreachable is the next instruction.
     if (isRawSILStage(AI->getModule().getStage()) ||
-        !AI->getCallee().getType().getAs<SILFunctionType>()->isNoReturn())
+        !AI->getCallee()->getType().getAs<SILFunctionType>()->isNoReturn())
       return;
     require(isa<UnreachableInst>(std::next(SILBasicBlock::iterator(AI))),
             "No return apply without an unreachable as a next instruction.");
@@ -983,7 +983,7 @@ public:
     require(SI->getDest()->getType().getObjectType() == SI->getSrc()->getType(),
             "Store operand type and dest type mismatch");
     if (!isLowLevelSILStage(SI->getModule().getStage())) {
-      require(SI->getSrc().getType().isTrivial(SI->getModule()),
+      require(SI->getSrc()->getType().isTrivial(SI->getModule()),
               "Can not store non-trivial values in non-low level SIL");
     }
   }

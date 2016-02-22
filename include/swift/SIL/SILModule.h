@@ -78,7 +78,7 @@ enum class SILStage {
   LowLevel,
 };
 
-bool isRawSILStage(SILStage stage) {
+inline bool isRawSILStage(SILStage stage) {
   switch (stage) {
   case SILStage::Raw:
     return true;
@@ -88,7 +88,7 @@ bool isRawSILStage(SILStage stage) {
   }
 }
 
-bool isCanonicalSILStage(SILStage stage) {
+inline bool isCanonicalSILStage(SILStage stage) {
   switch (stage) {
   case SILStage::Raw:
     return true;
@@ -98,7 +98,7 @@ bool isCanonicalSILStage(SILStage stage) {
   }
 }
 
-bool isLowLevelSILStage(SILStage stage) {
+inline bool isLowLevelSILStage(SILStage stage) {
   switch (stage) {
   case SILStage::Raw:
   case SILStage::Canonical:

@@ -441,12 +441,12 @@ public:
 
   LoadStrongInst *createLoadStrong(SILLocation Loc, SILValue src, IsTake_t isTake) {
     return insert(new (F.getModule())
-                      LoadStrongInst(createSILDebugLocation(Loc), src, isTake));
+                      LoadStrongInst(getSILDebugLocation(Loc), src, isTake));
   }
 
   StoreStrongInst *createStoreStrong(SILLocation Loc, SILValue value, SILValue dest,
                                  IsInitialization_t isInit) {
-    return insert(new (F.getModule()) StoreStrongInst(createSILDebugLocation(Loc),
+    return insert(new (F.getModule()) StoreStrongInst(getSILDebugLocation(Loc),
                                                     value, dest, isInit));
   }
 

@@ -1214,8 +1214,7 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
     auto Ty = MF->getType(TyID);
     bool isTake = (Attr > 0);
     ResultVal = Builder.createLoadStrong(Loc,
-        getLocalValue(ValID, ValResNum,
-                      getSILType(Ty, (SILValueCategory)TyCategory)),
+        getLocalValue(ValID, getSILType(Ty, (SILValueCategory)TyCategory)),
         IsTake_t(isTake));
     break;
   }
@@ -1265,8 +1264,8 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
     SILType ValType = addrType.getObjectType();
     bool isInit = (Attr > 0);
     ResultVal = Builder.createStoreStrong(Loc,
-                    getLocalValue(ValID, ValResNum, ValType),
-                    getLocalValue(ValID2, ValResNum2, addrType),
+                    getLocalValue(ValID, ValType),
+                    getLocalValue(ValID2, addrType),
                     IsInitialization_t(isInit));
     break;
   }

@@ -25,13 +25,21 @@ We suggest in this proposal the following changes to the SIL IR as solutions to 
 
 ### Reference Count Identity Problem
 
-In order to pair semantic ARC operations effectively, one has to be able to determine that two ARC operations are manipulating the same reference count. Currently in SIL this is not a robust operation due to the lack of IR level model of RC identity that is preserved by the frontend and all emitted instructions. We wish to define an algorithm which for any specific SILValue in a given program can determine the set of "RC Identity Sources" associated with the given SILValue.
+In order to pair semantic ARC operations effectively, one has to be able to determine that two ARC operations are manipulating the same reference count. Currently in SIL this is not a robust operation due to the lack of IR level model of RC identity that is preserved by the frontend and all emitted instructions. We wish to define an algorithm which for any specific SILValue in a given program can determine the set of "RC Identity Sources" associated with the given SILValue. Define an RC Identity as a tuple (v, path) where v is a SILValue and path is a projection path into x. Then for a given SILValue v:
 
-Let F be a given SIL function. Let V(F) be the set of SIL values in F and I(F) be the set of SIL instructions in F. There is a natural embedding of I(F) into V(F) defined by the function, value : I(F) -> V(F) defined by mapping each instruction in I(F) to its result value. Now define the predicate rcidsource : V -> Bool. Then define the set of rc identity source values as:
+1. If v is a SILArgument we can compute its RC Identity Source set directly by .
+2. If v is the result of a SILInstruction then we compute its RC Identity Source set as follows:
+   For a given 
 
-    RCIDSource  = { v ϵ V : rcidsource(v) }
+Let F be a given SILFunction. Let V(F) be the set of SILValues in F and I(F) be the set of SILInstructions in F. There is a natural embedding of I(F) into V(F) defined by the function, value : I(F) -> V(F) defined by mapping each instruction in I(F) to its result value. For a given value v, define the type operator type : V(F) -> SILTypes that maps a SILValue to its associated SILType. For any given SILType, define proj_tree : SILTypes -> {(SILType, +)}. For any given SILValue, define ValueTree as ValueTree : V(F) -> {(V, T) : V in V(F), T in SILTypes}. Then define the shard operator,
 
-We wish to attempt to define a function RCIDRoots : V(F) -> S with S ⊂ RCIDSource. In words this means that RCIDRoots must be able to map any SIL value v ϵ V(F) to a set of RCIDSource values. This algorithm is trivial to formulate when 
+  shared : V(F) -> TypeTree(SILTypes)
+
+Now define the predicate rcidsource : V(F) -> Bool. For a given value v, rcidsource returns true if and only if v is a reference type and Then define the set of rc identity source values as:
+
+    RCIDSource(V)  = { v ϵ V : rcidsource(v) }
+
+We wish to attempt to define a function RCIDRoots : V(F) -> S with S ⊂ RCIDSource(V). In words this means that RCIDRoots must be able to map any SIL value v ϵ V(F) to a set of RCIDSource(V) values. This algorithm is trivial to formulate for a v ϵ RCIDSource(V), namely it is the identity operation. But lets say that we have some v not in RCIDSource(V). There are two ways that this can occur namely if v is an 
 
 In order to solve this problem in a robust way in the face of compiler changes, we propose the following solution:
 

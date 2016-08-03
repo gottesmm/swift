@@ -7,11 +7,18 @@ This is a proposal for a series of changes to the SIL IR in order to ease the op
 
 ## Historical Implementations
 
-ARC was first implemented for Objective C. In Objective C, Pointers with ARC semantics are represented in LLVM IR as i8*. The lifetimes of these pointers were managed via retain and release operations and the end of a pointer's lifetime was ascertained via conservative analysis of uses. The retain, release calls did not have any semantic information in the IR itself that showed what operations they were balancing and often times uses of ARC pointers that /should/ have resulted in atomic uses were separated into separate uses. Uses of Objective C pointers by functions were problematic as well since there was no verification of the semantic ARC convention that a function required of its pointer arguments. Finally, one could only establish that two pointers had the same RC Identity conservatively via alias analysis.
+ARC was first implemented for Objective C. In Objective C, Pointers with ARC semantics are represented in LLVM IR as i8*. The lifetimes of these pointers were managed via retain and release operations and the end of a pointer's lifetime was ascertained via conservative analysis of uses. The retain, release calls did not have any semantic information in the IR itself that showed what operations they were balancing and often times uses of ARC pointers that /should/ have resulted in atomic uses were separated into separate uses. Uses of Objective C pointers by functions were problematic as well since there was no verification of the semantic ARC convention that a function required of its pointer arguments. Finally, one could only establish that two pointers had the same RC Identity conservatively via alias analysis. This prevents semantic guarantees from the IR in terms of ability to calculate RC identity.
 
-The ARC implementation in Swift improved upon this situation by specifying ARC semantic properties at the function level. For instance,
+The ARC implementation in Swift, in contrast, to Objective C, is implemented in the SIL IR. This suffered from many of the same issues as the Objective C implementation of ARC, with one exception: function signatures. In SIL, all functions specify the ownership convention expected of their arguments and return values. Since these conventions were not specified in the operations in the bodies of functions though, this could not be used to create a true ARC verifier.
 
-### ARC Problems
+## Semantic ARC
+
+As shown in the past section, the implementation of ARC in both Swift and Objective C lacked important semantic information in the following areas:
+
+1. Ability to determine semantic ARC pointer equivalence (RC Identity).
+2. Ability to pair semantic ARC operations.
+
+Our proposal solves these problems as follows:
 
 #### Reference Count Identity Problem
 

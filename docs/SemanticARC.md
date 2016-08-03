@@ -9,7 +9,9 @@ This is a proposal for a series of changes to the SIL IR in order to improve the
 
 ### Representation
 
-ARC was first implemented for Objective C and is the basis for managing life times of reference types in Swift. In Objective C, ARC pointers were represented in LLVM IR as i8* pointers whose lifetimes were managed by retain and release function calls. The convention for passing an argument in Objective C was +0 so that was assumed by default. This caused issues since there was no true semantic verification that a value being passed off to a function was truly supposed to be passed at +0 or if a retain was truly matched with a release (or with a store). As a result, the ability to 
+ARC was first implemented for Objective C and is the basis for managing life times of reference types in Swift. In Objective C, ARC pointers are represented in LLVM IR as i8* pointers whose lifetimes were managed by retain and release function calls. These function calls do not necessarily have any semantic connection in the IR itself (i.e. one can not verify if two retain, release pairs are truly paired). In addition, two pointers could only be proven to be the same via conservative heuristics. The convention for passing an argument in Objective C was +0 so that was assumed by default. This caused issues since there was no true semantic verification that a value being passed off to a function was truly supposed to be passed at +0.
+
+The ARC implementation in Swift improved upon these issues by attempting to begin specifying ARC relationships at the function boundary level. For instance, in Swift a function specifies the ownership convention that it expects each one of its arguments to 
 
 ### Optimization
 

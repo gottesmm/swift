@@ -3,7 +3,7 @@
 
 ## Preface
 
-This is a proposal for a series of changes to the SIL IR in order to ease the optimization of ARC operations and verification of ARC semantics in Swift programs. We assume that the user has a basic familiarity with the basic concepts of ARC: this is a proposal meant for compiler writers and implementors.
+This is a proposal for a series of changes to the SIL IR in order to ease the optimization of ARC operations and verification of ARC semantics in Swift programs. This is a proposal meant for compiler writers and implementors, not users, i.e. we assume that the reader has a basic familiarity with the basic concepts of ARC.
 
 ## Historical Implementations
 

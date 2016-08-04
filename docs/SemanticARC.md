@@ -117,11 +117,13 @@ The general rule is that each result convention with the name x, must be matched
       var y: Builtin.NativeObject
     }
     
+    sil @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+    
     sil @foo : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
     bb0(%0 : @guaranteed Builtin.NativeObject):
       %1 = struct $Foo(%0 : $@guaranteed Builtin.NativeObject, %0 : $@guaranteed Builtin.NativeObject) # This is forwarding
       %2 = copy_value %1 : $@guaranteed Foo # This converts %1 from @guaranteed -> @owned
-      %3 = function_ref @use_foo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+      %3 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
       %4 = apply %3(%2, %1) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
       destroy_value %4 : $@owned Builtin.NativeObject
       %5 = tuple()

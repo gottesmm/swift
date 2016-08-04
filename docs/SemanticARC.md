@@ -90,13 +90,14 @@ In order to simplify this, we will make the following changes:
 
 1. All SILInstructions must assign to their operands one of the following conventions:
    
-   a. @owned
-   b. @guaranteed
-   c. @unowned @safe
-   d. @unowned @unsafe
-   e. @forwarding
+   * @owned
+   * @guaranteed
+   * @unowned @safe
+   * @unowned @unsafe
+   * @forwarding
 
 2. All SILInstructions must assign to their result one of the following conventions:
+
    a. @owned
    b. @unowned @unsafe
    c. @unowned @safe

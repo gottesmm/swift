@@ -89,7 +89,6 @@ Once we have these higher level operations, the next step is to create the notio
 In order to simplify this, we will make the following changes:
 
 1. All SILInstructions must assign to their operands one of the following conventions:
-   
    * @owned
    * @guaranteed
    * @unowned @safe
@@ -97,18 +96,17 @@ In order to simplify this, we will make the following changes:
    * @forwarding
 
 2. All SILInstructions must assign to their result one of the following conventions:
-
-   a. @owned
-   b. @unowned @unsafe
-   c. @unowned @safe
-   d. @forwarding
+   * @owned
+   * @unowned @unsafe
+   * @unowned @safe
+   * @forwarding
 
 3. All SILArguments must have one of the following conventions associated with it:
-   a. @owned
-   b. @guaranteed
-   c. @unowned @unsafe
-   d. @unowned @safe
-   e. @forwarding
+   * @owned
+   * @guaranteed
+   * @unowned @unsafe
+   * @unowned @safe
+   * @forwarding
 
 @forwarding is a new convention that we add to reduce the amount of extra instructions needed to implement this scheme. @forwarding is a special convention intended for instructions that forward RC Identity that for simplictuy will be restricted to forwarding the convention of their def instruction to all of the uses of that instruction. Of course, for forwarding instructions with multiple inputs, we require that all of the inputs have the same convention.
 

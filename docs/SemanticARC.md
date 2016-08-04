@@ -11,6 +11,7 @@
   - [New High Level ARC Operations](#new-high-level-arc-operations)
   - [Endow Use-Def edges with ARC Conventions](#endow-use-def-edges-with-arc-conventions)
   - [ARC Verifier](#arc-verifier)
+- [Footnotes](#footnotes)
 
 ## Preface
 
@@ -43,11 +44,11 @@ As discussed in the previous section, the implementation of ARC in both Swift an
 
 We now go into depth on each one of those points.
 
-## High Level SIL and Low Level SIL
+### High Level SIL and Low Level SIL
 
 The first step towards implementing Semantic ARC is to split the "Canonical SIL Stage" into two different stages: High Level and Low Level SIL. The main distinction in between the two stages is, that in High Level SIL, ARC semantic invariants will be enforced via extra conditions on the IR. In contrast, once Low Level SIL has been reached, no ARC semantic invariants are enforced and only very conservative ARC optimization may occur. The intention is that Low Level SIL would /only/ be used when compiling with optimization enabled, so both High and Low Level SIL will necessarily need to be able to be lowered to LLVM IR.
 
-## RC Identity
+### RC Identity
 
 Once High Level SIL has been implemented, we will embed RC Identity into High Level SIL to ensure that RC identity can always be computed for all SSA values. Currently in SIL this is not a robust operation due to the lack of IR level model of RC identity that is guaranteed to be preserved by the frontend and all emitted instructions. Define an RC Identity as a tuple consisting of a SILValue, V, and a ProjectionPath, P, to from V's type to a sub reference type in V [[2]](#footnote-2). We wish to define an algorithm that given any (V, P) in a program can determine the RC Identity Source associated with (V, P). We do this recursively follows:
 
@@ -61,18 +62,18 @@ Let V be a SILValue and P be a projection path into V. Then:
 
 Our algorithm then is a very simple algorithm that applies the RC Identity Source algorithm to all SSA values in the program and ensures that RC Identity Sources can be computed for them. This should result in trivial use-def list traversal.
 
-## New High Level ARC Operations
+### New High Level ARC Operations
 
 Once we are able to reason about RC Identity, the next step in implementing Semantic ARC is to eliminate in High Level SIL certain low level aggregate operations that have ARC semantics but are not conducive to reasoning about ARC operations on use-def edges. These are specifically:
 
 1. strong_retain, strong_release, retain_value, release_value. These should be replaced by a copy_value instruction with analogous flags to copy_addr.
 2. strong store/strong load operations should be provided as instructions. This allows for normal loads to be considered as not having any ARC significant operations and eliminates a hole in ARC where a pointer is partially initialized (i.e. it a value is loaded but it has not been retained. In the time period in between those two points the value is partially initialized allowing for optimizer bugs).
 
-## Endow Use-Def edges with ARC Conventions
+### Endow Use-Def edges with ARC Conventions
 
 Once we have these higher level operations, the next step is to create the notion of operand and result ARC conventions. At a high level this is just the extension of argument/result conventions from apply sites to /all/ instructions. Consider the following example.
 
-## ARC Verifier
+### ARC Verifier
 
 Once we have endowed use-def edges with ARC semantic properties, we can ensure that ARC is statically correct by ensuring that for all function bodies the following is true:
 
@@ -81,6 +82,8 @@ Once we have endowed use-def edges with ARC semantic properties, we can ensure t
   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
 
 This guarantees via each instruction's interface that each +1 is properly balanced by a -1 and that no +1 is balanced multiple times along any path through the program... i.e., the program is ARC correct.
+
+## Footnotes
 
 <a name="footnote-1">[1]</a> Reference Count Identity ("RC Identity") is a concept that is independent of pointer identity that refers to the set of reference counts that would be manipulated by a reference counted operation upon a specific SSA value. For more information see the [RC Identity](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst#rc-identity) section of the [ARC Optimization guide](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst)
 

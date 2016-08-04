@@ -20,16 +20,12 @@ The ARC implementation in Swift, in contrast, to Objective C, is implemented in 
 
 As discussed in the previous section, the implementation of ARC in both Swift and Objective C lacked important semantic ARC information. We fix these issues by embedding the following ARC semantic information into SIL in the following order of implementation:
 
-1. RC Identity: For any given SILValue, one should be able to determine its set of RC Identity Roots.
-2. Additional High Level ARC Operations: store_strong, load_strong, copy_value instructions should be added to SIL.
-3. Endow Use-Def edges with ARC Conventions: Function signature ARC conventions should be extended to all instructions and block arguments. Thus **all** use-def edges should have an implied ownership transfer convention.
-4. ARC Verifier: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics by ensuring the following properties are true of all reference counting operations in a function body:
-
-   a. Every use-def edge must connect together a use and a def with compatible ARC semantics. As an example this means that any def that produces a +1 value must be paired with a -1 use. If one wishes to pass off a +1 value to an unowned use or a guaranteed use, one must use an appropriate conversion instruction. The conversion instruction would work as a pluggable adaptor and only certain adaptors that preserve safe ARC semantics would be provided.
-   
-   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
-
-5. Elimination of Memory Locations from High Level SIL. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified just like normal class types.
+1. **Split the Canonical SIL Stage into High and Low Level SIL**: High Level SIL will be the result of running the guaranteed passes and is where ARC invariants will be enforced.
+1. **RC Identity**: For any given SILValue, one should be able to determine its set of RC Identity Roots.
+2. **Introduction of new High Level ARC Operations**: store_strong, load_strong, copy_value instructions should be added to SIL.
+3. **Endow Use-Def edges with ARC Conventions**: Function signature ARC conventions should be extended to all instructions and block arguments. Thus all use-def edges should have an implied ownership transfer convention.
+4. **ARC Verifier**: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics.
+5. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified just like normal class types.
 
 Swift Extensions:
 
@@ -37,25 +33,28 @@ Swift Extensions:
 
 We now go into depth on each one of those points.
 
-### Reference Count Identity Problem
+## High Level SIL and Low Level SIL
+
+ ARC optimization /will/ not occur at the Low Level SIL. This implies that function signature optimization and IPO must occur at High Level SIL. Necessarily both High and Low Level SIL must be able to be lowered by IRGen to LLVM IR to ensure that 
+
+## RC Identity
 
 In order to pair semantic ARC operations effectively, one has to be able to determine that two ARC operations are manipulating the same reference count. Currently in SIL this is not a robust operation due to the lack of IR level model of RC identity that is guaranteed to be preserved by the frontend and all emitted instructions. We wish to define an algorithm which for any specific SILValue in a given program can determine the set of "RC Identity Sources" associated with the given SILValue. We do this as follows: Define an RC Identity as a tuple consisting of a SILValue and a ProjectionPath to a leaf reference type in the SILValue. Then define an RC Identity Source via the following recursive relation:
 
 1. rcidsource(a: SILArgument) consists of the list of all leaf reference types in a with the associated projection paths into a. *NOTE* This implies that by default, we consider SILArguments that act as phi nodes to block further association with rc identity sources.
 2. To calculate the rcidsource of an instruction
 
-### Pairing Semantic ARC Operations
+## New High Level ARC Operations
 
-## Solving the Reference Count Identity Problem
+## Endow Use-Def edges with ARC Conventions
 
-### Add RC Identity semantics to use-def chains
+## ARC Verifier
 
-### Create an RC Identity Verifier
+ by ensuring the following properties are true of all reference counting operations in a function body:
 
-## Solving the Pairing Problem
+   a. Every use-def edge must connect together a use and a def with compatible ARC semantics. As an example this means that any def that produces a +1 value must be paired with a -1 use. If one wishes to pass off a +1 value to an unowned use or a guaranteed use, one must use an appropriate conversion instruction. The conversion instruction would work as a pluggable adaptor and only certain adaptors that preserve safe ARC semantics would be provided.
+   
+   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
 
-### Transition to copy_value
+## Elimination of Memory Locations from High Level SIL
 
-### Add Ownership Semantics to use-def chains
-
-### Create an Ownership Semantic Verifier

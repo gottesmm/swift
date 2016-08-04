@@ -23,15 +23,11 @@ The ARC implementation in Swift, in contrast, to Objective C, is implemented in 
 As discussed in the previous section, the implementation of ARC in both Swift and Objective C lacked important semantic ARC information. We fix these issues by embedding the following ARC semantic information into SIL in the following order of implementation:
 
 1. **Split the Canonical SIL Stage into High and Low Level SIL**: High Level SIL will be the result of running the guaranteed passes and is where ARC invariants will be enforced.
-1. **RC Identity**: For any given SILValue, one should be able to determine its set of RC Identity Roots.
-2. **Introduction of new High Level ARC Operations**: store_strong, load_strong, copy_value instructions should be added to SIL.
+1. **RC Identity**: For any given SILValue, one should be able to determine its set of RC Identity Roots. This makes it easy to reason about which reference counts a reference count operation is affecting.
+2. **Introduction of new High Level ARC Operations**: store_strong, load_strong, copy_value instructions should be added to SIL. These operations are currently split into separate low level operations. **TODO: ADD MORE HERE**
 3. **Endow Use-Def edges with ARC Conventions**: Function signature ARC conventions should be extended to all instructions and block arguments. Thus all use-def edges should have an implied ownership transfer convention.
 4. **ARC Verifier**: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics.
-5. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified just like normal class types.
-
-Swift Extensions:
-
-1. One should be able to specify the parameter convention of **all** function parameters.
+5. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified by the ARC verifier in a trivial way without the introduction of Memory SSA.
 
 We now go into depth on each one of those points.
 
@@ -60,3 +56,6 @@ In order to pair semantic ARC operations effectively, one has to be able to dete
 
 ## Elimination of Memory Locations from High Level SIL
 
+# Swift Extensions:
+
+1. One should be able to specify the parameter convention of **all** function parameters.

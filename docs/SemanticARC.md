@@ -110,13 +110,15 @@ In order to simplify this, we will make the following changes:
 
 @forwarding is a new convention that we add to reduce the amount of extra instructions needed to implement this scheme. @forwarding is a special convention intended for instructions that forward RC Identity that for simplictuy will be restricted to forwarding the convention of their def instruction to all of the uses of that instruction. Of course, for forwarding instructions with multiple inputs, we require that all of the inputs have the same convention.
 
-The general rule is that each result convention with the name x, must be matched with the operand convention with the same name with some specific exceptions. Let us consider an example function:
+The general rule is that each result convention with the name x, must be matched with the operand convention with the same name with some specific exceptions. Let us consider an example. Consider the struct Foo:
 
     struct Foo {
       var x: Builtin.NativeObject
       var y: Builtin.NativeObject
     }
-    
+
+and the following SIL:
+
     sil @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
     
     sil @foo : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
@@ -129,6 +131,21 @@ The general rule is that each result convention with the name x, must be matched
       %5 = tuple()
       return %5 : $()
     }
+
+Let us consider another example that is incorrect and where the conventions allow for optimizer or frontend error to be caught easily. Consider foo2:
+
+    sil @foo2 : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
+    bb0(%0 : @guaranteed Builtin.NativeObject):
+      %1 = struct $Foo(%0 : $@guaranteed Builtin.NativeObject, %0 : $@guaranteed Builtin.NativeObject) # This is forwarding
+      %2 = copy_value [take] %1 : $@guaranteed Foo # ==> ERROR: Can not take a guaranteed parameter <==
+      %3 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+      %4 = apply %3(%2, %1) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
+      destroy_value %4 : $@owned Builtin.NativeObject
+      %5 = tuple()
+      return %5 : $()
+    }
+
+In this case, since a copy_value [take] can only accept an @owned parameter as an argument, a simple use-def type verifier would throw, preventing an improper transfer of ownership.
 
 ### ARC Verifier
 

@@ -52,9 +52,14 @@ Our algorithm then is a very simple algorithm that applies the RC Identity Sourc
 
 ## New High Level ARC Operations
 
-Once we are able to reason about 
+Once we are able to reason about RC Identity, the next step in implementing Semantic ARC is to eliminate in High Level SIL certain low level aggregate operations that have ARC semantics but are not conducive to reasoning about ARC operations on use-def edges. These are specifically:
 
-## Endow Use-Def edges with ARC Conventions
+1. strong_retain, strong_release, retain_value, release_value. These should be replaced by a copy_value instruction with analogous flags to copy_addr.
+2. strong store/strong load operations should be provided as instructions. This allows for normal loads to be considered as not having any ARC significant operations and eliminates a hole in ARC where a pointer is partially initialized (i.e. it a value is loaded but it has not been retained. In the time period in between those two points the value is partially initialized allowing for optimizer bugs).
+
+## Endow Use-Def edges with ARC Conventions via 
+
+Once we have these higher level operations, the next step is to create the notion of operand conventions. Specifi
 
 ## ARC Verifier
 

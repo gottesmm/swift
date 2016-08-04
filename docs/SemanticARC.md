@@ -64,15 +64,23 @@ Our algorithm then is a very simple algorithm that applies the RC Identity Sourc
 
 ### New High Level ARC Operations
 
-Once we are able to reason about RC Identity, the next step in implementing Semantic ARC is to eliminate in High Level SIL certain low level aggregate operations that have ARC semantics but are not conducive to reasoning about ARC operations on use-def edges. These are specifically:
+Once we are able to reason about RC Identity, the next step in implementing Semantic ARC is to eliminate in High Level SIL certain Low Level aggregate operations that have ARC semantics but are not conducive to reasoning about ARC operations on use-def edges. These are specifically:
 
-1. strong_retain, strong_release, retain_value, release_value. These in High Level SIL will be replaced by a copy_value and destroy_value instruction. The copy_value instruction will have the following semantics:
+1. strong_release, release_value. These in High Level SIL will be replaced by a copy_value instruction with the following semantics:
+
    a. By default a copy_value will perform a bit by bit copy of its input argument and a retain_value operation. The argument still maintains its own lifetime and the result of the copy_value should semantically be able to be treated as a completely separate value from the program semantic perspective.
+
    b. If the copy_value instruction has the [take] flag associated with it, then a move is being performed and while a bit by bit copy of the value occurs, no retain_value is applied to it. The original SSA value as a result of this operation has an undefined bit value and in debugging situations could be given a malloc scribbled payload.
-A destroy_value instruction will have the following semantics:
+
+2. strong_release, release_value will be replaced by a destroy_value instruction with the following semantics:
+
    a. By default a destroy_value will perform a release_value on its input value. After this point, the bit value of the SSA value is undefined and in debugging situations, the SSA value could be given a malloc scribbled payload.
+   
    b. A destroy_value with the [noop] flag attached to it does not perform a release_value on its input value but /does/ scribble over the memory in debugging situations. *FIXME [noop] needs a better name*.
-2. strong store/strong load operations should be provided as instructions. This allows for normal loads to be considered as not having any ARC significant operations and eliminates a hole in ARC where a pointer is partially initialized (i.e. it a value is loaded but it has not been retained. In the time period in between those two points the value is partially initialized allowing for optimizer bugs).
+
+3. strong store/strong load operations should be provided as instructions. This allows for normal loads to be considered as not having any ARC significant operations and eliminates a hole in ARC where a pointer is partially initialized (i.e. it a value is loaded but it has not been retained. In the time period in between those two points the value is partially initialized allowing for optimizer bugs).
+
+*NOTE* In Low Level SIL, each of these atomic primitives will be lowered to their low level variants.
 
 ### Endow Use-Def edges with ARC Conventions
 
@@ -81,14 +89,11 @@ Once we have these higher level operations, the next step is to create the notio
 In order to simplify this, we will make the following changes:
 
 1. All SILInstructions must assign to their operands one of the following conventions:
+   
    a. @owned
-   
    b. @guaranteed
-   
    c. @unowned @safe
-   
    d. @unowned @unsafe
-   
    e. @forwarding
 
 2. All SILInstructions must assign to their result one of the following conventions:

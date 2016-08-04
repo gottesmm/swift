@@ -15,36 +15,26 @@ The ARC implementation in Swift, in contrast, to Objective C, is implemented in 
 
 ## Semantic ARC
 
-As discussed in the previous section, the implementation of ARC in both Swift and Objective C lacked important semantic ARC information in the following areas:
+As discussed in the previous section, the implementation of ARC in both Swift and Objective C lacked important semantic ARC information. We fix these issues by embedding the following ARC semantic information into SIL in the following order of implementation.
 
-1. Ability to determine semantic ARC pointer equivalence (RC Identity).
-2. Ability to pair semantic ARC operations.
-3. Lack of specific atomic ARC operations that provide atomic semantics related to initialization, transfering of ARC operations to and from memory.
+1. RC Identity: For any given SILValue, one should be able to determine its set of RC Identity Roots.
+2. Additional High Level ARC Operations: store_strong, load_strong, copy_value instructions should be added to SIL.
+3. Operand ARC Conventions: Function signature ARC conventions should be extended to all instructions.
+4. ARC Verifier: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics.
+5. Elimination of Memory Locations from High Level SIL. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified just like normal class types.
 
-We suggest in this proposal the following changes to the SIL IR as solutions to these problems:
+Swift Extensions:
+
+1. One should be able to specify the parameter convention of **all** function parameters.
+
+We now go into depth on each one of those points.
 
 ### Reference Count Identity Problem
 
-In order to pair semantic ARC operations effectively, one has to be able to determine that two ARC operations are manipulating the same reference count. Currently in SIL this is not a robust operation due to the lack of IR level model of RC identity that is preserved by the frontend and all emitted instructions. We wish to define an algorithm which for any specific SILValue in a given program can determine the set of "RC Identity Sources" associated with the given SILValue. Define an RC Identity as a tuple (v, path) where v is a SILValue and path is a projection path into x. Then for a given SILValue v:
+In order to pair semantic ARC operations effectively, one has to be able to determine that two ARC operations are manipulating the same reference count. Currently in SIL this is not a robust operation due to the lack of IR level model of RC identity that is guaranteed to be preserved by the frontend and all emitted instructions. We wish to define an algorithm which for any specific SILValue in a given program can determine the set of "RC Identity Sources" associated with the given SILValue. We do this as follows: Define an RC Identity as a tuple consisting of a SILValue and a ProjectionPath to a leaf reference type in the SILValue. Then define an RC Identity Source via the following recursive relation:
 
-1. If v is a SILArgument we can compute its RC Identity Source set directly by .
-2. If v is the result of a SILInstruction then we compute its RC Identity Source set as follows:
-   For a given 
-
-Let F be a given SILFunction. Let V(F) be the set of SILValues in F and I(F) be the set of SILInstructions in F. There is a natural embedding of I(F) into V(F) defined by the function, value : I(F) -> V(F) defined by mapping each instruction in I(F) to its result value. For a given value v, define the type operator type : V(F) -> SILTypes that maps a SILValue to its associated SILType. For any given SILType, define proj_tree : SILTypes -> {(SILType, +)}. For any given SILValue, define ValueTree as ValueTree : V(F) -> {(V, T) : V in V(F), T in SILTypes}. Then define the shard operator,
-
-  shared : V(F) -> TypeTree(SILTypes)
-
-Now define the predicate rcidsource : V(F) -> Bool. For a given value v, rcidsource returns true if and only if v is a reference type and Then define the set of rc identity source values as:
-
-    RCIDSource(V)  = { v ϵ V : rcidsource(v) }
-
-We wish to attempt to define a function RCIDRoots : V(F) -> S with S ⊂ RCIDSource(V). In words this means that RCIDRoots must be able to map any SIL value v ϵ V(F) to a set of RCIDSource(V) values. This algorithm is trivial to formulate for a v ϵ RCIDSource(V), namely it is the identity operation. But lets say that we have some v not in RCIDSource(V). There are two ways that this can occur namely if v is an 
-
-In order to solve this problem in a robust way in the face of compiler changes, we propose the following solution:
-
-1. In SILNodes.def, all instructions will have attached to them a notion of whether or not the instruction can "produce" a new reference count identity. There will be 3 states: True, False, Special.
-2. An API will be provided that for any specific SILValue returns the set of RC Identity roots associated with the given SILValue. All RC Identity Roots must be RC Identity root instructions.
+1. rcidsource(a: SILArgument) consists of the list of all leaf reference types in a with the associated projection paths into a. *NOTE* This implies that by default, we consider SILArguments that act as phi nodes to block further association with rc identity sources.
+2. To calculate the rcidsource of an instruction
 
 ### Pairing Semantic ARC Operations
 

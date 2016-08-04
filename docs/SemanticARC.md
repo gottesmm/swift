@@ -1,6 +1,17 @@
 
 # Semantic ARC
 
+**Table of Contents**
+
+- [Preface](#preface)
+- [Historical Implementations](#historical-implementations)
+- [Semantic ARC](#semantic-arc)
+- [High Level SIL and Low Level SIL](#high-level-sil-and-low-level-sil)
+- [RC Identity](#rc-identity)
+- [New High Level ARC Operations](#new-high-level-arc-operations)
+- [Endow Use-Def edges with ARC Conventions via](#endow-use-def-edges-with-arc-conventions-via)
+- [ARC Verifier](#arc-verifier)
+
 ## Preface
 
 This is a proposal for a series of changes to the SIL IR in order to ease the optimization of ARC operations and allow for static verification of ARC semantics in SIL. This is a proposal meant for compiler writers and implementors, not users, i.e. we assume that the reader has a basic familiarity with the basic concepts of ARC.

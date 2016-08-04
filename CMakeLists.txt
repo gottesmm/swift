@@ -71,6 +71,7 @@ option(SWIFT_INCLUDE_DOCS
     "Create targets for building docs."
     TRUE)
 
+option(SWIFT_BUILD_EXTERNAL_STDLIB "Should we build the standard library externally?" FALSE)
 #
 # Miscellaneous User-configurable options.
 #
@@ -835,7 +836,11 @@ if(SWIFT_INCLUDE_TOOLS)
 endif()
 
 add_subdirectory(utils)
-add_subdirectory(stdlib)
+if(NOT SWIFT_BUILD_EXTERNAL_STDLIB)
+  add_subdirectory(stdlib)
+else()
+  add_external_stdlib()
+endif()
 
 if(SWIFT_BUILD_DYNAMIC_STDLIB AND SWIFT_INCLUDE_TESTS)
   add_subdirectory(tools/swift-reflection-test)

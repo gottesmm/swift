@@ -33,6 +33,8 @@ We now go into depth on each one of those points.
 
 ## High Level SIL and Low Level SIL
 
+The first step to bringing 7
+
  ARC optimization /will/ not occur at the Low Level SIL. This implies that function signature optimization and IPO must occur at High Level SIL. Necessarily both High and Low Level SIL must be able to be lowered by IRGen to LLVM IR to ensure that 
 
 ## RC Identity
@@ -54,8 +56,8 @@ In order to pair semantic ARC operations effectively, one has to be able to dete
   
   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
 
-## Elimination of Memory Locations from High Level SIL
+<!-- ## Elimination of Memory Locations from High Level SIL
 
 # Swift Extensions:
 
-1. One should be able to specify the parameter convention of **all** function parameters.
+1. One should be able to specify the parameter convention of **all** function parameters. -->

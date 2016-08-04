@@ -9,7 +9,7 @@
   - [High Level SIL and Low Level SIL](#high-level-sil-and-low-level-sil)
   - [RC Identity](#rc-identity)
   - [New High Level ARC Operations](#new-high-level-arc-operations)
-  - [Endow Use-Def edges with ARC Conventions via](#endow-use-def-edges-with-arc-conventions-via)
+  - [Endow Use-Def edges with ARC Conventions](#endow-use-def-edges-with-arc-conventions)
   - [ARC Verifier](#arc-verifier)
 
 ## Preface
@@ -68,17 +68,19 @@ Once we are able to reason about RC Identity, the next step in implementing Sema
 1. strong_retain, strong_release, retain_value, release_value. These should be replaced by a copy_value instruction with analogous flags to copy_addr.
 2. strong store/strong load operations should be provided as instructions. This allows for normal loads to be considered as not having any ARC significant operations and eliminates a hole in ARC where a pointer is partially initialized (i.e. it a value is loaded but it has not been retained. In the time period in between those two points the value is partially initialized allowing for optimizer bugs).
 
-## Endow Use-Def edges with ARC Conventions via 
+## Endow Use-Def edges with ARC Conventions
 
-Once we have these higher level operations, the next step is to create the notion of operand conventions. Specifi
+Once we have these higher level operations, the next step is to create the notion of operand and result ARC conventions. At a high level this is just the extension of argument/result conventions from apply sites to /all/ instructions. Consider the following example.
 
 ## ARC Verifier
 
- by ensuring the following properties are true of all reference counting operations in a function body:
+Once we have endowed use-def edges with ARC semantic properties, we can ensure that ARC is statically correct by ensuring that for all function bodies the following is true:
 
   a. Every use-def edge must connect together a use and a def with compatible ARC semantics. As an example this means that any def that produces a +1 value must be paired with a -1 use. If one wishes to pass off a +1 value to an unowned use or a guaranteed use, one must use an appropriate conversion instruction. The conversion instruction would work as a pluggable adaptor and only certain adaptors that preserve safe ARC semantics would be provided.
   
   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
+
+This guarantees via each instruction's interface that each +1 is properly balanced by a -1 and that no +1 is balanced multiple times along any path through the program... i.e., the program is ARC correct.
 
 <a name="footnote-1">[1]</a> Reference Count Identity ("RC Identity") is a concept that is independent of pointer identity that refers to the set of reference counts that would be manipulated by a reference counted operation upon a specific SSA value. For more information see the [RC Identity](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst#rc-identity) section of the [ARC Optimization guide](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst)
 

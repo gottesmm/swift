@@ -27,6 +27,7 @@ As discussed in the previous section, the implementation of ARC in both Swift an
 3. **Introduction of new High Level ARC Operations**: store_strong, load_strong, copy_value instructions should be added to SIL. These operations are currently split into separate low level operations and are the missing pieces towards allowing all function local ARC relationships to be expressed via use-def chains. **TODO: ADD MORE HERE**
 4. **Endow Use-Def edges with ARC Conventions**: Function signature ARC conventions should be extended to all instructions and block arguments. Thus all use-def edges should have an implied ownership transfer convention.
 5. **ARC Verifier**: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics.
+
 <!-- 6. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified by the ARC verifier in a trivial way without the introduction of Memory SSA. -->
 
 We now go into depth on each one of those points.

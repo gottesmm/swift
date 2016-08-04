@@ -126,7 +126,7 @@ and the following SIL:
       %1 = struct $Foo(%0 : $@guaranteed Builtin.NativeObject, %0 : $@guaranteed Builtin.NativeObject) # This is forwarding
       %2 = copy_value %1 : $@guaranteed Foo # This converts %1 from @guaranteed -> @owned
       %3 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
-      %4 = apply %3(%2, %1) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
+      %4 = apply %3(%1, %2) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
       destroy_value %4 : $@owned Builtin.NativeObject
       %5 = tuple()
       return %5 : $()
@@ -139,7 +139,7 @@ Let us consider another example that is incorrect and where the conventions allo
       %1 = struct $Foo(%0 : $@guaranteed Builtin.NativeObject, %0 : $@guaranteed Builtin.NativeObject) # This is forwarding
       %2 = copy_value [take] %1 : $@guaranteed Foo # ==> ERROR: Can not take a guaranteed parameter <==
       %3 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
-      %4 = apply %3(%2, %1) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
+      %4 = apply %3(%1, %2) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
       destroy_value %4 : $@owned Builtin.NativeObject
       %5 = tuple()
       return %5 : $()

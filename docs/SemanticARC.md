@@ -6,11 +6,11 @@
 - [Preface](#preface)
 - [Historical Implementations](#historical-implementations)
 - [Semantic ARC](#semantic-arc)
-- [High Level SIL and Low Level SIL](#high-level-sil-and-low-level-sil)
-- [RC Identity](#rc-identity)
-- [New High Level ARC Operations](#new-high-level-arc-operations)
-- [Endow Use-Def edges with ARC Conventions via](#endow-use-def-edges-with-arc-conventions-via)
-- [ARC Verifier](#arc-verifier)
+  - [High Level SIL and Low Level SIL](#high-level-sil-and-low-level-sil)
+  - [RC Identity](#rc-identity)
+  - [New High Level ARC Operations](#new-high-level-arc-operations)
+  - [Endow Use-Def edges with ARC Conventions via](#endow-use-def-edges-with-arc-conventions-via)
+  - [ARC Verifier](#arc-verifier)
 
 ## Preface
 

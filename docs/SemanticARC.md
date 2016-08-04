@@ -138,7 +138,7 @@ Once we have endowed use-def edges with ARC semantic properties, we can ensure t
   
   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
 
-This guarantees via each instruction's interface that each +1 is properly balanced by a -1 and that no +1 is balanced multiple times along any path through the program... i.e., the program is ARC correct.
+This guarantees via each instruction's interface that each +1 is properly balanced by a -1 and that no +1 is balanced multiple times along any path through the program... that is the program is ARC correct = ).
 
 ## Footnotes
 

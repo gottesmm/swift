@@ -23,11 +23,11 @@ The ARC implementation in Swift, in contrast, to Objective C, is implemented in 
 As discussed in the previous section, the implementation of ARC in both Swift and Objective C lacked important semantic ARC information. We fix these issues by embedding the following ARC semantic information into SIL in the following order of implementation:
 
 1. **Split the Canonical SIL Stage into High and Low Level SIL**: High Level SIL will be the result of running the guaranteed passes and is where ARC invariants will be enforced.
-1. **RC Identity**: For any given SILValue, one should be able to determine its set of RC Identity Roots. This makes it easy to reason about which reference counts a reference count operation is affecting.
-2. **Introduction of new High Level ARC Operations**: store_strong, load_strong, copy_value instructions should be added to SIL. These operations are currently split into separate low level operations. **TODO: ADD MORE HERE**
-3. **Endow Use-Def edges with ARC Conventions**: Function signature ARC conventions should be extended to all instructions and block arguments. Thus all use-def edges should have an implied ownership transfer convention.
-4. **ARC Verifier**: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics.
-5. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified by the ARC verifier in a trivial way without the introduction of Memory SSA.
+2. **RC Identity**: For any given SILValue, one should be able to determine its set of RC Identity Roots. This makes it easy to reason about which reference counts a reference count operation is affecting.
+3. **Introduction of new High Level ARC Operations**: store_strong, load_strong, copy_value instructions should be added to SIL. These operations are currently split into separate low level operations. **TODO: ADD MORE HERE**
+4. **Endow Use-Def edges with ARC Conventions**: Function signature ARC conventions should be extended to all instructions and block arguments. Thus all use-def edges should have an implied ownership transfer convention.
+5. **ARC Verifier**: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics.
+<!-- 6. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified by the ARC verifier in a trivial way without the introduction of Memory SSA. -->
 
 We now go into depth on each one of those points.
 
@@ -50,9 +50,9 @@ In order to pair semantic ARC operations effectively, one has to be able to dete
 
  by ensuring the following properties are true of all reference counting operations in a function body:
 
-   a. Every use-def edge must connect together a use and a def with compatible ARC semantics. As an example this means that any def that produces a +1 value must be paired with a -1 use. If one wishes to pass off a +1 value to an unowned use or a guaranteed use, one must use an appropriate conversion instruction. The conversion instruction would work as a pluggable adaptor and only certain adaptors that preserve safe ARC semantics would be provided.
-   
-   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
+  a. Every use-def edge must connect together a use and a def with compatible ARC semantics. As an example this means that any def that produces a +1 value must be paired with a -1 use. If one wishes to pass off a +1 value to an unowned use or a guaranteed use, one must use an appropriate conversion instruction. The conversion instruction would work as a pluggable adaptor and only certain adaptors that preserve safe ARC semantics would be provided.
+  
+  b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
 
 ## Elimination of Memory Locations from High Level SIL
 

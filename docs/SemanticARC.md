@@ -64,9 +64,9 @@ Once we are able to reason about
   
   b. Every +1 operation can only be balanced by a -1 once along any path through the program. This would be implemented in the verifier by using the use-def list of a +1, -1 to construct joint-domination sets. The author believes that there is a simple algorithm for disproving joint dominance of a set by an instruction, but if one can not be come up with, there is literature for computing generalized dominators that can be used. If computation of generalized dominators is too expensive for normal use, they could be used on specific verification bots and used when triaging bugs.
 
-<a name="footnote-1">[1]</a> Reference Count Identity ("RC Identity") is a concept that is independent of pointer identity that refers to the set of reference counts that would be manipulated by a reference counted operation upon a specific SSA value. For more information see the [RC Identity](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst#rc-identity) section of the [ARC Optimization guide](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst)
+<a name="footnote-1">[1]</a>Reference Count Identity ("RC Identity") is a concept that is independent of pointer identity that refers to the set of reference counts that would be manipulated by a reference counted operation upon a specific SSA value. For more information see the [RC Identity](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst#rc-identity) section of the [ARC Optimization guide](https://github.com/apple/swift/blob/master/docs/ARCOptimization.rst)
 
-<a name="footnote-2">[2]</a> *NOTE* In many cases P will be the empty set (e.g. the case of a pure reference type)
+<a name="footnote-2">[2]</a>**NOTE** In many cases P will be the empty set (e.g. the case of a pure reference type)
 
 <!-- ## Elimination of Memory Locations from High Level SIL
 

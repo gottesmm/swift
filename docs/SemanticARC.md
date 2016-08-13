@@ -25,7 +25,7 @@
               - [Subtask b. Introduce the notion of signatures to use-def lists.](#subtask-b-introduce-the-notion-of-signatures-to-use-def-lists)
               - [Subtask c. We create a whitelist of instructions with unaudited use-def lists audited instructions and use it to advance incrementally fixing instructions.](#subtask-c-we-create-a-whitelist-of-instructions-with-unaudited-use-def-lists-audited-instructions-and-use-it-to-advance-incrementally-fixing-instructions)
           - [Parallel Task 4. Elimination of memory locations from High Level SIL.](#parallel-task-4-elimination-of-memory-locations-from-high-level-sil)
-          - [Phase 2. ARC Verifier](#phase-2-arc-verifier)
+      - [Phase 2. ARC Verifier](#phase-2-arc-verifier)
       - [Phase 3. Create Uses of Instrastructure](#phase-3-create-uses-of-instrastructure)
           - [Parallel Task 1. Optimization: Create Lifetime Joining algorithm.](#parallel-task-1-optimization-create-lifetime-joining-algorithm)
           - [Parallel Task 2. Optimization: Extend Function Signature Optimizer -> Owner Signature Optimizer](#parallel-task-2-optimization-extend-function-signature-optimizer---owner-signature-optimizer)
@@ -262,7 +262,7 @@ Add any missing instructions. Add SIL level address only type.
 
 **TODO: ADD SIL EXAMPLE HERE**
 
-#### Phase 2. ARC Verifier
+### Phase 2. ARC Verifier
 
 I implement this. Using this, we fix up each parallel task. I can farm out the
 work to the other people to fix up any issues we run into.

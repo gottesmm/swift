@@ -262,16 +262,16 @@ Add any missing instructions. Add SIL level address only type.
 
 **TODO: ADD SIL EXAMPLE HERE**
 
-### Phase 2. ARC Verifier
+### Phase 2. Create Uses of Instrastructure
 
-I implement this. Using this, we fix up each parallel task. I can farm out the
-work to the other people to fix up any issues we run into.
+These run in order bottom up.
 
-### Phase 3. Create Uses of Instrastructure
+#### Parallel Task 1. Create Lifetime Verification algorithm.
 
-These run in order bottom up. We first join all lifetimes.
+The way this works is that we create an analysis of "verified" good
+instructions. Then they all go away.
 
-#### Parallel Task 1. Optimization: Create Lifetime Joining algorithm.
+#### Parallel Task 2. Optimization: Create Lifetime Joining algorithm.
 
 Then one can create the lifetime joining algorithm. This takes all of the
 copy_addr and discovers any that *could* be joined, i.e. have the same parent
@@ -281,7 +281,7 @@ this is always safe to do.
 Could run lifetime joining as a guaranteed pass. That suggests to me a minimal
 thing and that the lifetime joining should happen before the copy propagation.
 
-#### Parallel Task 2. Optimization: Extend Function Signature Optimizer -> Owner Signature Optimizer
+#### Parallel Task 3. Optimization: Extend Function Signature Optimizer -> Owner Signature Optimizer
 
 **ROUGH NOTES**
 
@@ -316,7 +316,7 @@ bottom up.
 
 Can use Loop Information to reason about loops.
 
-#### Parallel Task 3. Optimization Copy Propagation
+#### Parallel Task 4. Optimization Copy Propagation
 
 Color regions of ownership by if it is +1 or not +1. Things that are
 not-polymorphic can not cause a retain/release to occur. That would be an

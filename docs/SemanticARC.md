@@ -3,15 +3,19 @@
 
 **Table of Contents**
 
-- [Preface](#preface)
-- [Historical Implementations](#historical-implementations)
-- [Semantic ARC](#semantic-arc)
-  - [High Level SIL and Low Level SIL](#high-level-sil-and-low-level-sil)
-  - [RC Identity](#rc-identity)
-  - [New High Level ARC Operations](#new-high-level-arc-operations)
-  - [Endow Use-Def edges with ARC Conventions](#endow-use-def-edges-with-arc-conventions)
-  - [ARC Verifier](#arc-verifier)
-- [Footnotes](#footnotes)
+  - [Preface](#preface)
+  - [Historical Implementations](#historical-implementations)
+  - [Semantic ARC](#semantic-arc)
+      - [High Level SIL and Low Level SIL](#high-level-sil-and-low-level-sil)
+      - [RC Identity](#rc-identity)
+      - [New High Level ARC Operations](#new-high-level-arc-operations)
+      - [Endow Use-Def edges with ARC Conventions](#endow-use-def-edges-with-arc-conventions)
+      - [Elimination of Memory Locations from High Level SIL](#elimination-of-memory-locations-from-high-level-sil)
+      - [ARC Verifier](#arc-verifier)
+  - [Semantic ARC Based Optimization](#semantic-arc-based-optimization)
+      - ["The Signature Optimization"](#the-signature-optimization)
+      - ["The Cleanup"](#the-cleanup)
+  - [Footnotes](#footnotes)
 
 ## Preface
 
@@ -39,8 +43,7 @@ As discussed in the previous section, the implementation of ARC in both Swift an
 3. **Introduction of new High Level ARC Operations**: store_strong, load_strong, copy_value instructions should be added to SIL. These operations are currently split into separate low level operations and are the missing pieces towards allowing all function local ARC relationships to be expressed via use-def chains. **TODO: ADD MORE HERE**
 4. **Endow Use-Def edges with ARC Conventions**: Function signature ARC conventions should be extended to all instructions and block arguments. Thus all use-def edges should have an implied ownership transfer convention.
 5. **ARC Verifier**: An ARC verifier should be written that uses RC Identity, Operand ARC Conventions, and High Level ARC operations to statically verify that a program obeys ARC semantics.
-
-<!-- 6. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified by the ARC verifier in a trivial way without the introduction of Memory SSA. -->
+6. **Elimination of Memory Locations from High Level SIL**. Memory locations should be represented as SSA values instead of memory locations. This will allow for address only values to be manipulated and have their lifetimes verified by the ARC verifier in a trivial way without the introduction of Memory SSA.
 
 We now go into depth on each one of those points.
 
@@ -147,6 +150,8 @@ Let us consider another example that is incorrect and where the conventions allo
 
 In this case, since a copy_value [take] can only accept an @owned parameter as an argument, a simple use-def type verifier would throw, preventing an improper transfer of ownership.
 
+### Elimination of Memory Locations from High Level SIL
+
 ### ARC Verifier
 
 Once we have endowed use-def edges with ARC semantic properties, we can ensure
@@ -201,8 +206,7 @@ at the same scope. Then run the cleanup crew.
 
 <a name="footnote-2">[2]</a> **NOTE** In many cases P will be the empty set (e.g. the case of a pure reference type)
 
-<!-- ## Elimination of Memory Locations from High Level SIL
-
+<!--
 # Swift Extensions:
 
 1. One should be able to specify the parameter convention of **all** function parameters. -->

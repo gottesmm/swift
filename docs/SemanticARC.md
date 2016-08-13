@@ -1,6 +1,7 @@
 
 # Semantic ARC
 
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-generate-toc again -->
 **Table of Contents**
 
   - [Preface](#preface)
@@ -10,12 +11,28 @@
       - [RC Identity](#rc-identity)
       - [New High Level ARC Operations](#new-high-level-arc-operations)
       - [Endow Use-Def edges with ARC Conventions](#endow-use-def-edges-with-arc-conventions)
-      - [Elimination of Memory Locations from High Level SIL](#elimination-of-memory-locations-from-high-level-sil)
       - [ARC Verifier](#arc-verifier)
+      - [Elimination of Memory Locations from High Level SIL](#elimination-of-memory-locations-from-high-level-sil)
   - [Semantic ARC Based Optimization](#semantic-arc-based-optimization)
       - ["The Signature Optimization"](#the-signature-optimization)
       - ["The Cleanup"](#the-cleanup)
+  - [Implementation](#implementation)
+      - [Phase 1. Preliminaries](#phase-1-preliminaries)
+          - [Parallel Task 1. Introduce new High Level Instructions. Can be done independently.](#parallel-task-1-introduce-new-high-level-instructions-can-be-done-independently)
+          - [Parallel Task 2. Introduction of RC Identity Verification and RC Identity Sources.](#parallel-task-2-introduction-of-rc-identity-verification-and-rc-identity-sources)
+          - [Parallel Task 3. Implement use-def list convention and convention verification.](#parallel-task-3-implement-use-def-list-convention-and-convention-verification)
+              - [Subtask a. Introduction of signatures to all block arguments without verification.](#subtask-a-introduction-of-signatures-to-all-block-arguments-without-verification)
+              - [Subtask b. Introduce the notion of signatures to use-def lists.](#subtask-b-introduce-the-notion-of-signatures-to-use-def-lists)
+              - [Subtask c. We create a whitelist of instructions with unaudited use-def lists audited instructions and use it to advance incrementally fixing instructions.](#subtask-c-we-create-a-whitelist-of-instructions-with-unaudited-use-def-lists-audited-instructions-and-use-it-to-advance-incrementally-fixing-instructions)
+          - [Parallel Task 4. Elimination of memory locations from High Level SIL.](#parallel-task-4-elimination-of-memory-locations-from-high-level-sil)
+          - [Phase 2. ARC Verifier](#phase-2-arc-verifier)
+      - [Phase 3. Create Uses of Instrastructure](#phase-3-create-uses-of-instrastructure)
+          - [Parallel Task 1. Optimization: Create Lifetime Joining algorithm.](#parallel-task-1-optimization-create-lifetime-joining-algorithm)
+          - [Parallel Task 2. Optimization: Extend Function Signature Optimizer -> Owner Signature Optimizer](#parallel-task-2-optimization-extend-function-signature-optimizer---owner-signature-optimizer)
+          - [Parallel Task 3. Optimization Copy Propagation](#parallel-task-3-optimization-copy-propagation)
   - [Footnotes](#footnotes)
+
+<!-- markdown-toc end -->
 
 ## Preface
 
@@ -77,7 +94,7 @@ Once we are able to reason about RC Identity, the next step in implementing Sema
 
 2. strong_release, release_value will be replaced by a destroy_value instruction with the following semantics:
 
-   a. By default a destroy_value will perform a release_value on its input value. After this point, the bit value of the SSA value is undefined and in debugging situations, the SSA value could be given a malloc scribbled payload.
+   a. By default a destroy_value will perform a release_value on its input value. After this point, the bit value of the SSA value is undefinevd and in debugging situations, the SSA value could be given a malloc scribbled payload.
    
    b. A destroy_value with the [noop] flag attached to it does not perform a release_value on its input value but /does/ scribble over the memory in debugging situations. *FIXME [noop] needs a better name*.
 
@@ -150,8 +167,6 @@ Let us consider another example that is incorrect and where the conventions allo
 
 In this case, since a copy_value [take] can only accept an @owned parameter as an argument, a simple use-def type verifier would throw, preventing an improper transfer of ownership.
 
-### Elimination of Memory Locations from High Level SIL
-
 ### ARC Verifier
 
 Once we have endowed use-def edges with ARC semantic properties, we can ensure
@@ -178,6 +193,8 @@ This guarantees via each instruction's interface that each +1 is properly
 balanced by a -1 and that no +1 is balanced multiple times along any path
 through the program... that is the program is ARC correct = ).
 
+### Elimination of Memory Locations from High Level SIL
+
 ## Semantic ARC Based Optimization
 
 With this data, new and novel forms of optimization are now possible. We present
@@ -193,12 +210,119 @@ restrained by polymorphism). Everything else can be specialized as
 appropriate. Similar to strongly connected components. If one images the world
 of lifetimes, there is a minimal lifetime starting from a polymorphic function
 that is open. The reason why this is true is since one can not know everything
-that needs to be specialized. Or if from Storage.
+that needs to be specialized. Or if from Storage. We can have loading have
+conventions. When one proves that there is a dominating lifetime, one changes
+storage signature to be +0.
 
 ### "The Cleanup"
 
 Otherwise, one could perform offsetting retains, releases so that each +1, +1 is
 at the same scope. Then run the cleanup crew.
+
+## Implementation
+
+### Phase 1. Preliminaries
+
+#### Parallel Task 1. Introduce new High Level Instructions. Can be done independently.
+
+This one should be simple to do. Could give to Roman.
+
+#### Parallel Task 2. Introduction of RC Identity Verification and RC Identity Sources.
+
+Here we basically fix any issues that come up in terms of RC Identity not
+propagating correctly. To test this, we make RCIdentityAnalysis use it so
+everything just plugs in.
+
+#### Parallel Task 3. Implement use-def list convention and convention verification.
+
+Once this task is complete, we know that all use-def lists in the program are
+correct.
+
+##### Subtask a. Introduction of signatures to all block arguments without verification.
+
+At this point in time, this work will be down on the SILParser/SILPrinter side
+and making sure that it serializes properly and everything.
+
+##### Subtask b. Introduce the notion of signatures to use-def lists.
+
+Again, this would not be verified. This is where we would not wire anything up
+to it.
+
+##### Subtask c. We create a whitelist of instructions with unaudited use-def lists audited instructions and use it to advance incrementally fixing instructions.
+
+We visit each instruction. If the instruction is not in the white list, we skip
+it. If the instruction is in the white list, we check its value and its
+users. If any user is not in the whitelist, we do not check the
+connection. Before, we know everything we get far less coverage. Lets just check
+if for all instructions... Done!
+
+#### Parallel Task 4. Elimination of memory locations from High Level SIL.
+
+Add any missing instructions. Add SIL level address only type.
+
+**TODO: ADD SIL EXAMPLE HERE**
+
+#### Phase 2. ARC Verifier
+
+I implement this. Using this, we fix up each parallel task. I can farm out the
+work to the other people to fix up any issues we run into.
+
+### Phase 3. Create Uses of Instrastructure
+
+These run in order bottom up. We first join all lifetimes.
+
+#### Parallel Task 1. Optimization: Create Lifetime Joining algorithm.
+
+Then one can create the lifetime joining algorithm. This takes all of the
+copy_addr and discovers any that *could* be joined, i.e. have the same parent
+value and the copied value has not been written to. In the case of a pointer,
+this is always safe to do.
+
+Could run lifetime joining as a guaranteed pass. That suggests to me a minimal
+thing and that the lifetime joining should happen before the copy propagation.
+
+#### Parallel Task 2. Optimization: Extend Function Signature Optimizer -> Owner Signature Optimizer
+
+**ROUGH NOTES**
+
+1. Define an owner signature as (RC Identity, Last Ownership Start Equivalence
+   Class). Last Ownership Start Equivalence class are the lists of how ownership
+   changes. Since we have ownership on PHI arguments, life is good, i.e. no node
+   can ever have a non-rc identity source.
+
+1. Create a (RC Identity, Last Ownership Start) Graph. This is a list defined by
+   the equivalence class of regions that forward from a specific rc identity and
+   ownership definition of foo.
+2. Create a graph on these tuples where there is an arrow from (RC Identity,
+   Last Ownership Start[n]) -> (RC Identity, Last Ownership Start[n+1])
+   i.e. where a new value is introduced.
+3. If you view each thing as a safe copy, then if Last Ownership Start[n] ->
+   Last Ownership Start[n+1] has the same convention, one can forward.
+4. Loading from storage and writing from storage is signature?!
+
+Think of new definitions as new start regions and copies as new start
+regions. In a way, those are signatures. One could abstract that to ownership
+perhaps?
+
+1. Create Region Signature Graph annotated where you have 2 types of
+   nodes. Signature nodes and argument nodes.
+2. Any Signature node's def, if it has the same def as that signature and there
+3. Flip colored graph.
+
+Refactor function signature optimization to be able to apply to function
+arguments and block arguments. When visiting a function, start visiting blocks
+and fix up their signatures and then fix up function signatures. Do all of this
+bottom up.
+
+Can use Loop Information to reason about loops.
+
+#### Parallel Task 3. Optimization Copy Propagation
+
+Color regions of ownership by if it is +1 or not +1. Things that are
+not-polymorphic can not cause a retain/release to occur. That would be an
+amazing thing to be able to prove. The rule would be that a copy could only come
+from a polymorphic unknown type or a load from an internal in that specific
+lifetime value.
 
 ## Footnotes
 

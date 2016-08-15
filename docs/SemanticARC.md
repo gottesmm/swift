@@ -332,7 +332,6 @@ Then we have a dead copy of a value that can thus be eliminated yielding the fol
 
     sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
     bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
-      
       # Pass in the @guaranteed optional to the switch.
       switch_enum %0, bb1: .Some, bb2: .None
       

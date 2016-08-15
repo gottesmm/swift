@@ -68,6 +68,13 @@ We now go into depth on each one of those points.
 
 The first step towards implementing Semantic ARC is to split the "Canonical SIL Stage" into two different stages: High Level and Low Level SIL. The main distinction in between the two stages is, that in High Level SIL, ARC semantic invariants will be enforced via extra conditions on the IR. In contrast, once Low Level SIL has been reached, no ARC semantic invariants are enforced and only very conservative ARC optimization may occur. The intention is that Low Level SIL would /only/ be used when compiling with optimization enabled, so both High and Low Level SIL will necessarily need to be able to be lowered to LLVM IR.
 
+[EE]
+It sounds like that the high level SIL is lowered to the low level SIL by replacing the new high level ARC operations by something similar to what we have now, e.g. retain/release instructions.
+If my understanding is correct, I have this comment:
+I think this is not really needed. Instead it's sufficient to run one (or few) "ARC-insertion" pass(es) at the very end of the pipeline, which determines where retains/releases should be generated in IRGen. These passes would be the combination of our current ARCSequenceOpt and ARC code motion passes.
+These "low-level" passes still could insert retain/release instructions, but those instructions could be just viewed as "markers" for IRGen to specify where ARC operations should be generated, and they would not have any further semantic meaning in SIL.
+So in other words: we would not give up the semantic ARC rules at any time in the pipeline. We would just insert ARC "marker" instructions at the end of the pipeline, which are used by IRGen.
+
 ### RC Identity
 
 Once High Level SIL has been implemented, we will embed RC Identity into High Level SIL to ensure that RC identity can always be computed for all SSA values. Currently in SIL this is not a robust operation due to the lack of IR level model of RC identity that is guaranteed to be preserved by the frontend and all emitted instructions. Define an RC Identity as a tuple consisting of a SILValue, V, and a ProjectionPath, P, to from V's type to a sub reference type in V [[2]](#footnote-2). We wish to define an algorithm that given any (V, P) in a program can determine the RC Identity Source associated with (V, P). We do this recursively follows:
@@ -82,6 +89,8 @@ Let V be a SILValue and P be a projection path into V. Then:
 
 Our algorithm then is a very simple algorithm that applies the RC Identity Source algorithm to all SSA values in the program and ensures that RC Identity Sources can be computed for them. This should result in trivial use-def list traversal.
 
+[EE] 100% agreement
+
 ### New High Level ARC Operations
 
 Once we are able to reason about RC Identity, the next step in implementing Semantic ARC is to eliminate in High Level SIL certain Low Level aggregate operations that have ARC semantics but are not conducive to reasoning about ARC operations on use-def edges. These are specifically:
@@ -92,19 +101,27 @@ Once we are able to reason about RC Identity, the next step in implementing Sema
 
    b. If the copy_value instruction has the [take] flag associated with it, then a move is being performed and while a bit by bit copy of the value occurs, no retain_value is applied to it. The original SSA value as a result of this operation has an undefined bit value and in debugging situations could be given a malloc scribbled payload.
 
+[EE] Why would we need a copy_value [take]?
+
 2. strong_release, release_value will be replaced by a destroy_value instruction with the following semantics:
 
    a. By default a destroy_value will perform a release_value on its input value. After this point, the bit value of the SSA value is undefinevd and in debugging situations, the SSA value could be given a malloc scribbled payload.
    
    b. A destroy_value with the [noop] flag attached to it does not perform a release_value on its input value but /does/ scribble over the memory in debugging situations. *FIXME [noop] needs a better name*.
 
+[EE] Can you please explain for what purpose destroy_value [noop] is used?
+
 3. strong store/strong load operations should be provided as instructions. This allows for normal loads to be considered as not having any ARC significant operations and eliminates a hole in ARC where a pointer is partially initialized (i.e. it a value is loaded but it has not been retained. In the time period in between those two points the value is partially initialized allowing for optimizer bugs).
+
+[EE] Would a store_strong also include the release of the old value?
 
 *NOTE* In Low Level SIL, each of these atomic primitives will be lowered to their low level variants.
 
 ### Endow Use-Def edges with ARC Conventions
 
 Once we have these higher level operations, the next step is to create the notion of operand and result ARC conventions for all instructions. At a high level this is just the extension of argument/result conventions from apply sites to /all/ instructions. By then verifying that each use-def pair have compatible result/operand conventions, we can statically verify that ARC relationships are being preserved.
+
+[EE] As I understand most instructions have a fixed convention per definition, in most cases @forwarding. Only a few instructions, like apply, can have operands/results with a variable convention. This should be mentioned here.
 
 In order to simplify this, we will make the following changes:
 
@@ -128,7 +145,40 @@ In order to simplify this, we will make the following changes:
    * @unowned @safe
    * @forwarding
 
+[EE] We really need a good definition of all these conventions here.
+I strongly believe that the local/global notation would help a lot for a good formal definition of the conventions.
+It's hard for the compiler to reason anything about global RCs. But local RCs are easily statically computable and for me, semantic ARC is all about dealing with local RCs.
+
+So we could define:
+
+@owned operand: local RC must be 1 and is decremented to 0 by the instruction, potentially destroying the object.
+@owned result: Returns the object with a local RC of 1
+@guaranteed operand: local RC must be 1 and is not modified by the instruction
+@unowned operand: local RC must be 0 and is not modified by the instruction.
+@unowned result: Returns the object with a local RC of 0
+@forwarding: Does not change the local RC which can be either 0 or 1
+
+Note that the local RC can only be 0 or 1. It doesn't make sense to have a local RC > 1.
+
+ad @unowned: what do you mean with @unsafe and @safe
+
+ad SILArguments: given the definitions above, what is @owned for a SILArgument? In other words, do we need @owned for SILArgument in addition to @guaranteed and @unowned?
+
+ad @guaranteed: There is a potential alternative definition of @guaranteed for function parameters: the local + global RC must be at least 1. In case the optimizer can figure out that a function does not bring down the global RC to 0, there is no need to have a local RC of 1 for a @guaranteed parameter. So maybe it's better to use a different name for the pure local +1RC convention.
+
+ad @forwarding: I think we don't need this in SIL syntax. It's the default if not @owned, @guaranteed, etc.
+
+
 @forwarding is a new convention that we add to reduce the amount of extra instructions needed to implement this scheme. @forwarding is a special convention intended for instructions that forward RC Identity that for simplictuy will be restricted to forwarding the convention of their def instruction to all of the uses of that instruction. Of course, for forwarding instructions with multiple inputs, we require that all of the inputs have the same convention.
+
+[EE] Do we really need this restriction? What about this example?
+
+bb0(%0 : @guaranteed %X, %1 : @owned %Y):
+  %s = struct $Foo(%0 : %X, %1 : Y)
+  // ... some code
+  %s1 = struct_extract %s, #x
+  %s2 = struct_extract %s, #y
+  %a = apply %f(%s1, %s2) : $@convention(thin) (@guaranteed X, @owned Y)
 
 The general rule is that each result convention with the name x, must be matched with the operand convention with the same name with some specific exceptions. Let us consider an example. Consider the struct Foo:
 
@@ -194,7 +244,11 @@ In this case, since the apply's second argument must be @owned, a simple use-def
       return %result : $()
     }
 
-While this may look correct to the naked eye, it is actually incorrect even in SIL today. This is because in SIL today, switch_enum always takes arguments at +1! Yet, in the IR there is no indication of the problem and the code will compile! Now let us update the IR given semantic ARC:
+While this may look correct to the naked eye, it is actually incorrect even in SIL today. This is because in SIL today, switch_enum always takes arguments at +1!
+
+[EE] Hm... no. switch_enum doesn't take it's argument as owned.
+
+Yet, in the IR there is no indication of the problem and the code will compile! Now let us update the IR given semantic ARC:
 
     sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
     bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
@@ -283,7 +337,11 @@ This is correct. But what if we want to get rid of the destroy_value by performi
       return %result : $()
     }
 
-The key reason to have the guarantee_lifetime/destroy_lifetime_guarantee is that it encapsulates via the use-def list the region where the lifetime of the object is guaranteed. Once this is done, we then perform the @owned -> @guaranteed optimization [[3]](#footnote-3):
+The key reason to have the guarantee_lifetime/destroy_lifetime_guarantee is that it encapsulates via the use-def list the region where the lifetime of the object is guaranteed.
+
+[EE] I don't understand why we need guarantee_lifetime/destroy_lifetime_guarantee. Seems to me that even without that the value can be proved to be guaranteed in that region.
+
+Once this is done, we then perform the @owned -> @guaranteed optimization [[3]](#footnote-3):
 
     sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
     bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
@@ -376,11 +434,18 @@ generalized dominators that can be used. If computation of generalized
 dominators is too expensive for normal use, they could be used on specific
 verification bots and used when triaging bugs.
 
+[EE]
+When looking at semantic ARC in terms of local RCs (see my comment above), the verifier is very simple. It's a dataflow algorithm, which ensures that the local RCs are consistent at block entries for all RC roots. It's similar to what we do to check proper nesting of alloc_stacks.
+
+Beside that, I didn't understand what algorithm you propose (what is "disproving joint dominance")?
+
 This guarantees via each instruction's interface that each +1 is properly
 balanced by a -1 and that no +1 is balanced multiple times along any path
 through the program... that is the program is ARC correct = ).
 
 ### Elimination of Memory Locations from High Level SIL
+
+[EE] Things get confusing for me starting from here. Let's discuss this in person.
 
 ## Semantic ARC Based Optimization
 

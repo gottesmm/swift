@@ -142,11 +142,18 @@ and the following SIL:
     sil @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
     
     sil @foo : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
-    bb0(%0 : @guaranteed Builtin.NativeObject):
-      %1 = struct $Foo(%0 : $@guaranteed Builtin.NativeObject, %0 : $@guaranteed Builtin.NativeObject) # This is forwarding
-      %2 = copy_value %1 : $@guaranteed Foo # This converts %1 from @guaranteed -> @owned
-      %3 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
-      %4 = apply %3(%1, %2) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
+    bb0(%0 : @guaranteed $Builtin.NativeObject):
+      %1 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+
+      # This is forwarding, so it is @guaranteed since %0 is guaranteed.
+      %2 = struct $Foo(%0 : $Builtin.NativeObject, %0 : $Builtin.NativeObject)
+
+      # Then we use copy_value to convert our @guaranteed def to an @owned use. copy_value is a converter instruction that converts 
+      # any @owned or @guaranteed def to an @owned def.
+      %3 = copy_value %2 : $Foo
+
+      # %1 is called since we pass in the @guaranteed def, @owned def to the @guaranteed, @owned uses.
+      %4 = apply %1(%2, %3) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
       destroy_value %4 : $@owned Builtin.NativeObject
       %5 = tuple()
       return %5 : $()
@@ -155,17 +162,17 @@ and the following SIL:
 Let us consider another example that is incorrect and where the conventions allow for optimizer or frontend error to be caught easily. Consider foo2:
 
     sil @foo2 : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
-    bb0(%0 : @guaranteed Builtin.NativeObject):
-      %1 = struct $Foo(%0 : $@guaranteed Builtin.NativeObject, %0 : $@guaranteed Builtin.NativeObject) # This is forwarding
-      %2 = copy_value [take] %1 : $@guaranteed Foo # ==> ERROR: Can not take a guaranteed parameter <==
-      %3 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
-      %4 = apply %3(%1, %2) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject) # This needs to be consumed
-      destroy_value %4 : $@owned Builtin.NativeObject
-      %5 = tuple()
-      return %5 : $()
+    bb0(%0 : @guaranteed $Builtin.NativeObject):
+      %1 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+      %2 = struct $Foo(%0 : $Builtin.NativeObject, %0 : $Builtin.NativeObject)
+      # ERROR =><= Passed an @guaranteed definition to an @owned use!
+      %3 = apply %1(%2, %2) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+      destroy_value %3 : $Builtin.NativeObject
+      %4 = tuple()
+      return %4 : $()
     }
 
-In this case, since a copy_value [take] can only accept an @owned parameter as an argument, a simple use-def type verifier would throw, preventing an improper transfer of ownership.
+In this case, since the apply's second argument must be @owned, a simple use-def type verifier would throw, preventing an improper transfer of ownership.
 
 ### ARC Verifier
 

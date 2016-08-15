@@ -176,10 +176,10 @@ In this case, since the apply's second argument must be @owned, a simple use-def
 
     sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
     bb0(%0 : $Optional<Builtin.NativeObject>):
-      # switch_enum takes in values at +1.
-      switch_enum %1, bb1: .Some, bb2: .None
+      switch_enum %0, bb1: .Some, bb2: .None
       
     bb1(%payload : $Builtin.NativeObject):
+      destroy_value %payload : $Builtin.NativeObject
       br bb3
       
     bb2:
@@ -192,6 +192,81 @@ In this case, since the apply's second argument must be @owned, a simple use-def
 
 While this may look correct to the naked eye, it is actually incorrect even in SIL today. This is because switch_enum always takes arguments at +1! Yet, in the IR there is no indication of the problem (and this code will compile). Now let us update the IR given semantic ARC:
 
+    sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
+      switch_enum %0, bb1: .Some, bb2: .None
+      
+      # ERROR! Passing an @guaranteed def to an @owned use.
+    bb1(%payload : @owned $Builtin.NativeObject):
+      destroy_value %payload : $Builtin.NativeObject
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      %result = tuple()
+      return %result : $()
+    }
+
+A linear checker would automatically catch such an error and even more importantly there are visual cues for the compiler engineer that the switch enum argument needs to be a +1. We can fix this by introducing a copy_value.
+
+    sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
+      # Change %1 from being an @guaranteed def to an @owned def.
+      %2 = copy_value %1 : $Optional<Builtin.NativeObject>
+      # Pass in the @owned def into the switch enum's @owned use.
+      switch_enum %1, bb1: .Some, bb2: .None
+      
+    bb1(%payload : @owned $Builtin.NativeObject):
+      destroy_value %payload : $Builtin.NativeObject
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      %result = tuple()
+      return %result : $()
+    }
+Then this will compile in the semantic ARC world. Let us consider how we could convert the @owned switch_enum parameter to be @guaranteed. What does that even mean. Consider the following switch enum example.
+
+    sil @switch : $@convention(thin) (@owned Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : @owned $Optional<Builtin.NativeObject>):
+      switch_enum %0, bb1: .Some, bb2: .None
+      
+    bb1(%payload : @owned $Builtin.NativeObject):
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      destroy_value %0 : $Builtin.NativeObject
+      %result = tuple()
+      return %result : $()
+    }
+
+This is correct. But what if we want to perform @owned -> @guaranteed on this function. We do this as follows:
+
+    sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
+      %1 = copy_value %0 : $Optional<Builtin.NativeObject>
+      switch_enum %1, bb1: .Some, bb2: .None
+      
+    bb1(%payload : @owned $Builtin.NativeObject):
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      destroy_value %0 : $Builtin.NativeObject
+      %result = tuple()
+      return %result : $()
+    }
+
+**NOTE** This is only done in coordination with placing a destroy_value in the caller of @switch.
 
 ### ARC Verifier
 

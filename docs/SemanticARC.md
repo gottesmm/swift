@@ -164,9 +164,13 @@ Let us consider another example that is incorrect and where the conventions allo
     sil @foo2 : $@convention(thin) (@guaranteed Builtin.NativeObject) -> () {
     bb0(%0 : @guaranteed $Builtin.NativeObject):
       %1 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+      
+      # Guaranteed due to forwarding.
       %2 = struct $Foo(%0 : $Builtin.NativeObject, %0 : $Builtin.NativeObject)
+      
       # ERROR! Passed an @guaranteed definition to an @owned use!
       %3 = apply %1(%2, %2) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
+      
       destroy_value %3 : $Builtin.NativeObject
       %4 = tuple()
       return %4 : $()

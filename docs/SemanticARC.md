@@ -196,7 +196,7 @@ While this may look correct to the naked eye, it is actually incorrect even in S
     bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
       switch_enum %0, bb1: .Some, bb2: .None
       
-      # ERROR! Passing an @guaranteed def to an @owned use.
+    # ERROR! Passing an @guaranteed def to an @owned use.
     bb1(%payload : @owned $Builtin.NativeObject):
       destroy_value %payload : $Builtin.NativeObject
       br bb3

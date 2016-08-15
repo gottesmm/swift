@@ -1,3 +1,6 @@
+
+# Semantic ARC
+
 <!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-generate-toc again -->
 **Table of Contents**
 
@@ -30,9 +33,6 @@
   - [Footnotes](#footnotes)
 
 <!-- markdown-toc end -->
-
-# Semantic ARC
-
 
 ## Preface
 

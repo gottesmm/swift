@@ -190,7 +190,7 @@ In this case, since the apply's second argument must be @owned, a simple use-def
       return %result : $()
     }
 
-While this may look correct to the naked eye, it is actually incorrect even in SIL today. This is because switch_enum always takes arguments at +1! Yet, in the IR there is no indication of the problem (and this code will compile). Now let us update the IR given semantic ARC:
+While this may look correct to the naked eye, it is actually incorrect even in SIL today. This is because in SIL today, switch_enum always takes arguments at +1! Yet, in the IR there is no indication of the problem and the code will compile! Now let us update the IR given semantic ARC:
 
     sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
     bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):

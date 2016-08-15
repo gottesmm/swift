@@ -165,14 +165,33 @@ Let us consider another example that is incorrect and where the conventions allo
     bb0(%0 : @guaranteed $Builtin.NativeObject):
       %1 = function_ref @UseFoo : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
       %2 = struct $Foo(%0 : $Builtin.NativeObject, %0 : $Builtin.NativeObject)
-      # ERROR =><= Passed an @guaranteed definition to an @owned use!
+      # ERROR! Passed an @guaranteed definition to an @owned use!
       %3 = apply %1(%2, %2) : $@convention(thin) (@guaranteed Foo, @owned Foo) -> (@owned Builtin.NativeObject)
       destroy_value %3 : $Builtin.NativeObject
       %4 = tuple()
       return %4 : $()
     }
 
-In this case, since the apply's second argument must be @owned, a simple use-def type verifier would throw, preventing an improper transfer of ownership.
+In this case, since the apply's second argument must be @owned, a simple use-def type verifier would throw, preventing an improper transfer of ownership. Now let us consider a simple switch enum statement:
+
+    sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : $Optional<Builtin.NativeObject>):
+      # switch_enum takes in values at +1.
+      switch_enum %1, bb1: .Some, bb2: .None
+      
+    bb1(%payload : $Builtin.NativeObject):
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      %result = tuple()
+      return %result : $()
+    }
+
+While this may look correct to the naked eye, it is actually incorrect even in SIL today. This is because switch_enum always takes arguments at +1! Yet, in the IR there is no indication of the problem (and this code will compile). Now let us update the IR given semantic ARC:
+
 
 ### ARC Verifier
 

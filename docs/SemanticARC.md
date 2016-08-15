@@ -229,6 +229,7 @@ A linear checker would automatically catch such an error and even more important
       %result = tuple()
       return %result : $()
     }
+
 Then this will compile in the semantic ARC world. Let us consider how we could convert the @owned switch_enum parameter to be @guaranteed. What does that even mean. Consider the following switch enum example.
 
     sil @switch : $@convention(thin) (@owned Optional<Builtin.NativeObject>) ->  () {
@@ -236,37 +237,113 @@ Then this will compile in the semantic ARC world. Let us consider how we could c
       switch_enum %0, bb1: .Some, bb2: .None
       
     bb1(%payload : @owned $Builtin.NativeObject):
+      destroy_value %payload : $Builtin.NativeObject
       br bb3
       
     bb2:
       br bb3
       
     bb3:
-      destroy_value %0 : $Builtin.NativeObject
       %result = tuple()
       return %result : $()
     }
 
-This is correct. But what if we want to perform @owned -> @guaranteed on this function. We do this as follows:
+This is correct. But what if we want to get rid of the destroy_value by performing @owned -> @guaranteed optimization. We do this first by converting the switch_enum's parameter from being @owned to being @guaranteed.
+
+    sil @switch : $@convention(thin) (@owned Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : @owned $Optional<Builtin.NativeObject>):
+      # Convert the @owned def to an @guaranteed def.
+      %1 = guarantee_lifetime %0 : $Optional<Builtin.NativeObject>
+      # Pass in the @guaranteed optional to the switch.
+      switch_enum %1, bb1: .Some, bb2: .None
+      
+    # NO ERROR!
+    bb1(%payload : @guaranteed $Builtin.NativeObject):
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      # End the guaranteed lifetime and convert the object back to @owned.
+      %2 = destroy_lifetime_guarantee %1 : $Optional<Builtin.NativeObject>
+      # Destroy the @owned parameter.
+      destroy_value %2 : $Builtin.NativeObject
+      %result = tuple()
+      return %result : $()
+    }
+
+The key reason to have the guarantee_lifetime/destroy_lifetime_guarantee is that it encapsulates via the use-def list the region where the lifetime of the object is guaranteed. Once this is done, we then perform the @owned -> @guaranteed optimization [[3]](#footnote-3):
 
     sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
     bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
+      # Convert the @guaranteed argument to an @owned def.
       %1 = copy_value %0 : $Optional<Builtin.NativeObject>
-      switch_enum %1, bb1: .Some, bb2: .None
+       
+      # Convert the @owned def to an @guaranteed def.
+      %2 = guarantee_lifetime %1 : $Optional<Builtin.NativeObject>
       
-    bb1(%payload : @owned $Builtin.NativeObject):
+      # Pass in the @guaranteed optional to the switch.
+      switch_enum %2, bb1: .Some, bb2: .None
+      
+    bb1(%payload : @guaranteed $Builtin.NativeObject):
       br bb3
       
     bb2:
       br bb3
       
     bb3:
-      destroy_value %0 : $Builtin.NativeObject
+      # End the guaranteed lifetime and convert the object back to @owned.
+      %2 = destroy_lifetime_guarantee %1 : $Optional<Builtin.NativeObject>
+      # Destroy the @owned parameter.
+      destroy_value %2 : $Builtin.NativeObject
       %result = tuple()
       return %result : $()
     }
 
-**NOTE** This is only done in coordination with placing a destroy_value in the caller of @switch.
+Once this has been done, we can then optimize via use-def lists by noticing that the @owned parameter that we are converting to guaranteed was original @guaranteed. In such a case, the copy is not necessary. Thus we can rewrite %2 to refer to %0 and rewrite the destroy_value in BB3 to refer to %1 and eliminate the lifetime guarantee instructions, i.e.:
+
+    sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
+      # Convert the @guaranteed argument to an @owned def.
+      %1 = copy_value %0 : $Optional<Builtin.NativeObject>
+      
+      # Pass in the @guaranteed optional to the switch.
+      switch_enum %0, bb1: .Some, bb2: .None
+      
+    bb1(%payload : @guaranteed $Builtin.NativeObject):
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      # Destroy the @owned parameter.
+      destroy_value %1 : $Builtin.NativeObject
+      %result = tuple()
+      return %result : $()
+    }
+
+Then we have a dead copy of a value that can thus be eliminated yielding the following perfectly optimized function:
+
+    sil @switch : $@convention(thin) (@guaranteed Optional<Builtin.NativeObject>) ->  () {
+    bb0(%0 : @guaranteed $Optional<Builtin.NativeObject>):
+      
+      # Pass in the @guaranteed optional to the switch.
+      switch_enum %0, bb1: .Some, bb2: .None
+      
+    bb1(%payload : @guaranteed $Builtin.NativeObject):
+      br bb3
+      
+    bb2:
+      br bb3
+      
+    bb3:
+      %result = tuple()
+      return %result : $()
+    }
+
+Beautiful.
 
 ### ARC Verifier
 
@@ -431,6 +508,7 @@ lifetime value.
 
 <a name="footnote-2">[2]</a> **NOTE** In many cases P will be the empty set (e.g. the case of a pure reference type)
 
+<a name="footnote-3">[3]</a> **NOTE** This operation is only done in coordination with inserting a destroy_value into callers of @switch. 
 <!--
 # Swift Extensions:
 

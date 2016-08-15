@@ -236,9 +236,15 @@ A linear checker would automatically catch such an error and even more important
 
 Then this will compile in the semantic ARC world. Let us consider how we could convert the @owned switch_enum parameter to be @guaranteed. What does that even mean. Consider the following switch enum example.
 
-    sil @switch : $@convention(thin) (@owned Optional<Builtin.NativeObject>) ->  () {
-    bb0(%0 : @owned $Optional<Builtin.NativeObject>):
-      switch_enum %0, bb1: .Some, bb2: .None
+    class C {
+       var foo: Optional<Builtin.NativeObject>
+     }
+     
+    sil @switch : $@convention(thin) (@guaranteed C) ->  () {
+    bb0(%0 : @guaranteed $C):
+      %1 = ref_element_addr $C : #C.foo
+      %2 = load_strong %1 : $*Builtin.NativeObject
+      switch_enum %2, bb1: .Some, bb2: .None
       
     bb1(%payload : @owned $Builtin.NativeObject):
       destroy_value %payload : $Builtin.NativeObject

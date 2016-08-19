@@ -2152,9 +2152,13 @@ for host in "${ALL_HOSTS[@]}"; do
                 EXTRA_DISTCC_OPTIONS=("DISTCC_HOSTS=localhost,lzo,cpp")
             fi
             with_pushd "${build_dir}" \
-                call env "${EXTRA_DISTCC_OPTIONS[@]}" "${CMAKE}" "${cmake_options[@]}" "${EXTRA_CMAKE_OPTIONS[@]}" "${source_dir}"
+                       call env "${EXTRA_DISTCC_OPTIONS[@]}" "${CMAKE}" "${cmake_options[@]}" "${EXTRA_CMAKE_OPTIONS[@]}" "${source_dir}"
+            # If we are compiling swift, we first build the stdlib. Then we
+            # build everything else.
+            if [[ "${product}" == "swift" ]]; then
+                call env "${EXTRA_DISTCC_OPTIONS[@]}" "${CMAKE_BUILD[@]}" "${build_dir}" $(cmake_config_opt ${product}) -- "${BUILD_ARGS[@]}" swift-stdlib-external-configure
+            fi
         fi
-
         # When we are building LLVM create symlinks to the c++ headers. We need
         # to do this before building LLVM since compiler-rt depends on being
         # built with the just built clang compiler. These are normally put into

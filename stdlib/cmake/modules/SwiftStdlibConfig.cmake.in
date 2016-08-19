@@ -1,0 +1,10 @@
+# This file provides information and services to the final user.
+
+@SWIFT_CONFIG_CODE@
+
+# We will always have the primary variant sdk arch as a target.
+if(NOT TARGET swiftCore-@SWIFT_PRIMARY_VARAINT_SDK@-@SWIFT_PRIMARY_VARIANT_ARCH@)
+  set(SWIFT_STDLIB_EXPORTED_TARGETS "@SWIFT_STDLIB_CONFIG_EXPORTS@")
+  include("@SWIFT_STDLIB_EXPORTS_FILE@" RESULT_VARIABLE found_file)
+  precondition(found_file MESSAGE "Failed to import exports file?!")
+endif()

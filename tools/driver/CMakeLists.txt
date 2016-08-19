@@ -5,7 +5,10 @@ add_swift_host_tool(swift
   swift_indent_main.cpp
   swift_symbolgraph_extract_main.cpp
   SWIFT_COMPONENT compiler
-)
+  )
+
+list(APPEND LLVM_TOOLCHAIN_TOOLS swift)
+
 target_link_libraries(swift
                       PRIVATE
                         swiftDriver

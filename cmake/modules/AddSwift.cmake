@@ -10,7 +10,14 @@ include(SwiftAndroidSupport)
 set(SWIFTLIB_DIR
     "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib/swift")
 set(SWIFTSTATICLIB_DIR
-    "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib/swift_static")
+  "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib/swift_static")
+if (SWIFT_STDLIB_BUILT_STANDALONE)
+  set(SWIFTSTDLIB_DIR
+    "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib/swift")
+else()
+  set(SWIFTSTDLIB_DIR
+    "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/swift-stdlib-external-bins/lib/swift")
+endif()
 
 function(add_dependencies_multiple_targets)
   cmake_parse_arguments(
@@ -2363,7 +2370,6 @@ function(add_swift_target_library name)
 
           list(APPEND swiftlib_module_dependency_targets
               "swift${mod}${MODULE_VARIANT_SUFFIX}")
-
           list(APPEND swiftlib_private_link_libraries_targets
               "swift${mod}${VARIANT_SUFFIX}")
         endforeach()
@@ -2420,7 +2426,15 @@ function(add_swift_target_library name)
         list(APPEND module_variant_names "${maccatalyst_module_variant_name}")
       endif()
 
-     list(APPEND swiftlib_c_compile_flags_all "-DSWIFT_TARGET_LIBRARY_NAME=${name}")
+      list(APPEND swiftlib_c_compile_flags_all "-DSWIFT_TARGET_LIBRARY_NAME=${name}")
+
+      # If we are not building standalone, we need to set the resource directory
+      # by hand.
+      set(stdlib_target)
+      if (NOT SWIFT_STDLIB_BUILT_STANDALONE)
+        # We require our libraries to have all of the stdlib as a dependency.
+        set(stdlib_target swift-stdlib-external-build)
+      endif()
 
       # Add this library variant.
       _add_swift_target_library_single(
@@ -2435,7 +2449,7 @@ function(add_swift_target_library name)
         MODULE_TARGETS ${module_variant_names}
         SDK ${sdk}
         ARCHITECTURE ${arch}
-        DEPENDS ${SWIFTLIB_DEPENDS}
+        DEPENDS ${SWIFTLIB_DEPENDS} ${stdlib_target}
         LINK_LIBRARIES ${swiftlib_link_libraries}
         FRAMEWORK_DEPENDS ${swiftlib_framework_depends_flattened}
         FRAMEWORK_DEPENDS_WEAK ${SWIFTLIB_FRAMEWORK_DEPENDS_WEAK}
@@ -2880,6 +2894,18 @@ function(_add_swift_executable_single name)
   else()
     set_property(TARGET "${name}" PROPERTY
       LINKER_LANGUAGE "CXX")
+  endif()
+
+  # If we are not in the stdlib building standalone, then add
+  # swift-stdlib-external as a dependency to ensure that we do not try to
+  # compile this until the stdlib is completely built.
+  if (NOT SWIFT_STDLIB_BUILT_STANDALONE)
+    list(APPEND SWIFTEXE_TARGET_DEPENDS swift-stdlib-external-build)
+  endif()
+
+  if(NOT "${SWIFT_BUILD_STDLIB}")
+    list(REMOVE_ITEM SWIFTEXE_TARGET_LINK_FAT_LIBRARIES
+        swiftCore)
   endif()
 
   set_target_properties(${name} PROPERTIES FOLDER "Swift executables")

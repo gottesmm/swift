@@ -1065,7 +1065,12 @@ endif()
 #
 # https://bugs.swift.org/browse/SR-5975
 if(SWIFT_BUILD_STDLIB)
-  add_subdirectory(stdlib)
+  include(AddExternalSwiftStdlib)
+  if (SWIFT_BUILD_EXTERNAL_STDLIB)
+    configure_external_swift_stdlib()
+  else()
+    add_subdirectory(stdlib)
+  endif()
 else()
   if(SWIFT_BUILD_STDLIB_EXTRA_TOOLCHAIN_CONTENT)
     add_subdirectory(stdlib/toolchain)
@@ -1092,6 +1097,8 @@ if(SWIFT_INCLUDE_TOOLS)
   # https://bugs.swift.org/browse/SR-5975
   add_subdirectory(tools)
 endif()
+
+add_dependencies(swift-toolchain swift)
 
 add_subdirectory(utils)
 

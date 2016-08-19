@@ -1,0 +1,18 @@
+set(SWIFT_STDLIB_INSTALL_PACKAGE_DIR lib${LLVM_LIBDIR_SUFFIX}/cmake/swiftStdlib)
+set(swift_stdlib_cmake_builddir "${CMAKE_BINARY_DIR}/../${SWIFT_STDLIB_INSTALL_PACKAGE_DIR}")
+
+# Generate build-tree exports list only
+set(SWIFT_STDLIB_EXPORTS_FILE ${swift_stdlib_cmake_builddir}/SwiftStdlibExports.cmake)
+get_property(SWIFT_STDLIB_EXPORTS GLOBAL PROPERTY SWIFT_EXPORTS)
+get_property(SWIFT_STDLIB_BUILDTREE_EXPORTS GLOBAL PROPERTY SWIFT_BUILDTREE_EXPORTS)
+
+set(SWIFT_STDLIB_CONFIG_EXPORTS ${SWIFT_STDLIB_EXPORTS} ${SWIFT_STDLIB_BUILDTREE_EXPORTS})
+export(TARGETS ${SWIFT_STDLIB_CONFIG_EXPORTS} FILE ${SWIFT_STDLIB_EXPORTS_FILE})
+
+set(SWIFT_INCLUDE_DIRS ${SWIFT_INCLUDE_DIR} ${SWIFT_MAIN_INCLUDE_DIR})
+set(SWIFT_LIBRARY_DIRS ${SWIFT_LIBRARY_OUTPUT_INTDIR})
+
+configure_file(
+  SwiftStdlibConfig.cmake.in
+  ${swift_stdlib_cmake_builddir}/SwiftStdlibConfig.cmake
+  @ONLY)

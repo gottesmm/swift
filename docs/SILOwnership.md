@@ -1,134 +1,16 @@
-<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-generate-toc again -->
-**Table of Contents**
 
-- [Preface](#preface)
-- [Historical Implementations](#historical-implementations)
-- [Ownership Model](#ownership-model)
-    - [Replace Low Level ARC Operations with High Level ARC Operations](#replace-low-level-arc-operations-with-high-level-arc-operations)
-    - [RC Identity](#rc-identity)
-    - [Endow Use-Def edges with ARC Conventions](#endow-use-def-edges-with-arc-conventions)
-    - [ARC Verifier](#arc-verifier)
-    - [Elimination of Memory Locations from High Level SIL](#elimination-of-memory-locations-from-high-level-sil)
-- [Semantic ARC Based Optimization](#semantic-arc-based-optimization)
-    - ["The Signature Optimization"](#the-signature-optimization)
-    - ["The Cleanup"](#the-cleanup)
-- [Implementation](#implementation)
-    - [Phase 1. Preliminaries](#phase-1-preliminaries)
-        - [Parallel Task 1. Introduce new High Level Instructions. Can be done independently.](#parallel-task-1-introduce-new-high-level-instructions-can-be-done-independently)
-        - [Parallel Task 2. Introduction of RC Identity Verification and RC Identity Sources.](#parallel-task-2-introduction-of-rc-identity-verification-and-rc-identity-sources)
-        - [Parallel Task 3. Implement use-def list convention and convention verification.](#parallel-task-3-implement-use-def-list-convention-and-convention-verification)
-            - [Subtask a. Introduction of signatures to all block arguments without verification.](#subtask-a-introduction-of-signatures-to-all-block-arguments-without-verification)
-            - [Subtask b. Introduce the notion of signatures to use-def lists.](#subtask-b-introduce-the-notion-of-signatures-to-use-def-lists)
-            - [Subtask c. We create a whitelist of instructions with unaudited use-def lists audited instructions and use it to advance incrementally fixing instructions.](#subtask-c-we-create-a-whitelist-of-instructions-with-unaudited-use-def-lists-audited-instructions-and-use-it-to-advance-incrementally-fixing-instructions)
-        - [Parallel Task 4. Elimination of memory locations from High Level SIL.](#parallel-task-4-elimination-of-memory-locations-from-high-level-sil)
-    - [Phase 2. Create Uses of Instrastructure](#phase-2-create-uses-of-instrastructure)
-        - [Parallel Task 1. Create Lifetime Verification algorithm.](#parallel-task-1-create-lifetime-verification-algorithm)
-        - [Parallel Task 2. Optimization: Create Lifetime Joining algorithm.](#parallel-task-2-optimization-create-lifetime-joining-algorithm)
-        - [Parallel Task 3. Optimization: Extend Function Signature Optimizer -> Owner Signature Optimizer](#parallel-task-3-optimization-extend-function-signature-optimizer---owner-signature-optimizer)
-        - [Parallel Task 4. Optimization Copy Propagation](#parallel-task-4-optimization-copy-propagation)
+# SIL Ownership Model
 
-<!-- markdown-toc end -->
+In this document, we define a SIL Ownership Model. We assume that the reader is
+already familiar with SIL, the concept of an ownership producer, ownership
+consumer, and Ownership Identity.
 
-# SIL Ownership
 
-## Preface
+Our goals are to ensure that
+for any SSA value, the following must be true:
 
-This document proposes a series of changes to the SIL IR that ease SIL level
-static verification and optimization of ARC semantic operations. This is done by
-introducing propagation and verification of ARC ownership semantics on use-def
-edges within functions. We first speak of historical ARC implementations and
-show how specific characteristics lead to difficulty in static verification and
-optimizability. Then we provide conceptual targeted solutions for each one of
-these problems. Finally, we will provide a detailed plan of implementation of
-said conceptual solutions that eliminate the aforementioned weaknesses.
-
-**NOTE** This proposal meant for compiler writers and implementors, not users,
-i.e. we assume that the reader has a basic familiarity with the basic concepts
-of ARC.
-
-**NOTE** We speak solely of ARC implementations descendant from Clang ARC. There
-may be other ARC implementations that are unknown to the writer and are thus
-ignored, albeit not maliciously.
-
-**NOTE** We assume in the following that the reader is familiar with "Ownership
-Roots" in ARC (What are called today RC Identity Roots). For those who are
-unfamiliar with this concept, please read the RC Identity section of
-ARCOptimization.rst.
-
-## Historical Implementations
-
-The first ARC model used in a mid level IR was the Obj-C ARC model implemented
-in LLVM IR by Clang. This implementation is still in use today on Apple
-platforms. Some specific weaknesses of this model are:
-
-1. ARC ownership conventions are implicit on both use-def edges and on function
-   signatures. This impedes static verification of ARC semantics.
-
-2. The LLVM IR type system does not contain a concept of a "reference counted
-   pointer" (RC pointer). Thus when analyzing Obj-C ARC programs, any/all
-   pointers unless extra information is available must be treated as reference
-   counted pointers. This results in overly conservative inference of effects.
-
-3. In addition to being unable to distinguish non-RC from RC pointers, LLVM IR
-   does not provide any strong guarantees around the propagation of the
-   Ownership Identity of pointers [[1]](#footnote-1). A requirement of
-   determining a retain, release pair is that the pair operates on values with
-   the same Ownership Identity Root. Thus making it more difficult to determine
-   ownership identity root results in it being more difficult to determine
-   retain, release pairings.
-
-4. There is no mechanism for reasoning about or enforcement of a "correct"
-   pairing of retain/release operations. This makes ARC bugs difficult to track
-   down since verification is impossible and additionally makes optimization
-   more difficult since mispairings can lead to miscompiles. Thus ARC is
-   required to be unnecessarily conservative in the face of such pariings.
-
-5. There are many operations on ARC pointers that are separated into separate
-   non-semantic steps when semantically from the IR's perspective these
-   operations should be representing as opaque state changes whose effects are
-   propagated via a use-def list. Some examples of this are: load_strong,
-   store_strong when compiled with optimizations enabled, and a lack of
-   copy_value.
-
-6. There is no notion of locally balanced vs memory balanced retain, release
-   operations.
-
-The next ARC model chronologically is in the SIL IR for Swift. This suffers from
-some of the same issues as the Obj-C implementation of ARC but also provides
-some noteworthy improvements:
-
-1. Reference Semantics in the Type System. Since SIL's type system is based upon
-   the Swift type system, the notion of a reference countable type exists. This
-   means that it is possible to verify that reference counting operations only
-   apply to SSA values and memory locations associated reference counted types.
-
-2. Argument conventions on function signatures. In SIL, all functions specify
-   the ownership convention expected of their arguments and return values. Since
-   these conventions were not specified in the operations in the bodies of
-   functions though, this could not be used to create a true ARC verifier.
-
-It does still have some of the same weaknesses namely:
-
-1. ARC ownership conventions are still implicit on use-def edges and are not
-   verified statically in side function bodies.
-
-2. load_strong, store_strong, copy_value are not provided so reasoning about
-   pairings via use-def list is impossible.
-
-3. Ownership Identity propagation is implicit.
-
-4. Retain, Release pairings are not verified statically.
-
-And some additional problems not seen in the Obj-C model: address only
-types which force ARC analysis to be performed on a non-SSA representation.
-
-If one looks at all of these problems, they really come down to creating a model
-of ownership at the SIL level. In the next section we define such a model.
-
-## SIL Ownership Model
-
-As discussed in the previous section, due to the lack of a SIL Ownership Model
-with:
+1. All "producer" instructions and "consumer" instructions of a given value are
+   able to be found trivially via an API. This will be verified 
 
 1. Explicit ownership identity propagation,
 2. The ability to reason about ownership via use-def lists.

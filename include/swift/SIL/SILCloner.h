@@ -662,7 +662,8 @@ SILCloner<ImplClass>::visitLoadInst(LoadInst *Inst) {
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   doPostProcess(Inst,
     getBuilder().createLoad(getOpLocation(Inst->getLoc()),
-                            getOpValue(Inst->getOperand())));
+                            getOpValue(Inst->getOperand()),
+                            Inst->getOwnershipQualifier()));
 }
 
 template <typename ImplClass>
@@ -679,7 +680,8 @@ void SILCloner<ImplClass>::visitStoreInst(StoreInst *Inst) {
   doPostProcess(Inst,
     getBuilder().createStore(getOpLocation(Inst->getLoc()),
                              getOpValue(Inst->getSrc()),
-                             getOpValue(Inst->getDest())));
+                             getOpValue(Inst->getDest()),
+                             Inst->getOwnershipQualifier()));
 }
 
 template <typename ImplClass>

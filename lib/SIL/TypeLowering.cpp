@@ -494,7 +494,15 @@ namespace {
   public:
     void emitDestroyAddress(SILBuilder &B, SILLocation loc,
                             SILValue addr) const override {
-      SILValue value = B.createLoad(loc, addr);
+
+      auto qual = LoadOwnershipQualifier::Unqualified;
+      if (Optional<bool> HasQualifiedOwnership = B.getFunction().hasQualifiedOwnership()) {
+        if (HasQualifiedOwnership.getValue()) {
+          qual = LoadOwnershipQualifier::Take;
+        }
+      }
+
+      SILValue value = B.createLoad(loc, addr, qual);
       emitReleaseValue(B, loc, value);
     }
 
@@ -519,13 +527,25 @@ namespace {
 
     SILValue emitLoadOfCopy(SILBuilder &B, SILLocation loc, SILValue addr,
                             IsTake_t isTake) const override {
-      return B.createLoad(loc, addr);
+      auto qual = LoadOwnershipQualifier::Unqualified;
+      if (Optional<bool> HasQualifiedOwnership = B.getFunction().hasQualifiedOwnership()) {
+        if (HasQualifiedOwnership.getValue()) {
+          qual = LoadOwnershipQualifier::Trivial;
+        }
+      }
+      return B.createLoad(loc, addr, qual);
     }
 
     void emitStoreOfCopy(SILBuilder &B, SILLocation loc,
                          SILValue value, SILValue addr,
                          IsInitialization_t isInit) const override {
-      B.createStore(loc, value, addr);
+      auto qual = StoreOwnershipQualifier::Unqualified;
+      if (Optional<bool> HasQualifiedOwnership = B.getFunction().hasQualifiedOwnership()) {
+        if (HasQualifiedOwnership.getValue()) {
+          qual = StoreOwnershipQualifier::Trivial;
+        }
+      }
+      B.createStore(loc, value, addr, qual);
     }
 
     void emitDestroyAddress(SILBuilder &B, SILLocation loc,
@@ -564,7 +584,13 @@ namespace {
 
     SILValue emitLoadOfCopy(SILBuilder &B, SILLocation loc,
                             SILValue addr, IsTake_t isTake) const override {
-      SILValue value = B.createLoad(loc, addr);
+      if (Optional<bool> HasQualifiedOwnership = B.getFunction().hasQualifiedOwnership()) {
+        if (HasQualifiedOwnership.getValue()) {
+          auto qual = isTake? LoadOwnershipQualifier::Take : LoadOwnershipQualifier::Copy;
+          return B.createLoad(loc, addr, qual);
+        }
+      }
+      SILValue value = B.createLoad(loc, addr, LoadOwnershipQualifier::Unqualified);
       if (!isTake) emitRetainValue(B, loc, value);
       return value;
     }
@@ -572,9 +598,17 @@ namespace {
     void emitStoreOfCopy(SILBuilder &B, SILLocation loc,
                          SILValue newValue, SILValue addr,
                          IsInitialization_t isInit) const override {
+      if (Optional<bool> HasQualifiedOwnership = B.getFunction().hasQualifiedOwnership()) {
+        if (HasQualifiedOwnership.getValue()) {
+          auto qual = isInit? StoreOwnershipQualifier::Init : StoreOwnershipQualifier::Assign;
+          B.createStore(loc, newValue, addr, qual);
+          return;
+        }
+      }
+
       SILValue oldValue;
-      if (!isInit) oldValue = B.createLoad(loc, addr);
-      B.createStore(loc, newValue, addr);
+      if (!isInit) oldValue = B.createLoad(loc, addr, LoadOwnershipQualifier::Unqualified);
+      B.createStore(loc, newValue, addr, StoreOwnershipQualifier::Unqualified);
       if (!isInit) emitReleaseValue(B, loc, oldValue);
     }
   };

@@ -231,28 +231,36 @@ enum class OwnershipQualifiedKind {
   Unqualified,
 };
 
-} // end anonymous namespace
+struct OwnershipQualifiedKindVisitor : SILInstructionVisitor<OwnershipQualifiedKindVisitor, OwnershipQualifiedKind> {
 
-static OwnershipQualifiedKind
-getOwnershipQualifiedKind(const SILInstruction &I) {
-  switch (I.getKind()) {
-  case ValueKind::LoadInst:
-    if (cast<LoadInst>(I).getOwnershipQualifier() ==
-        LoadOwnershipQualifier::Unqualified)
-      return OwnershipQualifiedKind::Unqualified;
-    return OwnershipQualifiedKind::Qualified;
-  case ValueKind::StoreInst:
-    if (cast<StoreInst>(I).getOwnershipQualifier() ==
-        StoreOwnershipQualifier::Unqualified)
-      return OwnershipQualifiedKind::Unqualified;
-    return OwnershipQualifiedKind::Qualified;
-  case ValueKind::LoadBorrowInst:
-  case ValueKind::EndBorrowInst:
-    return OwnershipQualifiedKind::Qualified;
-  default:
-    return OwnershipQualifiedKind::NotApplicable;
+  OwnershipQualifiedKind visitValueBase(ValueBase *V) {
+    return OwnershipQualifierKind::NotApplicable;
   }
-}
+
+#define QUALIFIED_INST(CLASS) \
+  OwnershipQualifiedKind visit ## CLASS(CLASS *I) { \
+    return OwnershipQualifierKind::Qualified;             \
+  }
+  QUALIFIED_INST(EndBorrowInst)
+  QUALIFIED_INST(LoadBorrowInst)
+  QUALIFIED_INST(CopyValueInst)
+  QUALIFIED_INST(DestroyValueInst)
+#undef QUALIFIED_INST
+
+  OwnershipQualifierKind visitLoadInst(LoadInst *LI) {
+    if (LI->getOwnershipQualifier() == LoadOwnershipQualifier::Unqualified)
+      return OwnershipQualifiedKind::Unqualified;
+    return OwnershipQualifiedKind::Qualified;
+  }
+
+  OwnershipQualifierKind visitStoreInst(StoreInst *SI) {
+    if (SI->getOwnershipQualifier() == StoreOwnershipQualifier::Unqualified)
+      return OwnershipQualifiedKind::Unqualified;
+    return OwnershipQualifiedKind::Qualified;
+  }
+};
+
+} // end anonymous namespace
 
 bool FunctionOwnershipEvaluator::evaluate(const SILInstruction &I) {
   assert(I.getFunction() == F.get() && "Can not evaluate function ownership "
@@ -265,7 +273,7 @@ bool FunctionOwnershipEvaluator::evaluate(const SILInstruction &I) {
   if (!I.getModule().getOptions().EnableSILOwnership)
     return true;
 
-  switch (getOwnershipQualifiedKind(I)) {
+  switch (OwnershipQualifiedKindVisitor().visit(I)) {
   case OwnershipQualifiedKind::Unqualified: {
     // If we already know that the function has unqualified ownership, just
     // return early.

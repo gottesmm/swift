@@ -99,6 +99,7 @@ bool swift::runSILDiagnosticPasses(SILModule &Module) {
   PM.addDefiniteInitialization();
 
   PM.addMandatoryInlining();
+  PM.addGuaranteedCFGOpts();
   PM.addPredictableMemoryOptimizations();
   PM.addDiagnosticConstantPropagation();
   PM.addGuaranteedARCOpts();

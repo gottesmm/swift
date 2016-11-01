@@ -72,7 +72,7 @@ entry(%x : $*T):
   // CHECK: [[BUFFER:%.*]] = alloca [[BUFFER_TYPE:\[.* x i8\]]]
   // CHECK: [[ADDR:%.*]] = call %swift.opaque* %allocateBuffer([[BUFFER_TYPE]]* [[BUFFER]], %swift.type* %T)
   %a = alloc_stack $T
-  br next
+  cond_br undef, next, bb2
 
 next:
   // CHECK: call %swift.opaque* %initializeWithCopy(%swift.opaque* [[ADDR]],
@@ -82,6 +82,9 @@ next:
   %z = apply %u<T>(%a) : $@convention(thin) <T> (@in T) -> ()
   dealloc_stack %a : $*T
   return undef : $()
+
+bb2:
+  unreachable
 }
 
 

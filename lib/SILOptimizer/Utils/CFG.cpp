@@ -739,6 +739,22 @@ bool swift::mergeBasicBlockWithSuccessor(SILBasicBlock *BB, DominanceInfo *DT,
   if (BB == SuccBB || !SuccBB->getSinglePredecessor())
     return false;
 
+  mergeBasicBlockWithSuccessor(Branch, SuccBB, DT, LI);
+
+  return true;
+}
+
+void swift::mergeBasicBlockWithSuccessor(BranchInst *Branch,
+                                         SILBasicBlock *SuccBB,
+                                         DominanceInfo *DT, SILLoopInfo *LI) {
+  auto *BB = Branch->getParent();
+  (void)BB;
+
+  assert(BB != SuccBB && "Can not merge a BB which infinite loops upon itself");
+  assert(SuccBB->getSinglePredecessor() && "Can only merge a block with its "
+                                           "successor if its successor only "
+                                           "has one predecessor, the block");
+
   // If there are any BB arguments in the destination, replace them with the
   // branch operands, since they must dominate the dest block.
   for (unsigned i = 0, e = Branch->getArgs().size(); i != e; ++i)
@@ -766,8 +782,6 @@ bool swift::mergeBasicBlockWithSuccessor(SILBasicBlock *BB, DominanceInfo *DT,
     LI->removeBlock(SuccBB);
 
   SuccBB->eraseFromParent();
-
-  return true;
 }
 
 /// Splits the critical edges between from and to. This code assumes there is

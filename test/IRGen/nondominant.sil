@@ -16,11 +16,8 @@ bb1:
   br bb2
 }
 // CHECK:   define{{( protected)?}} i8 @test0()
-// CHECK:     br
-// CHECK-NOT: }
-// CHECK:     ret i8 7
-// CHECK-NOT: }
-// CHECK:     br
+// CHECK:   entry:
+// CHECK-NEXT:     ret i8 7
 // CHECK:   }
 
 // Just don't crash on this one.

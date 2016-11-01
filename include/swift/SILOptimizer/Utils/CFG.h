@@ -131,5 +131,11 @@ bool splitAllCriticalEdges(SILFunction &F, bool OnlyNonCondBr,
 bool mergeBasicBlockWithSuccessor(SILBasicBlock *BB, DominanceInfo *DT,
                                   SILLoopInfo *LI);
 
+/// \brief Merge a basic block ending in the given branch BI with its successor
+/// If dominance information or loop info is non null update it. Asserts if the
+/// block could not be merged.
+void mergeBasicBlockWithSuccessor(BranchInst *BI, SILBasicBlock *SuccBB,
+                                  DominanceInfo *DT, SILLoopInfo *LI);
+
 } // End namespace swift.
 #endif

@@ -48,6 +48,49 @@ static inline llvm::hash_code hash_value(ValueKind K) {
   return llvm::hash_value(size_t(K));
 }
 
+/// The ownership kind of a SILValue.
+enum class ValueOwnershipKind {
+  // Bottom.
+  None,
+
+  // Actual Ownership Kinds.
+  Trivial,
+  Unowned,
+  Owned,
+  Guaranteed,
+  InOut,
+
+  // Top.
+  Any,
+};
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, ValueOwnershipKind Kind);
+
+inline llvm::Optional<ValueOwnershipKind>
+ValueOwnershipKindMerge(Optional<ValueOwnershipKind> LHS,
+                        Optional<ValueOwnershipKind> RHS) {
+  if (!LHS.hasValue() || !RHS.hasValue())
+    return NoneType::None;
+
+  auto LHSVal = LHS.getValue();
+  if (LHSVal == ValueOwnershipKind::None)
+    return ValueOwnershipKind::None;
+
+  auto RHSVal = RHS.getValue();
+  if (RHSVal == ValueOwnershipKind::None)
+    return ValueOwnershipKind::None;
+
+  if (LHSVal == ValueOwnershipKind::Any)
+    return RHSVal;
+  if (RHSVal == ValueOwnershipKind::Any)
+    return LHSVal;
+
+  if (LHSVal != RHSVal)
+    return NoneType::None;
+
+  return LHSVal;
+}
+
 /// ValueBase - This is the base class of the SIL value hierarchy, which
 /// represents a runtime computed value.  Things like SILInstruction derive
 /// from this.
@@ -70,7 +113,6 @@ public:
     assert(use_empty() && "Cannot destroy a value that still has uses!");
   }
 
-
   ValueKind getKind() const { return Kind; }
 
   /// True if the "value" is actually a value that can be used by other
@@ -80,6 +122,8 @@ public:
   SILType getType() const {
     return Type;
   }
+
+  ValueOwnershipKind getOwnershipKind() const;
 
   /// Replace every use of a result of this instruction with the corresponding
   /// result from RHS. The method assumes that both instructions have the same
@@ -130,6 +174,9 @@ public:
   /// If this is a SILArgument or a SILInstruction get its parent module,
   /// otherwise return null.
   SILModule *getModule() const;
+
+  /// Verify that this ValueBase and its uses respects ownership invariants.
+  void verifyOwnership() const;
 };
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,

@@ -2094,9 +2094,9 @@ ManagedValue SILGenFunction::emitLoad(SILLocation loc, SILValue addr,
        ? rvalueTL : getTypeLowering(addr->getType()));
 
   // Never do a +0 load together with a take.
-  bool isPlusZeroOk = (isTake == IsNotTake &&
-                       (isGuaranteedValid ? C.isGuaranteedPlusZeroOk()
-                                          : C.isImmediatePlusZeroOk()));
+  bool isPlusZeroOk =
+      (isTake == IsNotTake && (isGuaranteedValid ? C.isGuaranteedPlusZeroOk()
+                                                 : C.isImmediatePlusZeroOk()));
 
   if (rvalueTL.isAddressOnly()) {
     // If the client is cool with a +0 rvalue, the decl has an address-only
@@ -2116,7 +2116,7 @@ ManagedValue SILGenFunction::emitLoad(SILLocation loc, SILValue addr,
   // we can perform a +0 load of the address instead of materializing a +1
   // value.
   if (isPlusZeroOk && addrTL.getLoweredType() == rvalueTL.getLoweredType()) {
-    return ManagedValue::forUnmanaged(B.createLoadBorrow(loc, addr));
+    return emitManagedLoadBorrow(loc, addr);
   }
 
   // Load the loadable value, and retain it if we aren't taking it.

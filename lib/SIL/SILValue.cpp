@@ -57,3 +57,23 @@ SILModule *ValueBase::getModule() const {
     return &Arg->getModule();
   return nullptr;
 }
+
+llvm::raw_ostream &swift::operator<<(llvm::raw_ostream &OS,
+                                     ValueOwnershipKind Kind) {
+  switch (Kind) {
+  case ValueOwnershipKind::None:
+    return OS << "None";
+  case ValueOwnershipKind::Trivial:
+    return OS << "Trivial";
+  case ValueOwnershipKind::Unowned:
+    return OS << "Unowned";
+  case ValueOwnershipKind::Owned:
+    return OS << "Owned";
+  case ValueOwnershipKind::Guaranteed:
+    return OS << "Guaranteed";
+  case ValueOwnershipKind::InOut:
+    return OS << "InOut";
+  case ValueOwnershipKind::Any:
+    return OS << "Any";
+  }
+}

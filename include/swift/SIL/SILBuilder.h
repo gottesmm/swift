@@ -1626,6 +1626,9 @@ private:
   /// insert - This is a template to avoid losing type info on the result.
   template <typename T> T *insert(T *TheInst) {
     insertImpl(TheInst);
+#ifndef NDEBUG
+    TheInst->verifyOperandOwnership();
+#endif
     return TheInst;
   }
 

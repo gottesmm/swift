@@ -172,6 +172,23 @@ void CleanupManager::forwardCleanup(CleanupsDepth handle) {
     popTopDeadCleanups(InnermostScope);
 }
 
+void CleanupManager::emitCleanup(CleanupsDepth handle, CleanupLocation loc) {
+  auto iter = Stack.find(handle);
+  assert(iter != Stack.end() && "can't change end of cleanups stack");
+  Cleanup &cleanup = *iter;
+  assert(cleanup.isActive() && "forwarding inactive or dead cleanup?");
+
+  cleanup.emit(Gen, loc);
+
+  CleanupState newState =
+      (cleanup.getState() == CleanupState::Active ? CleanupState::Dead
+                                                  : CleanupState::Dormant);
+  setCleanupState(cleanup, newState);
+
+  if (newState == CleanupState::Dead && iter == Stack.begin())
+    popTopDeadCleanups(InnermostScope);
+}
+
 void CleanupManager::setCleanupState(Cleanup &cleanup, CleanupState state) {
   assert(Gen.B.hasValidInsertionPoint() &&
          "changing cleanup state at invalid IP");

@@ -181,6 +181,10 @@ public:
   /// becomes Dormant.
   void forwardCleanup(CleanupHandle depth);
 
+  /// Emit the given active cleanup and then move it to the corresponding
+  /// inactive state.
+  void emitCleanup(CleanupHandle depth, CleanupLocation loc);
+
   /// Set the state of the cleanup at the given depth.
   /// The transition must be non-trivial and legal.
   void setCleanupState(CleanupHandle depth, CleanupState state);

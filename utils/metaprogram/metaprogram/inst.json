@@ -1,0 +1,1223 @@
+[
+    {
+        "id" : "AllocationInst",
+        "kind" : "abstract_value"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "ConversionInst"
+        "kind" : "abstract_value",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "DeallocationInst",
+        "parent" : "SILInstruction"
+        "kind" : "abstract_value",
+    },
+    {
+        "id" : "IndexingInst",
+        "parent" : "SILInstruction"
+        "kind" : "abstract_value",
+    },
+    {
+        "id" : "LiteralInst"
+        "kind" : "abstract_value",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "MethodInst",
+        "parent" : "SILInstruction"
+        "kind" : "abstract_value",
+    },
+    {
+        "id" : "RefCountingInst",
+        "parent" : "SILInstruction"
+        "kind" : "abstract_value",
+    },
+    {
+        "id" : "SILInstruction",
+        "parent" : "ValueBase"
+        "kind" : "abstract_value",
+    },
+    {
+        "id" : "TermInst",
+        "parent" : "SILInstruction"
+        "kind" : "abstract_value",
+    },
+    {
+        "id" : "AddressToPointerInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "address_to_pointer"
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "AllocBoxInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "alloc_box"
+        "parent" : "AllocationInst",
+    },
+    {
+        "id" : "AllocExistentialBoxInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "parent" : "AllocationInst"
+        "textual_name" : "alloc_existential_box",
+    },
+    {
+        "id" : "AllocGlobalInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "SILInstruction"
+        "textual_name" : "alloc_global",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "AllocationInst"
+        "textual_name" : "alloc_ref_dynamic",
+        "id" : "AllocRefDynamicInst",
+    },
+    {
+        "id" : "AllocRefInst",
+        "kind" : "inst",
+        "mem_behavior" : "None",
+        "parent" : "AllocationInst"
+        "textual_name" : "alloc_ref",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "AllocStackInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "AllocationInst"
+        "textual_name" : "alloc_stack",
+    },
+    {
+        "id" : "AllocValueBufferInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "AllocationInst"
+        "textual_name" : "alloc_value_buffer",
+    },
+    {
+        "id" : "ApplyInst",
+        "kind" : "inst"
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "apply",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "AssignInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "textual_name" : "assign",
+        "parent" : "SILInstruction",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "RefCountingInst"
+        "textual_name" : "autorelease_value",
+        "id" : "AutoreleaseValueInst",
+    },
+    {
+        "id" : "BeginBorrowInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "SILInstruction"
+        "textual_name" : "begin_borrow",
+        "mem_behavior" : "MayHaveSideEffects",
+    },
+    {
+        "id" : "BindMemoryInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "textual_name" : "bind_memory"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "BridgeObjectToRefInst",
+        "kind" : "inst",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "bridge_object_to_ref",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "BridgeObjectToWordInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "bridge_object_to_word",
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "BuiltinInst",
+        "kind" : "inst",
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "builtin"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "ClassMethodInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "MethodInst"
+        "textual_name" : "class_method",
+        "mem_behavior" : "None",
+    },
+    {
+        "id" : "CondFailInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "cond_fail",
+        "parent" : "SILInstruction",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "convert_function",
+        "id" : "ConvertFunctionInst",
+    },
+    {
+        "id" : "CopyAddrInst",
+        "kind" : "inst",
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects"
+        "textual_name" : "copy_addr",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "CopyBlockInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "SILInstruction"
+        "textual_name" : "copy_block",
+    },
+    {
+        "id" : "CopyValueInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "SILInstruction"
+        "textual_name" : "copy_value",
+        "kind" : "inst",
+    },
+    {
+        "id" : "DeallocBoxInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "DeallocationInst"
+        "textual_name" : "dealloc_box",
+        "kind" : "inst",
+    },
+    {
+        "id" : "DeallocExistentialBoxInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "dealloc_existential_box",
+        "parent" : "DeallocationInst",
+    },
+    {
+        "id" : "DeallocPartialRefInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "DeallocationInst"
+        "textual_name" : "dealloc_partial_ref",
+    },
+    {
+        "id" : "DeallocRefInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "dealloc_ref"
+        "parent" : "DeallocationInst",
+    },
+    {
+        "id" : "DeallocStackInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "DeallocationInst"
+        "textual_name" : "dealloc_stack",
+    },
+    {
+        "id" : "DeallocValueBufferInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "dealloc_value_buffer",
+        "parent" : "DeallocationInst",
+    },
+    {
+        "id" : "DebugValueAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "SILInstruction"
+        "textual_name" : "debug_value_addr",
+        "mem_behavior" : "None",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "debug_value",
+        "id" : "DebugValueInst",
+    },
+    {
+        "id" : "DeinitExistentialAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects"
+        "textual_name" : "deinit_existential_addr",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "DestroyAddrInst",
+        "kind" : "inst",
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "destroy_addr"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "DestroyValueInst",
+        "kind" : "inst",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "SILInstruction"
+        "textual_name" : "destroy_value",
+        "may_release" : "MayRelease",
+    },
+    {
+        "id" : "DynamicMethodInst",
+        "kind" : "inst",
+        "mem_behavior" : "None",
+        "parent" : "MethodInst"
+        "textual_name" : "dynamic_method",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "EndBorrowInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "end_borrow",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "EnumInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "enum",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "ExistentialMetatypeInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "existential_metatype"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "FixLifetimeInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "fix_lifetime",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "FloatLiteralInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "LiteralInst"
+        "textual_name" : "float_literal",
+        "mem_behavior" : "None",
+    },
+    {
+        "id" : "FunctionRefInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "function_ref"
+        "parent" : "LiteralInst",
+    },
+    {
+        "id" : "GlobalAddrInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "LiteralInst"
+        "textual_name" : "global_addr",
+        "kind" : "inst",
+    },
+    {
+        "id" : "IndexAddrInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "index_addr",
+        "parent" : "IndexingInst",
+    },
+    {
+        "id" : "IndexRawPointerInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "IndexingInst"
+        "textual_name" : "index_raw_pointer",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "init_block_storage_header",
+        "id" : "InitBlockStorageHeaderInst",
+    },
+    {
+        "id" : "InitEnumDataAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "init_enum_data_addr"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "InitExistentialAddrInst",
+        "kind" : "inst",
+        "mem_behavior" : "MayWrite",
+        "parent" : "SILInstruction"
+        "textual_name" : "init_existential_addr",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "InitExistentialMetatypeInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "init_existential_metatype",
+    },
+    {
+        "id" : "InitExistentialRefInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "init_existential_ref",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "InjectEnumAddrInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "textual_name" : "inject_enum_addr",
+        "parent" : "SILInstruction",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "LiteralInst"
+        "textual_name" : "integer_literal",
+        "id" : "IntegerLiteralInst",
+    },
+    {
+        "id" : "IsNonnullInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "is_nonnull"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "IsUniqueInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "SILInstruction"
+        "textual_name" : "is_unique",
+        "mem_behavior" : "MayHaveSideEffects",
+    },
+    {
+        "id" : "IsUniqueOrPinnedInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects"
+        "textual_name" : "is_unique_or_pinned",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "LoadBorrowInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayRead"
+        "textual_name" : "load_borrow",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "LoadInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayRead",
+        "parent" : "SILInstruction"
+        "textual_name" : "load",
+    },
+    {
+        "id" : "LoadUnownedInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "SILInstruction"
+        "textual_name" : "load_unowned",
+        "mem_behavior" : "MayRead",
+    },
+    {
+        "id" : "LoadWeakInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayRead",
+        "textual_name" : "load_weak",
+        "parent" : "SILInstruction",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "mark_dependence",
+        "id" : "MarkDependenceInst",
+    },
+    {
+        "id" : "MarkFunctionEscapeInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "mark_function_escape",
+    },
+    {
+        "id" : "MarkUninitializedBehaviorInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "mark_uninitialized_behavior",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "MarkUninitializedInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "mark_uninitialized"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "MetatypeInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "metatype",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "ObjCExistentialMetatypeToObjectInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "objc_existential_metatype_to_object",
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "ObjCMetatypeToObjectInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "objc_metatype_to_object",
+    },
+    {
+        "id" : "ObjCProtocolInst",
+        "kind" : "inst",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "objc_protocol",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "objc_to_thick_metatype",
+        "id" : "ObjCToThickMetatypeInst",
+    },
+    {
+        "id" : "OpenExistentialAddrInst",
+        "kind" : "inst",
+        "mem_behavior" : "MayRead",
+        "parent" : "SILInstruction"
+        "textual_name" : "open_existential_addr",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "OpenExistentialBoxInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "SILInstruction"
+        "textual_name" : "open_existential_box",
+        "mem_behavior" : "MayRead",
+    },
+    {
+        "id" : "OpenExistentialMetatypeInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "open_existential_metatype",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "OpenExistentialRefInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "open_existential_ref",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "PartialApplyInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "partial_apply",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "PointerToAddressInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "pointer_to_address",
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "PointerToThinFunctionInst",
+        "kind" : "inst",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "pointer_to_thin_function",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "ProjectBlockStorageInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "project_block_storage"
+        "parent" : "SILInstruction",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "project_box",
+        "id" : "ProjectBoxInst",
+    },
+    {
+        "id" : "ProjectExistentialBoxInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "project_existential_box",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "ProjectValueBufferInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayRead",
+        "textual_name" : "project_value_buffer",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "RawPointerToRefInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "raw_pointer_to_ref",
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "RefElementAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "ref_element_addr",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "RefTailAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "SILInstruction"
+        "textual_name" : "ref_tail_addr",
+        "mem_behavior" : "None",
+    },
+    {
+        "id" : "RefToBridgeObjectInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "ConversionInst"
+        "textual_name" : "ref_to_bridge_object",
+        "mem_behavior" : "None",
+    },
+    {
+        "id" : "RefToRawPointerInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "ref_to_raw_pointer",
+    },
+    {
+        "id" : "RefToUnmanagedInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "ref_to_unmanaged"
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "RefToUnownedInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "ref_to_unowned"
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "ReleaseValueInst",
+        "kind" : "inst"
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "release_value",
+        "parent" : "RefCountingInst",
+    },
+    {
+        "id" : "RetainValueInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "RefCountingInst"
+        "textual_name" : "retain_value",
+        "kind" : "inst",
+    },
+    {
+        "id" : "SelectEnumAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayRead"
+        "textual_name" : "select_enum_addr",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "SelectEnumInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "select_enum",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "SelectValueInst",
+        "kind" : "inst",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "select_value",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "SetDeallocatingInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "set_deallocating"
+        "parent" : "RefCountingInst",
+    },
+    {
+        "id" : "StoreBorrowInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "textual_name" : "store_borrow",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "StoreInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "textual_name" : "store",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "StoreUnownedInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "parent" : "SILInstruction"
+        "textual_name" : "store_unowned",
+    },
+    {
+        "id" : "StoreWeakInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "textual_name" : "store_weak",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "StringLiteralInst",
+        "kind" : "inst",
+        "mem_behavior" : "None",
+        "parent" : "LiteralInst"
+        "textual_name" : "string_literal",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "SILInstruction"
+        "textual_name" : "strong_pin",
+        "id" : "StrongPinInst",
+    },
+    {
+        "id" : "StrongReleaseInst",
+        "kind" : "inst",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "RefCountingInst"
+        "textual_name" : "strong_release",
+        "may_release" : "MayRelease",
+    },
+    {
+        "id" : "StrongRetainInst",
+        "kind" : "inst",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "RefCountingInst"
+        "textual_name" : "strong_retain",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "StrongRetainUnownedInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "RefCountingInst"
+        "textual_name" : "strong_retain_unowned",
+    },
+    {
+        "id" : "StrongUnpinInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "strong_unpin",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "StructElementAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "struct_element_addr",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "StructExtractInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "struct_extract",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "StructInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "struct"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "SuperMethodInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "MethodInst"
+        "textual_name" : "super_method",
+        "kind" : "inst",
+    },
+    {
+        "id" : "TailAddrInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "IndexingInst"
+        "textual_name" : "tail_addr",
+        "kind" : "inst",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "thick_to_objc_metatype",
+        "id" : "ThickToObjCMetatypeInst",
+    },
+    {
+        "id" : "ThinFunctionToPointerInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "thin_function_to_pointer",
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "ThinToThickFunctionInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "ConversionInst"
+        "textual_name" : "thin_to_thick_function",
+        "mem_behavior" : "None",
+    },
+    {
+        "id" : "TupleElementAddrInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "tuple_element_addr"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "TupleExtractInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "tuple_extract",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "TupleInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "tuple",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "UncheckedAddrCastInst"
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "unchecked_addr_cast",
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "UncheckedBitwiseCastInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "unchecked_bitwise_cast",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "SILInstruction"
+        "textual_name" : "unchecked_enum_data",
+        "id" : "UncheckedEnumDataInst",
+    },
+    {
+        "id" : "UncheckedRefCastAddrInst",
+        "kind" : "inst",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "SILInstruction"
+        "textual_name" : "unchecked_ref_cast_addr",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "UncheckedRefCastInst",
+        "kind" : "inst"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "unchecked_ref_cast",
+        "parent" : "ConversionInst",
+    },
+    {
+        "id" : "UncheckedTakeEnumDataAddrInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayWrite",
+        "parent" : "SILInstruction"
+        "textual_name" : "unchecked_take_enum_data_addr",
+        "kind" : "inst",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "unchecked_trivial_bit_cast",
+        "id" : "UncheckedTrivialBitCastInst",
+    },
+    {
+        "id" : "UnconditionalCheckedCastAddrInst"
+        "kind" : "inst",
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "unconditional_checked_cast_addr",
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "UnconditionalCheckedCastInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "ConversionInst"
+        "textual_name" : "unconditional_checked_cast",
+        "mem_behavior" : "None",
+    },
+    {
+        "id" : "UnmanagedToRefInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "parent" : "ConversionInst"
+        "textual_name" : "unmanaged_to_ref",
+        "mem_behavior" : "None",
+    },
+    {
+        "id" : "UnownedReleaseInst",
+        "kind" : "inst",
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects"
+        "textual_name" : "unowned_release",
+        "parent" : "RefCountingInst",
+    },
+    {
+        "id" : "UnownedRetainInst",
+        "kind" : "inst",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "RefCountingInst"
+        "textual_name" : "unowned_retain",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "id" : "UnownedToRefInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "unowned_to_ref",
+    },
+    {
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "ConversionInst"
+        "textual_name" : "upcast",
+        "id" : "UpcastInst",
+    },
+    {
+        "id" : "ValueMetatypeInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "value_metatype"
+        "parent" : "SILInstruction",
+    },
+    {
+        "id" : "WitnessMethodInst",
+        "kind" : "inst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "witness_method",
+        "parent" : "MethodInst",
+    },
+    {
+        "id" : "BranchInst",
+        "kind" : "terminator",
+        "mem_behavior" : "None",
+        "parent" : "TermInst"
+        "textual_name" : "br",
+        "may_release" : "DoesNotRelease",
+    },
+    {
+        "kind" : "terminator",
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "parent" : "TermInst"
+        "textual_name" : "checked_cast_addr_br",
+        "id" : "CheckedCastAddrBranchInst",
+    },
+    {
+        "id" : "CheckedCastBranchInst",
+        "kind" : "terminator",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None"
+        "textual_name" : "checked_cast_br",
+        "parent" : "TermInst",
+    },
+    {
+        "id" : "CondBranchInst"
+        "kind" : "terminator",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "cond_br",
+        "parent" : "TermInst",
+    },
+    {
+        "id" : "DynamicMethodBranchInst"
+        "kind" : "terminator",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "dynamic_method_br",
+        "parent" : "TermInst",
+    },
+    {
+        "id" : "ReturnInst",
+        "kind" : "terminator"
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "return",
+        "parent" : "TermInst",
+    },
+    {
+        "id" : "SwitchEnumAddrInst",
+        "kind" : "terminator",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "MayRead",
+        "parent" : "TermInst"
+        "textual_name" : "switch_enum_addr",
+    },
+    {
+        "id" : "SwitchEnumInst"
+        "kind" : "terminator",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "switch_enum",
+        "parent" : "TermInst",
+    },
+    {
+        "id" : "SwitchValueInst",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "TermInst"
+        "textual_name" : "switch_value",
+        "kind" : "terminator",
+    },
+    {
+        "id" : "ThrowInst",
+        "kind" : "terminator",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "parent" : "TermInst"
+        "textual_name" : "throw",
+    },
+    {
+        "id" : "TryApplyInst",
+        "kind" : "terminator"
+        "may_release" : "MayRelease",
+        "mem_behavior" : "MayHaveSideEffects",
+        "textual_name" : "try_apply",
+        "parent" : "TermInst",
+    },
+    {
+        "id" : "UnreachableInst",
+        "kind" : "terminator",
+        "may_release" : "DoesNotRelease",
+        "mem_behavior" : "None",
+        "textual_name" : "unreachable"
+        "parent" : "TermInst",
+    },
+    {
+        "id" : "SILArgument"
+        "kind" : "value",
+        "parent" : "ValueBase",
+    },
+    {
+        "id" : "SILUndef",
+        "kind" : "value"
+        "parent" : "ValueBase",
+    },
+    {
+        "first" : "AllocStackInst",
+        "kind" : "value_range"
+        "last" : "AllocExistentialBoxInst",
+        "id" : "AllocationInst",
+    },
+    {
+        "id" : "ConversionInst",
+        "kind" : "value_range"
+        "last" : "UnconditionalCheckedCastInst",
+        "first" : "UpcastInst",
+    },
+    {
+        "first" : "DeallocStackInst"
+        "id" : "DeallocationInst",
+        "last" : "DeallocExistentialBoxInst",
+        "kind" : "value_range",
+    },
+    {
+        "first" : "IndexAddrInst",
+        "kind" : "value_range"
+        "last" : "IndexRawPointerInst",
+        "id" : "IndexingInst",
+    },
+    {
+        "id" : "LiteralInst",
+        "kind" : "value_range"
+        "last" : "StringLiteralInst",
+        "first" : "FunctionRefInst",
+    },
+    {
+        "first" : "ClassMethodInst",
+        "id" : "MethodInst"
+        "last" : "DynamicMethodInst",
+        "kind" : "value_range",
+    },
+    {
+        "first" : "StrongRetainInst"
+        "id" : "RefCountingInst",
+        "last" : "AutoreleaseValueInst",
+        "kind" : "value_range",
+    },
+    {
+        "first" : "AllocStackInst",
+        "kind" : "value_range",
+        "last" : "CheckedCastAddrBranchInst"
+        "id" : "SILInstruction",
+    },
+    {
+        "first" : "UnreachableInst",
+        "id" : "TermInst",
+        "kind" : "value_range",
+        "last" : "CheckedCastAddrBranchInst"
+    }
+]

@@ -33,6 +33,16 @@
 #define INST(Id, Parent, TextualName, MemBehavior, MayRelease) VALUE(Id, Parent)
 #endif
 
+#ifndef CONSTANT_OWNERSHIP_INST
+#define CONSTANT_OWNERSHIP_INST(Id, Parent, TextualName, MemBehavior, MayRelease, Ownership) \
+        INST(Id, Parent, TextualName, MemBehavior, MayRelease)
+#endif
+
+#ifndef FORWARDING_OWNERSHIP_INST
+#define FORWARDING_OWNERSHIP_INST(Id, Parent, TextualName, MemBehavior, MayRelease) \
+        INST(Id, Parent, TextualName, MemBehavior, MayRelease)
+#endif
+
 /// TERMINATOR(Id, Parent, TextualName, MemBehavior, MayRelease)
 ///   Expands for terminator instructions. The expression enumerator value is a
 ///   ValueKind.  The node's class name is Id, and the name of its base class
@@ -67,16 +77,15 @@ VALUE(SILUndef, ValueBase)
 
 // Please keep the order of instructions consistent with the order of their
 // descriptions in the SIL reference in docs/SIL.rst.
-
 ABSTRACT_VALUE(SILInstruction, ValueBase)
   // Allocation instructions.
   ABSTRACT_VALUE(AllocationInst, SILInstruction)
     INST(AllocStackInst, AllocationInst, alloc_stack, None, DoesNotRelease)
-    INST(AllocRefInst, AllocationInst, alloc_ref, None, DoesNotRelease)
+    CONSTANT_OWNERSHIP_INST(AllocRefInst, AllocationInst, alloc_ref, None, DoesNotRelease, Owned)
     INST(AllocRefDynamicInst, AllocationInst, alloc_ref_dynamic, None, DoesNotRelease)
     INST(AllocValueBufferInst, AllocationInst, alloc_value_buffer, None, DoesNotRelease)
-    INST(AllocBoxInst, AllocationInst, alloc_box, None, DoesNotRelease)
-    INST(AllocExistentialBoxInst, AllocationInst, alloc_existential_box, MayWrite, DoesNotRelease)
+    CONSTANT_OWNERSHIP_INST(AllocBoxInst, AllocationInst, alloc_box, None, DoesNotRelease, Owned)
+    CONSTANT_OWNERSHIP_INST(AllocExistentialBoxInst, AllocationInst, alloc_existential_box, MayWrite, DoesNotRelease, Owned)
     VALUE_RANGE(AllocationInst, AllocStackInst, AllocExistentialBoxInst)
 
   // Deallocation instructions.
@@ -102,7 +111,7 @@ ABSTRACT_VALUE(SILInstruction, ValueBase)
   INST(StoreInst, SILInstruction, store, MayWrite, DoesNotRelease)
   INST(StoreBorrowInst, SILInstruction, store_borrow, MayWrite, DoesNotRelease)
   INST(AssignInst, SILInstruction, assign, MayWrite, DoesNotRelease)
-  INST(MarkUninitializedInst, SILInstruction, mark_uninitialized, None, DoesNotRelease)
+  CONSTANT_OWNERSHIP_INST(MarkUninitializedInst, SILInstruction, mark_uninitialized, None, DoesNotRelease, Trivial)
   INST(MarkUninitializedBehaviorInst, SILInstruction, mark_uninitialized_behavior, None, DoesNotRelease)
   INST(MarkFunctionEscapeInst, SILInstruction, mark_function_escape, None, DoesNotRelease)
   INST(DebugValueInst, SILInstruction, debug_value, None, DoesNotRelease)
@@ -225,7 +234,7 @@ ABSTRACT_VALUE(SILInstruction, ValueBase)
   // Conversions
   ABSTRACT_VALUE(ConversionInst, SILInstruction)
     INST(UpcastInst, ConversionInst, upcast, None, DoesNotRelease)
-    INST(AddressToPointerInst, ConversionInst, address_to_pointer, None, DoesNotRelease)
+    CONSTANT_OWNERSHIP_INST(AddressToPointerInst, ConversionInst, address_to_pointer, None, DoesNotRelease, Trivial)
     INST(PointerToAddressInst, ConversionInst, pointer_to_address, None, DoesNotRelease)
     INST(UncheckedRefCastInst, ConversionInst, unchecked_ref_cast, None, DoesNotRelease)
     INST(UncheckedAddrCastInst, ConversionInst, unchecked_addr_cast, None, DoesNotRelease)
@@ -283,5 +292,8 @@ ABSTRACT_VALUE(SILInstruction, ValueBase)
 #undef VALUE_RANGE
 #undef ABSTRACT_VALUE
 #undef TERMINATOR
+#undef SPECIAL_OWNERSHIP_INST
+#undef FORWARDING_OWNERSHIP_INST
+#undef CONSTANT_OWNERSHIP_INST
 #undef INST
 #undef VALUE

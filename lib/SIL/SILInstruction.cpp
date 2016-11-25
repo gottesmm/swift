@@ -1053,67 +1053,19 @@ public:
 
 } // end anonymous namespace
 
-#define NO_OWNERSHIP_INST(INST)                                                \
-  ValueOwnershipKind ValueOwnershipKindVisitor::visit##INST##Inst(             \
-      INST##Inst *V) {                                                         \
+#define INST(Id, Parent, TextualName, MemBehavior, MayRelease)                     \
+  ValueOwnershipKind ValueOwnershipKindVisitor::visit##Id##Inst(             \
+      Id##Inst *V) {                                                         \
     assert(!V->hasValue() && "Expected instruction to not have value");        \
     return ValueOwnershipKind::None;                                           \
   }
-NO_OWNERSHIP_INST(AllocGlobal)
-NO_OWNERSHIP_INST(Assign)
-NO_OWNERSHIP_INST(AutoreleaseValue)
-NO_OWNERSHIP_INST(BindMemory)
-NO_OWNERSHIP_INST(Branch)
-NO_OWNERSHIP_INST(CheckedCastAddrBranch)
-NO_OWNERSHIP_INST(CheckedCastBranch)
-NO_OWNERSHIP_INST(CondBranch)
-NO_OWNERSHIP_INST(CondFail)
-NO_OWNERSHIP_INST(CopyAddr)
-NO_OWNERSHIP_INST(DeallocBox)
-NO_OWNERSHIP_INST(DeallocExistentialBox)
-NO_OWNERSHIP_INST(DeallocPartialRef)
-NO_OWNERSHIP_INST(DeallocRef)
-NO_OWNERSHIP_INST(DeallocStack)
-NO_OWNERSHIP_INST(DeallocValueBuffer)
-NO_OWNERSHIP_INST(DebugValue)
-NO_OWNERSHIP_INST(DebugValueAddr)
-NO_OWNERSHIP_INST(DeinitExistentialAddr)
-NO_OWNERSHIP_INST(DestroyAddr)
-NO_OWNERSHIP_INST(DestroyValue)
-NO_OWNERSHIP_INST(DynamicMethodBranch)
-NO_OWNERSHIP_INST(EndBorrow)
-NO_OWNERSHIP_INST(FixLifetime)
-NO_OWNERSHIP_INST(InjectEnumAddr)
-NO_OWNERSHIP_INST(MarkFunctionEscape)
-NO_OWNERSHIP_INST(MarkUninitializedBehavior)
-NO_OWNERSHIP_INST(ReleaseValue)
-NO_OWNERSHIP_INST(RetainValue)
-NO_OWNERSHIP_INST(Return)
-NO_OWNERSHIP_INST(SetDeallocating)
-NO_OWNERSHIP_INST(Store)
-NO_OWNERSHIP_INST(StoreUnowned)
-NO_OWNERSHIP_INST(StoreWeak)
-NO_OWNERSHIP_INST(StrongRelease)
-NO_OWNERSHIP_INST(StrongRetain)
-NO_OWNERSHIP_INST(StrongRetainUnowned)
-NO_OWNERSHIP_INST(StrongUnpin)
-NO_OWNERSHIP_INST(SwitchEnum)
-NO_OWNERSHIP_INST(SwitchEnumAddr)
-NO_OWNERSHIP_INST(SwitchValue)
-NO_OWNERSHIP_INST(TailAddr)
-NO_OWNERSHIP_INST(Throw)
-NO_OWNERSHIP_INST(TryApply)
-NO_OWNERSHIP_INST(UnownedRelease)
-NO_OWNERSHIP_INST(UnownedRetain)
-NO_OWNERSHIP_INST(Unreachable)
-#undef NO_OWNERSHIP_INST
-
 #define CONSTANT_OWNERSHIP_INST(INST, OWNERSHIP)                               \
   ValueOwnershipKind ValueOwnershipKindVisitor::visit##INST##Inst(             \
       INST##Inst *Arg) {                                                       \
     assert(Arg->hasValue() && "Expected to have a result");                    \
     return ValueOwnershipKind::OWNERSHIP;                                      \
   }
+#include "swift/SIL/SILNodes.def"
 CONSTANT_OWNERSHIP_INST(MarkUninitialized, Trivial)
 CONSTANT_OWNERSHIP_INST(AddressToPointer, Trivial)
 CONSTANT_OWNERSHIP_INST(AllocBox, Owned)

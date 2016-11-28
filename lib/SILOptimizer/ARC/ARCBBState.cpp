@@ -165,7 +165,7 @@ ARCBBStateInfo::ARCBBStateInfo(SILFunction *F, PostOrderAnalysis *POA,
     BBIDToTopDownBBStateMap[BBID].init(BB, IsLeakingBB);
 
     for (auto &Succ : BB->getSuccessors())
-      if (SILBasicBlock *SuccBB = Succ.getBB())
+      if (SILBasicBlock *SuccBB = Succ.getBlock())
         if (BBToBBIDMap.count(SuccBB))
           BackedgeMap[BB].insert(SuccBB);
   }

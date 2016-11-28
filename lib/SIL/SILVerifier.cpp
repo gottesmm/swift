@@ -3543,7 +3543,7 @@ public:
                     "return with stack allocs that haven't been deallocated");
           }
           for (auto &successor : term->getSuccessors()) {
-            SILBasicBlock *SuccBB = successor.getBB();
+            SILBasicBlock *SuccBB = successor.getBlock();
             auto found = visitedBBs.find(SuccBB);
             if (found != visitedBBs.end()) {
               // Check that the stack height is consistent coming from all entry

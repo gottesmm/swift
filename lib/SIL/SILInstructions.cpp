@@ -1096,8 +1096,8 @@ MutableArrayRef<Operand> CondBranchInst::getFalseOperands() {
 
 void CondBranchInst::swapSuccessors() {
   // Swap our destinations.
-  SILBasicBlock *First = DestBBs[0].getBB();
-  DestBBs[0] = DestBBs[1].getBB();
+  SILBasicBlock *First = DestBBs[0].getBlock();
+  DestBBs[0] = DestBBs[1].getBlock();
   DestBBs[1] = First;
 
   // If we don't have any arguments return.

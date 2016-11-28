@@ -1072,8 +1072,8 @@ void EscapeAnalysis::buildConnectionGraph(FunctionInfo *FInfo,
       analyzeInstruction(&I, FInfo, BottomUpOrder, RecursionDepth);
     }
     for (auto &Succ : BB->getSuccessors()) {
-      if (VisitedBlocks.insert(Succ.getBB()).second)
-        WorkList.push_back(Succ.getBB());
+      if (VisitedBlocks.insert(Succ.getBlock()).second)
+        WorkList.push_back(Succ.getBlock());
     }
   }
 

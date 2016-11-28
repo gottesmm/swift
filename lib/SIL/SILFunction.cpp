@@ -315,7 +315,7 @@ struct DOTGraphTraits<SILFunction *> : public DefaultDOTGraphTraits {
 
   static std::string getEdgeSourceLabel(const SILBasicBlock *Node,
                                         SILBasicBlock::const_succ_iterator I) {
-    SILBasicBlock *Succ = I->getBB();
+    SILBasicBlock *Succ = I->getBlock();
     const TermInst *Term = Node->getTerminator();
 
     // Label source of conditional branches with "T" or "F"

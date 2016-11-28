@@ -886,11 +886,11 @@ static bool sinkIncrementsIntoSwitchRegions(SILBasicBlock *BB, AliasAnalysis *AA
   // us.
   // If that condition is not true, we can still sink to the end of this BB,
   // but not to successors.
-  bool CanSinkToSuccessor = std::none_of(BB->succ_begin(), BB->succ_end(),
-    [](const SILSuccessor &S) -> bool {
-      SILBasicBlock *SuccBB = S.getBB();
-      return !SuccBB || !SuccBB->getSinglePredecessorBlock();
-  });
+  bool CanSinkToSuccessor = std::none_of(
+      BB->succ_begin(), BB->succ_end(), [](const SILSuccessor &S) -> bool {
+        SILBasicBlock *SuccBB = S.getBlock();
+        return !SuccBB || !SuccBB->getSinglePredecessorBlock();
+      });
 
   SILInstruction *S = BB->getTerminator();
   auto SI = S->getIterator(), SE = BB->begin();

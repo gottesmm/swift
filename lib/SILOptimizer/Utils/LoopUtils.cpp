@@ -188,7 +188,7 @@ static bool canonicalizeLoopExitBlocks(SILLoop *L, DominanceInfo *DT,
       // indices, we will visit all exiting block edges appropriately and not
       // deal with touching stale memory.
       auto Succs = ExitingBlock->getSuccessors();
-      auto *SuccBB = Succs[i].getBB();
+      auto *SuccBB = Succs[i].getBlock();
 
       // Add only exit block successors by skipping blocks in the loop.
       if (LI->getLoopFor(SuccBB) == L)

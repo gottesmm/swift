@@ -439,9 +439,9 @@ static SILInstruction *getPrecedingCallToNoReturn(SILBasicBlock &BB) {
 
     // The predecessor must be the normal edge from a try_apply
     // that invokes a noreturn function.
-    if (auto TAI = dyn_cast<TryApplyInst>((*i)->getTerminator())) {
+    if (auto TAI = dyn_cast<TryApplyInst>((*i).getTerminator())) {
       if (TAI->isCalleeNoReturn() &&
-          TAI->isNormalSuccessorRef(i.getSuccessorRef())) {
+          TAI->isNormalSuccessorRef(*i)) {
         if (!first) first = TAI;
         continue;
       }

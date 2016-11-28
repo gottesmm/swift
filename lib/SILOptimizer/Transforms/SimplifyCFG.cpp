@@ -331,7 +331,7 @@ public:
              "Threaded terminator does not have enough successors");
 
       auto *ThreadedSuccessorBlock =
-          Src->getSuccessors()[ThreadedSuccessorIdx].getBB();
+          Src->getSuccessors()[ThreadedSuccessorIdx].getBlock();
       auto Args = ThreadedSuccessorIdx == 0 ? CondTerm->getTrueArgs()
                                             : CondTerm->getFalseArgs();
 
@@ -418,7 +418,7 @@ static SILInstruction *createValueForEdge(SILInstruction *UserInst,
         CBI->getLoc(), CBI->getCondition()->getType(), EdgeIdx == 0 ? -1 : 0);
 
   auto *SEI = cast<SwitchEnumInst>(DominatingTerminator);
-  auto *DstBlock = SEI->getSuccessors()[EdgeIdx].getBB();
+  auto *DstBlock = SEI->getSuccessors()[EdgeIdx].getBlock();
   auto Case = SEI->getUniqueCaseForDestination(DstBlock);
   assert(Case && "No unique case found for destination block");
   return createEnumElement(Builder, SEI, Case.get());
@@ -455,7 +455,7 @@ static bool tryDominatorBasedSimplifications(
   // value on which we switch/cond_branch.
   auto Succs = DominatingBB->getSuccessors();
   for (unsigned Idx = 0; Idx < Succs.size(); ++Idx) {
-    auto *DominatingSuccBB = Succs[Idx].getBB();
+    auto *DominatingSuccBB = Succs[Idx].getBlock();
 
     EnumElementDecl *EnumCase = nullptr;
     if (!isKnownEdgeValue(DominatingTerminator, DominatingSuccBB, EnumCase))

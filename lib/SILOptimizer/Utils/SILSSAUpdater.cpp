@@ -285,7 +285,7 @@ public:
     }
 
     SILValue getIncomingValue() {
-      return getValueForBlock(Idx, BB, (*PredIt)->getTerminator());
+      return getValueForBlock(Idx, BB, (*PredIt).getTerminator());
     }
 
     SILBasicBlock *getIncomingBlock() {

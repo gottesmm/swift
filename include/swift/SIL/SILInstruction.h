@@ -5186,7 +5186,7 @@ public:
   std::pair<EnumElementDecl*, SILBasicBlock*>
   getCase(unsigned i) const {
     assert(i < NumCases && "case out of bounds");
-    return {getCaseBuf()[i], getSuccessorBuf()[i].getBB()};
+    return {getCaseBuf()[i], getSuccessorBuf()[i].getBlock()};
   }
 
   /// \brief Return the block that will be branched to on the specified enum
@@ -5485,13 +5485,13 @@ public:
     return DestBBs;
   }
 
-  bool isNormalSuccessorRef(SILSuccessor *successor) const {
-    assert(successor == &DestBBs[0] || successor == &DestBBs[1]);
-    return successor == &DestBBs[0];
+  bool isNormalSuccessorRef(const SILSuccessor &successor) const {
+    assert(&successor == &DestBBs[0] || &successor == &DestBBs[1]);
+    return &successor == &DestBBs[0];
   }
-  bool isErrorSuccessorRef(SILSuccessor *successor) const {
-    assert(successor == &DestBBs[0] || successor == &DestBBs[1]);
-    return successor == &DestBBs[1];
+  bool isErrorSuccessorRef(const SILSuccessor &successor) const {
+    assert(&successor == &DestBBs[0] || &successor == &DestBBs[1]);
+    return &successor == &DestBBs[1];
   }  
 
   SILBasicBlock *getNormalBB() { return DestBBs[NormalIdx]; }

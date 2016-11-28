@@ -29,20 +29,22 @@ class SILArgument;
 class SILPHIArgument;
 class SILFunctionArgument;
 
-class SILBasicBlock :
-public llvm::ilist_node<SILBasicBlock>, public SILAllocated<SILBasicBlock> {
+class SILBasicBlock : public llvm::ilist_node<SILBasicBlock>,
+                      public SILAllocated<SILBasicBlock> {
   friend class SILSuccessor;
   friend class SILFunction;
 public:
   using InstListType = llvm::iplist<SILInstruction>;
+  using SuccessorListType = llvm::iplist<SILSuccessor>;
+
 private:
   /// A backreference to the containing SILFunction.
   SILFunction *Parent;
 
-  /// PrevList - This is a list of all of the terminator operands that are
-  /// branching to this block, forming the predecessor list.  This is
-  /// automatically managed by the SILSuccessor class.
-  SILSuccessor *PredList;
+  /// This is a list of all of the terminator operands that are branching to
+  /// this block, forming the predecessor list.  This is automatically managed
+  /// by the SILSuccessor class.
+  SuccessorListType PredList;
 
   /// This is the list of basic block arguments for this block.
   std::vector<SILArgument *> ArgumentList;
@@ -274,25 +276,52 @@ public:
   /// Return the range of SILBasicBlocks that are successors of this block.
   SuccessorBlockListTy getSuccessorBlocks() {
     using FuncTy = std::function<SILBasicBlock *(const SILSuccessor &)>;
-    FuncTy F(&SILSuccessor::getBB);
+    FuncTy F(&SILSuccessor::getBlock);
     return makeTransformRange(getSuccessors(), F);
   }
 
   /// Return the range of SILBasicBlocks that are successors of this block.
   ConstSuccessorBlockListTy getSuccessorBlocks() const {
     using FuncTy = std::function<const SILBasicBlock *(const SILSuccessor &)>;
-    FuncTy F(&SILSuccessor::getBB);
+    FuncTy F(&SILSuccessor::getBlock);
     return makeTransformRange(getSuccessors(), F);
   }
 
-  using pred_iterator = SILSuccessorIterator;
+  using pred_iterator = decltype(PredList)::iterator;
+  using const_pred_iterator = decltype(PredList)::const_iterator;
 
-  bool pred_empty() const { return PredList == nullptr; }
-  pred_iterator pred_begin() const { return pred_iterator(PredList); }
-  pred_iterator pred_end() const { return pred_iterator(); }
+  bool pred_empty() const { return PredList.empty(); }
+  pred_iterator pred_begin() { return PredList.begin(); }
+  pred_iterator pred_end() { return PredList.end(); }
+  const_pred_iterator pred_begin() const { return PredList.begin(); }
+  const_pred_iterator pred_end() const { return PredList.end(); }
 
-  iterator_range<pred_iterator> getPredecessorBlocks() const {
-    return {pred_begin(), pred_end()};
+  using PredBlockListTy =
+      TransformRange<decltype(PredList),
+                     std::function<SILBasicBlock *(const SILSuccessor &)>>;
+  using ConstPredBlockTransformTy =
+      std::function<const SILBasicBlock *(const SILSuccessor &)>;
+  using PredBlockTransformTy =
+      std::function<SILBasicBlock *(const SILSuccessor &)>;
+
+  auto getPredecessorBlocks() const -> decltype(llvm::make_range(
+      llvm::map_iterator(PredList.begin(),
+                         ConstPredBlockTransformTy(&SILSuccessor::getBlock)),
+      llvm::map_iterator(PredList.end(),
+                         ConstPredBlockTransformTy(&SILSuccessor::getBlock)))) {
+    ConstPredBlockTransformTy F(&SILSuccessor::getBlock);
+    return llvm::make_range(llvm::map_iterator(PredList.begin(), F),
+                            llvm::map_iterator(PredList.end(), F));
+  }
+
+  auto getPredecessorBlocks() -> decltype(llvm::make_range(
+      llvm::map_iterator(PredList.begin(),
+                         PredBlockTransformTy(&SILSuccessor::getBlock)),
+      llvm::map_iterator(PredList.end(),
+                         PredBlockTransformTy(&SILSuccessor::getBlock)))) {
+    PredBlockTransformTy F(&SILSuccessor::getBlock);
+    return llvm::make_range(llvm::map_iterator(PredList.begin(), F),
+                            llvm::map_iterator(PredList.end(), F));
   }
 
   bool isPredecessorBlock(SILBasicBlock *BB) const {

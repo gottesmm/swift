@@ -2009,7 +2009,7 @@ void PatternMatchEmission::emitSharedCaseBlocks() {
     } else {
       // Otherwise, move the block to after the first predecessor.
       assert(!caseBB->pred_empty() && "Emitted an unused shared block?");
-      auto predBB = *caseBB->pred_begin();
+      SILBasicBlock *predBB = *caseBB->pred_begin();
       caseBB->moveAfter(predBB);
 
       // Then emit the case body into the caseBB.

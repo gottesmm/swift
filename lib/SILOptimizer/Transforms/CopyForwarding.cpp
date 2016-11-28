@@ -1018,7 +1018,7 @@ void CopyForwarding::forwardCopiesOf(SILValue Def, SILFunction *F) {
       continue;
 
     for (unsigned EdgeIdx = 0, End = Succs.size(); EdgeIdx != End; ++EdgeIdx) {
-      if (DeadInBlocks.count(Succs[EdgeIdx].getBB()))
+      if (DeadInBlocks.count(Succs[EdgeIdx].getBlock()))
         DeadInSuccs.push_back(EdgeIdx);
     }
     if (DeadInSuccs.size() == Succs.size() &&

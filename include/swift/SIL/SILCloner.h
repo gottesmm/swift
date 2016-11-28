@@ -406,9 +406,9 @@ SILCloner<ImplClass>::visitSILBasicBlock(SILBasicBlock* BB) {
     if (BBI == BBMap.end()) {
       // Map the successor to a new BB.
       auto *MappedBB = F.createBasicBlock();
-      BBMap.insert(std::make_pair(Succ.getBB(), MappedBB));
+      BBMap.insert(std::make_pair(Succ.getBlock(), MappedBB));
       // Create new arguments for each of the original block's arguments.
-      for (auto *Arg : Succ.getBB()->getPHIArguments()) {
+      for (auto *Arg : Succ.getBlock()->getPHIArguments()) {
         SILValue MappedArg = MappedBB->createPHIArgument(
             getOpType(Arg->getType()), Arg->getOwnershipKind());
 
@@ -421,7 +421,7 @@ SILCloner<ImplClass>::visitSILBasicBlock(SILBasicBlock* BB) {
       // Set the insertion point to the new mapped BB
       getBuilder().setInsertionPoint(MappedBB);
       // Recurse into the successor
-      visitSILBasicBlock(Succ.getBB());
+      visitSILBasicBlock(Succ.getBlock());
     }
   }
 }

@@ -598,7 +598,7 @@ LifetimeChecker::LifetimeChecker(const DIMemoryObjectInfo &TheMemory,
 
   // Mark blocks where the self value has been consumed.
   for (auto *I : FailableInits) {
-    auto *bb = I->getSuccessors()[1].getBB();
+    auto *bb = I->getSuccessors()[1].getBlock();
 
     // Horrible hack. Failing inits create critical edges, where all
     // 'return nil's end up. We'll split the edge later.
@@ -2115,7 +2115,7 @@ SILValue LifetimeChecker::handleConditionalInitAssign() {
   // At each failure block, mark the self value as having been consumed.
   if (HasConditionalSelfConsumed) {
     for (auto *I : FailableInits) {
-      auto *bb = I->getSuccessors()[1].getBB();
+      auto *bb = I->getSuccessors()[1].getBlock();
 
       bool criticalEdge = isCriticalEdge(I, 1);
       if (criticalEdge)

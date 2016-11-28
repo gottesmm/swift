@@ -315,7 +315,7 @@ SILBasicBlock *ConstantTracker::getTakenBlock(TermInst *term) {
 int ShortestPathAnalysis::getEntryDistFromPreds(const SILBasicBlock *BB,
                                                 int LoopDepth) {
   int MinDist = InitialDist;
-  for (SILBasicBlock *Pred : BB->getPredecessorBlocks()) {
+  for (const SILBasicBlock *Pred : BB->getPredecessorBlocks()) {
     BlockInfo *PredInfo = getBlockInfo(Pred);
     Distances &PDists = PredInfo->getDistances(LoopDepth);
     int DistFromEntry = PDists.DistFromEntry + PredInfo->Length +

@@ -29,7 +29,7 @@ using namespace swift;
 //===----------------------------------------------------------------------===//
 
 SILBasicBlock::SILBasicBlock(SILFunction *parent, SILBasicBlock *afterBB)
-    : Parent(parent), PredList(nullptr) {
+    : Parent(parent), PredList() {
   if (afterBB) {
     parent->getBlocks().insertAfter(afterBB->getIterator(), this);
   } else {

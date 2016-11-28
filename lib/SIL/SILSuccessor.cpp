@@ -12,34 +12,26 @@
 
 #include "swift/SIL/SILSuccessor.h"
 #include "swift/SIL/SILBasicBlock.h"
+
 using namespace swift;
 
-void SILSuccessor::operator=(SILBasicBlock *BB) {
+void SILSuccessor::operator=(SILBasicBlock *NewBlock) {
   // If we're not changing anything, we're done.
-  if (SuccessorBlock == BB) return;
-  
+  if (SuccessorBlock == NewBlock)
+    return;
+
   assert(ContainingInst &&"init method not called after default construction?");
-  
+
   // If we were already pointing to a basic block, remove ourself from its
   // predecessor list.
   if (SuccessorBlock) {
-    *Prev = Next;
-    if (Next) Next->Prev = Prev;
+    SuccessorBlock->PredList.remove(this);
   }
   
   // If we have a successor, add ourself to its prev list.
-  if (BB) {
-    Prev = &BB->PredList;
-    Next = BB->PredList;
-    if (Next) Next->Prev = &Next;
-    BB->PredList = this;
+  if (NewBlock) {
+    NewBlock->PredList.push_back(this);
   }
-  
-  SuccessorBlock = BB;
-}
 
-// Dereferencing the SuccIterator returns the predecessor's SILBasicBlock.
-SILBasicBlock *SILSuccessorIterator::operator*() {
-  assert(Cur && "Can't deference end (or default constructed) iterator");
-  return Cur->ContainingInst->getParent();
+  SuccessorBlock = NewBlock;
 }

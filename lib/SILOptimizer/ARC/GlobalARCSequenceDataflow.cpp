@@ -328,7 +328,7 @@ mergeSuccessors(ARCBBStateInfoHandle &DataHandle) {
   bool HasAtLeastOneSucc = false;
   for (unsigned i = 0, e = Succs.size(); i != e; ++i) {
     // If it does not have a basic block associated with it...
-    auto *SuccBB = Succs[i].getBB();
+    auto *SuccBB = Succs[i].getBlock();
 
     // Skip it.
     if (!SuccBB)

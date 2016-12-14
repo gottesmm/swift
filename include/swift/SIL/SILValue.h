@@ -127,7 +127,6 @@ public:
     assert(use_empty() && "Cannot destroy a value that still has uses!");
   }
 
-
   ValueKind getKind() const { return Kind; }
 
   /// True if the "value" is actually a value that can be used by other
@@ -137,6 +136,8 @@ public:
   SILType getType() const {
     return Type;
   }
+
+  ValueOwnershipKind getOwnershipKind() const;
 
   /// Replace every use of a result of this instruction with the corresponding
   /// result from RHS. The method assumes that both instructions have the same
@@ -187,6 +188,9 @@ public:
   /// If this is a SILArgument or a SILInstruction get its parent module,
   /// otherwise return null.
   SILModule *getModule() const;
+
+  /// Verify that this ValueBase and its uses respects ownership invariants.
+  void verifyOwnership() const;
 };
 
 inline llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,

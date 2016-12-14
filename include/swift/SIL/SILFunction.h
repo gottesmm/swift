@@ -301,6 +301,10 @@ public:
     HasQualifiedOwnership = false;
   }
 
+  SILResultInfo getSingleResult() const {
+    return getLoweredFunctionType()->getSingleResult();
+  }
+
   /// Returns the calling convention used by this entry point.
   SILFunctionTypeRepresentation getRepresentation() const {
     return getLoweredFunctionType()->getRepresentation();

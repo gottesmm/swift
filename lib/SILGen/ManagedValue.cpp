@@ -24,7 +24,7 @@ using namespace Lowering;
 
 /// Emit a copy of this value with independent ownership.
 ManagedValue ManagedValue::copy(SILGenFunction &gen, SILLocation l) {
-  if (!cleanup.isValid()) {
+  if (!hasCleanup()) {
     assert(gen.getTypeLowering(getType()).isTrivial());
     return *this;
   }
@@ -93,6 +93,12 @@ void ManagedValue::forwardInto(SILGenFunction &gen, SILLocation loc,
     forwardCleanup(gen);
   auto &addrTL = gen.getTypeLowering(address->getType());
   gen.emitSemanticStore(loc, getValue(), address, addrTL, IsInitialization);
+}
+
+void ManagedValue::cleanup(SILGenFunction &gen, CleanupLocation loc) const {
+  if (!hasCleanup())
+    return;
+  gen.Cleanups.emitCleanup(getCleanup(), loc);
 }
 
 void ManagedValue::assignInto(SILGenFunction &gen, SILLocation loc,

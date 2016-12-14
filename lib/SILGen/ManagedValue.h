@@ -26,6 +26,7 @@
 #include "swift/SIL/SILValue.h"
 
 namespace swift {
+
 enum class CastConsumptionKind : unsigned char;
 
 namespace Lowering {
@@ -44,8 +45,9 @@ namespace Lowering {
 ///                this represents a value that was emitted directly into an
 ///                initialization stored by an SGFContext.
 ///
-/// The RValue cases may or may not have a cleanup associated with the value.
-/// A cleanup is associated with +1 values of non-trivial type.
+/// The RValue cases may or may not have a cleanup associated with the value.  A
+/// cleanup is associated with +1 values of non-trivial type and +0 values of
+/// non-trivial type.
 ///
 class ManagedValue {
   /// The value (or address of an address-only value) being managed, and
@@ -55,11 +57,10 @@ class ManagedValue {
   
   /// A handle to the cleanup that destroys this value, or
   /// CleanupHandle::invalid() if the value has no cleanup.
-  CleanupHandle cleanup;
+  CleanupHandle cleanupHandle;
 
   explicit ManagedValue(SILValue value, bool isLValue, CleanupHandle cleanup)
-    : valueAndFlag(value, isLValue), cleanup(cleanup) {
-  }
+      : valueAndFlag(value, isLValue), cleanupHandle(cleanup) {}
 
 public:
   
@@ -67,7 +68,7 @@ public:
   
   /// Create a managed value for a +1 rvalue.
   ManagedValue(SILValue value, CleanupHandle cleanup)
-    : valueAndFlag(value, false), cleanup(cleanup) {
+      : valueAndFlag(value, false), cleanupHandle(cleanup) {
     assert(value && "No value specified");
   }
 
@@ -76,6 +77,7 @@ public:
     assert(value && "No value specified");
     return ManagedValue(value, false, CleanupHandle::invalid());
   }
+
   /// Create a managed value for an l-value.
   static ManagedValue forLValue(SILValue value) {
     assert(value && "No value specified");
@@ -138,9 +140,9 @@ public:
   /// This is the same operation as 'copy', but works on +0 values that don't
   /// have cleanups.  It returns a +1 value with one.
   ManagedValue copyUnmanaged(SILGenFunction &gen, SILLocation loc);
-  
-  bool hasCleanup() const { return cleanup.isValid(); }
-  CleanupHandle getCleanup() const { return cleanup; }
+
+  bool hasCleanup() const { return cleanupHandle.isValid(); }
+  CleanupHandle getCleanup() const { return cleanupHandle; }
 
   /// Return a "borrowed" version of this value.
   ///
@@ -165,7 +167,10 @@ public:
   /// \param loc - the AST location to associate with emitted instructions.
   /// \param address - the address to assign to.
   void forwardInto(SILGenFunction &gen, SILLocation loc, SILValue address);
-  
+
+  /// Run the cleanup for the given value, deactivating it in the process.
+  void cleanup(SILGenFunction &gen, CleanupLocation loc) const;
+
   /// Assign this value into memory, destroying the existing
   /// value at the destination address.
   ///

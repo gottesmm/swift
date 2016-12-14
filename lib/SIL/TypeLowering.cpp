@@ -728,7 +728,16 @@ namespace {
     SILValue emitLoweredCopyValue(SILBuilder &B, SILLocation loc,
                                   SILValue aggValue,
                                   LoweringStyle style) const override {
+      SILValue origAggValue;
       llvm::SmallVector<SILValue, 8> loweredChildValues;
+
+      // If our aggregate value is not already borrowed, we need to borrow it to
+      // ensure that we do not consume through the usage of struct_extracts.
+      if (aggValue->getOwnershipKind() != ValueOwnershipKind::Guaranteed) {
+        origAggValue = aggValue;
+        aggValue = B.createBeginBorrow(loc, aggValue);
+      }
+
       for (auto &child : getChildren(B.getModule())) {
         auto &childLowering = child.getLowering();
         SILValue childValue = asImpl().emitRValueProject(B, loc, aggValue,
@@ -741,6 +750,11 @@ namespace {
         } else {
           loweredChildValues.push_back(childValue);
         }
+      }
+
+      // Now create an end borrow scope if we borrowed agg value.
+      if (origAggValue) {
+        B.createEndBorrow(loc, origAggValue, aggValue);
       }
 
       return rebuildAggregate(B, loc, loweredChildValues);

@@ -332,6 +332,10 @@ public:
   /// additional handling. It is important to know this information when
   /// you perform such optimizations like e.g. jump-threading.
   bool isTriviallyDuplicatable() const;
+
+  /// Verify that all operands of this instruction have compatible ownership
+  /// with this instruction.
+  void verifyOperandOwnership() const;
 };
 
 /// Returns the combined behavior of \p B1 and \p B2.
@@ -4639,6 +4643,8 @@ public:
   bool isFunctionExiting() const;
 
   TermKind getTermKind() const { return ValueKindAsTermKind(getKind()); }
+
+  ValueOwnershipKind getArgumentOwnershipKind() const;
 };
 
 /// UnreachableInst - Position in the code which would be undefined to reach.

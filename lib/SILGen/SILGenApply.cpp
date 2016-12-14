@@ -1845,21 +1845,15 @@ static SILValue emitRawApply(SILGenFunction &gen,
   }
 
   // Given any guaranteed arguments that are not being passed at +0, insert the
-  // decrement here instead of at the end of scope. Guaranteed just means that
-  // we guarantee the lifetime of the object for the duration of the call.
-  // Be sure to use a CleanupLocation so that unreachable code diagnostics don't
+  // cleanup here instead of at the end of scope. Guaranteed just means that we
+  // guarantee the lifetime of the object for the duration of the call.  Be sure
+  // to use a CleanupLocation so that unreachable code diagnostics don't
   // trigger.
   for (auto i : indices(args)) {
     if (!inputTypes[i].isGuaranteed() || args[i].isPlusZeroRValueOrTrivial())
       continue;
 
-    SILValue argValue = args[i].forward(gen);
-    SILType argType = argValue->getType();
-    CleanupLocation cleanupLoc = CleanupLocation::get(loc);
-    if (!argType.isAddress())
-      gen.getTypeLowering(argType).emitDestroyRValue(gen.B, cleanupLoc, argValue);
-    else
-      gen.getTypeLowering(argType).emitDestroyAddress(gen.B, cleanupLoc, argValue);
+    args[i].cleanup(gen, CleanupLocation::get(loc));
   }
 
   return result;
@@ -2266,6 +2260,7 @@ static bool hasUnownedInnerPointerResult(CanSILFunctionType fnType) {
   return false;
 }
 
+/// Construct a ResultPlanPtr for a specific function type.
 static ResultPlanPtr
 computeResultPlan(SILGenFunction *SGF, CanSILFunctionType substFnType,
                   AbstractionPattern origResultType, CanType substResultType,
@@ -2442,7 +2437,7 @@ RValue SILGenFunction::emitApply(
   } else if (formalDirectResults.size() == 1) {
     addManagedDirectResult(rawDirectResult, formalDirectResults[0]);
   } else {
-    for (auto i : indices(formalDirectResults)) {
+    for (unsigned i : indices(formalDirectResults)) {
       auto elt = B.createTupleExtract(loc, rawDirectResult, i,
                                       formalDirectResults[i].getSILType());
       addManagedDirectResult(elt, formalDirectResults[i]);
@@ -2585,14 +2580,13 @@ static ManagedValue emitMaterializeIntoTemporary(SILGenFunction &gen,
                                                  ManagedValue object) {
   auto temporary = gen.emitTemporaryAllocation(loc, object.getType());
   bool hadCleanup = object.hasCleanup();
-  gen.B.emitStoreValueOperation(loc, object.forward(gen), temporary,
-                                StoreOwnershipQualifier::Init);
-
   // The temporary memory is +0 if the value was.
   if (hadCleanup) {
+    gen.B.emitStoreValueOperation(loc, object.forward(gen), temporary,
+                                  StoreOwnershipQualifier::Init);
     return ManagedValue(temporary, gen.enterDestroyCleanup(temporary));
   } else {
-    return ManagedValue::forUnmanaged(temporary);
+    return gen.emitManagedStoreBorrow(loc, object.forward(gen), temporary);
   }
 }
 

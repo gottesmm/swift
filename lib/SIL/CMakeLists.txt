@@ -24,6 +24,7 @@ add_swift_library(swiftSIL STATIC
   SILLocation.cpp
   SILModule.cpp
   SILOpenedArchetypesTracker.cpp
+  SILOwnershipVerifier.cpp
   SILPrinter.cpp
   SILSuccessor.cpp
   SILType.cpp

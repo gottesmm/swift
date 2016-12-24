@@ -21,17 +21,17 @@
 #include "swift/Runtime/Config.h"
 
 #if SWIFT_OBJC_INTEROP
+#include "Private.h"
+#include "SwiftHashableSupport.h"
 #include "SwiftObject.h"
 #include "SwiftValue.h"
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LazyGlobalObject.h"
+#include "swift/Runtime/Debug.h"
 #include "swift/Runtime/HeapObject.h"
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/ObjCBridge.h"
-#include "swift/Runtime/Debug.h"
-#include "Private.h"
-#include "SwiftHashableSupport.h"
-#include <objc/runtime.h>
 #include <Foundation/Foundation.h>
+#include <objc/runtime.h>
 
 using namespace swift;
 using namespace swift::hashable_support;
@@ -138,7 +138,7 @@ static Class _getSwiftValueClass() {
 }
 
 static Class getSwiftValueClass() {
-  return SWIFT_LAZY_CONSTANT(_getSwiftValueClass());
+  return SWIFT_LAZYGLOBALOBJECT_CONSTANT(_getSwiftValueClass());
 }
 
 static constexpr size_t getSwiftValuePayloadOffset(size_t alignMask) {

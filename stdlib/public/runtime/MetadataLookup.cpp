@@ -14,18 +14,18 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "swift/Runtime/Metadata.h"
+#include "ImageInspection.h"
+#include "Private.h"
 #include "swift/Basic/LLVM.h"
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/Concurrent.h"
 #include "swift/Runtime/HeapObject.h"
-#include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/Mutex.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/StringExtras.h"
-#include "Private.h"
-#include "ImageInspection.h"
 
 using namespace swift;
 using namespace Demangle;
@@ -86,7 +86,7 @@ struct TypeMetadataState {
 
 };
 
-static Lazy<TypeMetadataState> TypeMetadataRecords;
+static LazyGlobalObject<TypeMetadataState> TypeMetadataRecords;
 
 static void
 _registerTypeMetadataRecords(TypeMetadataState &T,

@@ -12,12 +12,12 @@
 
 #include "swift/Basic/BlotMapVector.h"
 #include "swift/Basic/LLVM.h"
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Basic/NullablePtr.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "gtest/gtest.h"
 #include <map>
@@ -74,7 +74,7 @@ public:
   bool isClearing() const { return IsClearing; }
 };
 
-Lazy<CtorTesterSet> ConstructedTesters;
+LazyGlobalObject<CtorTesterSet> ConstructedTesters;
 
 /// \brief A test class that tries to check that construction and destruction
 /// occur correctly.

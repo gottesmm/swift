@@ -14,25 +14,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/Basic/LLVM.h"
+#include "../SwiftShims/RuntimeShims.h"
+#include "ErrorObject.h"
+#include "ExistentialMetadataImpl.h"
+#include "Private.h"
+#include "SwiftHashableSupport.h"
+#include "stddef.h"
 #include "swift/Basic/Demangle.h"
 #include "swift/Basic/Fallthrough.h"
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LLVM.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Basic/Unreachable.h"
 #include "swift/Runtime/Config.h"
+#include "swift/Runtime/Debug.h"
 #include "swift/Runtime/Enum.h"
 #include "swift/Runtime/HeapObject.h"
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/Mutex.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerIntPair.h"
-#include "swift/Runtime/Debug.h"
-#include "ErrorObject.h"
-#include "ExistentialMetadataImpl.h"
-#include "Private.h"
-#include "SwiftHashableSupport.h"
-#include "../SwiftShims/RuntimeShims.h"
-#include "stddef.h"
 #if SWIFT_OBJC_INTEROP
 #include "swift/Runtime/ObjCBridge.h"
 #include "SwiftValue.h"
@@ -115,9 +115,9 @@ swift::swift_getTypeName(const Metadata *type, bool qualified) {
   using Key = llvm::PointerIntPair<const Metadata *, 1, bool>;
 
   static StaticReadWriteLock TypeNameCacheLock;
-  static Lazy<llvm::DenseMap<Key, std::pair<const char *, size_t>>>
-    TypeNameCache;
-  
+  static LazyGlobalObject<llvm::DenseMap<Key, std::pair<const char *, size_t>>>
+      TypeNameCache;
+
   Key key(type, qualified);
   auto &cache = TypeNameCache.get();
 

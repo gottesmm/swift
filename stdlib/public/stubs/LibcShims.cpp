@@ -18,12 +18,12 @@
 #else
 #include <unistd.h>
 #endif
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include "swift/Basic/Lazy.h"
 #include "../SwiftShims/LibcShims.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "llvm/Support/DataTypes.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 using namespace swift;
 
@@ -119,7 +119,7 @@ size_t swift::_swift_stdlib_malloc_size(const void *ptr) {
 #error No malloc_size analog known for this platform/libc.
 #endif
 
-static Lazy<std::mt19937> theGlobalMT19937;
+static LazyGlobalObject<std::mt19937> theGlobalMT19937;
 
 static std::mt19937 &getGlobalMT19937() {
   return theGlobalMT19937.get();

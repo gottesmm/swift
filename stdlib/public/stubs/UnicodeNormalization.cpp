@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #if !defined(__APPLE__)
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/Config.h"
 #include "swift/Runtime/Debug.h"
 
@@ -52,16 +52,16 @@ static const UCollator *MakeRootCollator() {
 // const here to make sure we don't misuse it.
 // http://sourceforge.net/p/icu/mailman/message/27427062/
 static const UCollator *GetRootCollator() {
-  return SWIFT_LAZY_CONSTANT(MakeRootCollator());
+  return SWIFT_LAZYGLOBALOBJECT_CONSTANT(MakeRootCollator());
 }
 
 /// This class caches the collation element results for the ASCII subset of
 /// unicode.
 class ASCIICollation {
 public:
-  friend class swift::Lazy<ASCIICollation>;
+  friend class swift::LazyGlobalObject<ASCIICollation>;
 
-  static swift::Lazy<ASCIICollation> theTable;
+  static swift::LazyGlobalObject<ASCIICollation> theTable;
   static const ASCIICollation *getTable() {
     return &theTable.get();
   }
@@ -283,6 +283,6 @@ swift::_swift_stdlib_unicode_strToLower(uint16_t *Destination,
   return OutputLength;
 }
 
-swift::Lazy<ASCIICollation> ASCIICollation::theTable;
+swift::LazyGlobalObject<ASCIICollation> ASCIICollation::theTable;
 #endif
 

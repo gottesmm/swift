@@ -17,14 +17,14 @@
 #if SWIFT_RUNTIME_ENABLE_LEAK_CHECKER
 
 #include "Leaks.h"
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/HeapObject.h"
 #include "swift/Runtime/Metadata.h"
+#import <Foundation/Foundation.h>
+#include <cstdio>
 #import <objc/objc.h>
 #import <objc/runtime.h>
-#import <Foundation/Foundation.h>
 #include <set>
-#include <cstdio>
 extern "C" {
 #include <pthread.h>
 }
@@ -43,10 +43,10 @@ void swift_leaks_startTrackingObjCObject(id obj);
 //===----------------------------------------------------------------------===//
 
 /// A set of allocated swift only objects that we are tracking for leaks.
-static Lazy<std::set<HeapObject *>> TrackedSwiftObjects;
+static LazyGlobalObject<std::set<HeapObject *>> TrackedSwiftObjects;
 
 /// A set of allocated objc objects that we are tracking for leaks.
-static Lazy<std::set<id>> TrackedObjCObjects;
+static LazyGlobalObject<std::set<id>> TrackedObjCObjects;
 
 /// Whether or not we should be collecting objects.
 static bool ShouldTrackObjects = false;

@@ -23,19 +23,19 @@
 #include <objc/message.h>
 #include <objc/objc.h>
 #endif
-#include "llvm/ADT/StringRef.h"
+#include "../SwiftShims/RuntimeShims.h"
+#include "Private.h"
+#include "SwiftObject.h"
 #include "swift/Basic/Demangle.h"
 #include "swift/Basic/LLVM.h"
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LazyGlobalObject.h"
+#include "swift/Runtime/Debug.h"
 #include "swift/Runtime/Heap.h"
 #include "swift/Runtime/HeapObject.h"
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/ObjCBridge.h"
 #include "swift/Strings.h"
-#include "../SwiftShims/RuntimeShims.h"
-#include "Private.h"
-#include "SwiftObject.h"
-#include "swift/Runtime/Debug.h"
+#include "llvm/ADT/StringRef.h"
 #if SWIFT_OBJC_INTEROP
 #include <dlfcn.h>
 #endif
@@ -1491,7 +1491,7 @@ swift_objc_class_unknownGetInstanceExtents(const ClassMetadata* c) {
 
 const ClassMetadata *swift::getRootSuperclass() {
 #if SWIFT_OBJC_INTEROP
-  static Lazy<const ClassMetadata *> SwiftObjectClass;
+  static LazyGlobalObject<const ClassMetadata *> SwiftObjectClass;
 
   return SwiftObjectClass.get([](void *ptr) {
     *((const ClassMetadata **) ptr) =

@@ -14,14 +14,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ImageInspection.h"
+#include "Private.h"
 #include "swift/Basic/LLVM.h"
-#include "swift/Basic/Lazy.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Basic/Unreachable.h"
 #include "swift/Runtime/Concurrent.h"
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/Mutex.h"
-#include "ImageInspection.h"
-#include "Private.h"
 
 using namespace swift;
 
@@ -253,7 +253,7 @@ struct ConformanceState {
   }
 };
 
-static Lazy<ConformanceState> Conformances;
+static LazyGlobalObject<ConformanceState> Conformances;
 
 static void
 _registerProtocolConformances(ConformanceState &C,

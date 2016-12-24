@@ -14,22 +14,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/Basic/Lazy.h"
 #include "swift/Runtime/HeapObject.h"
-#include "swift/Runtime/Heap.h"
-#include "swift/Runtime/Metadata.h"
-#include "swift/ABI/System.h"
-#include "llvm/Support/MathExtras.h"
+#include "../SwiftShims/RuntimeShims.h"
 #include "MetadataCache.h"
 #include "Private.h"
+#include "swift/ABI/System.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/Debug.h"
+#include "swift/Runtime/Heap.h"
+#include "swift/Runtime/Metadata.h"
+#include "llvm/Support/MathExtras.h"
 #include <algorithm>
 #include <cassert>
-#include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <thread>
-#include "../SwiftShims/RuntimeShims.h"
 #if SWIFT_OBJC_INTEROP
 # include <objc/NSObject.h>
 # include <objc/runtime.h>

@@ -10,14 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/Runtime/Config.h"
-#include "swift/Basic/Lazy.h"
+#include "Private.h"
+#include "SwiftHashableSupport.h"
+#include "SwiftValue.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/Concurrent.h"
+#include "swift/Runtime/Config.h"
 #include "swift/Runtime/Debug.h"
 #include "swift/Runtime/Metadata.h"
-#include "Private.h"
-#include "SwiftValue.h"
-#include "SwiftHashableSupport.h"
 
 using namespace swift;
 using namespace swift::hashable_support;

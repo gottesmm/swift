@@ -13,9 +13,9 @@
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 
-#include <swift/Runtime/Debug.h>
+#include "swift/Basic/LazyGlobalObject.h"
 #include <cstdint>
-#include "swift/Basic/Lazy.h"
+#include <swift/Runtime/Debug.h>
 
 // This file assumes that `sizeof(NSInteger) == Swift.Int` and
 // `sizeof(NSUInteger) == sizeof(Swift.UInt)`.
@@ -319,8 +319,8 @@ SWIFT_CC(swift) extern "C" uint8_t
 _swift_Foundation_TypePreservingNSNumberGetKind(
   NSNumber *NS_RELEASES_ARGUMENT _Nonnull self_) {
   uint8_t result = NonSwift;
-  if ([self_ isKindOfClass:
-                   SWIFT_LAZY_CONSTANT([_SwiftTypePreservingNSNumber class])]) {
+  if ([self_ isKindOfClass:SWIFT_LAZYGLOBALOBJECT_CONSTANT(
+                               [_SwiftTypePreservingNSNumber class])]) {
     result = ((_SwiftTypePreservingNSNumber *) self_)->tag;
   } else if (CFGetTypeID(self_) == CFBooleanGetTypeID()) {
     result = SwiftBool;

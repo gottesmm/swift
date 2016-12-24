@@ -63,10 +63,10 @@ static long double swift_strtold_l(const char *nptr,
 #else
 #include <xlocale.h>
 #endif
-#include <limits>
-#include "llvm/ADT/StringExtras.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/Debug.h"
-#include "swift/Basic/Lazy.h"
+#include "llvm/ADT/StringExtras.h"
+#include <limits>
 
 #include "../SwiftShims/RuntimeShims.h"
 #include "../SwiftShims/RuntimeStubs.h"
@@ -154,7 +154,7 @@ static locale_t makeCLocale() {
 }
 
 static locale_t getCLocale() {
-  return SWIFT_LAZY_CONSTANT(makeCLocale());
+  return SWIFT_LAZYGLOBALOBJECT_CONSTANT(makeCLocale());
 }
 #endif
 

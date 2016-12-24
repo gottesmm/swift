@@ -17,11 +17,11 @@
 #include "swift/Runtime/Config.h"
 
 #if SWIFT_OBJC_INTEROP
-#include "swift/Basic/Lazy.h"
+#include "../SwiftShims/FoundationShims.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/Debug.h"
 #import <Foundation/Foundation.h>
 #include <TargetConditionals.h>
-#include "../SwiftShims/FoundationShims.h"
 
 using namespace swift;
 
@@ -92,7 +92,8 @@ static NSOperatingSystemVersion getOSVersion() {
 /// Return the version of the operating system currently running for use in
 /// API availability queries.
 _SwiftNSOperatingSystemVersion swift::_swift_stdlib_operatingSystemVersion() {
-  NSOperatingSystemVersion version = SWIFT_LAZY_CONSTANT(getOSVersion());
+  NSOperatingSystemVersion version =
+      SWIFT_LAZYGLOBALOBJECT_CONSTANT(getOSVersion());
 
   return { version.majorVersion, version.minorVersion, version.patchVersion };
 }

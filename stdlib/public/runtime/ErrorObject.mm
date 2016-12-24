@@ -24,18 +24,18 @@
 #include "swift/Runtime/Config.h"
 
 #if SWIFT_OBJC_INTEROP
-#include "swift/Runtime/Debug.h"
-#include "swift/Runtime/ObjCBridge.h"
-#include "swift/Basic/Lazy.h"
-#include "swift/Basic/ManglingMacros.h"
 #include "ErrorObject.h"
 #include "Private.h"
+#include "swift/Basic/LazyGlobalObject.h"
+#include "swift/Basic/ManglingMacros.h"
+#include "swift/Runtime/Debug.h"
+#include "swift/Runtime/ObjCBridge.h"
+#include <Foundation/Foundation.h>
 #include <dlfcn.h>
 #include <objc/NSObject.h>
-#include <objc/runtime.h>
 #include <objc/message.h>
 #include <objc/objc.h>
-#include <Foundation/Foundation.h>
+#include <objc/runtime.h>
 
 using namespace swift;
 using namespace swift::hashable_support;
@@ -147,16 +147,16 @@ using namespace swift::hashable_support;
 @end
 
 Class swift::getNSErrorClass() {
-  return SWIFT_LAZY_CONSTANT([NSError class]);
+  return SWIFT_LAZYGLOBALOBJECT_CONSTANT([NSError class]);
 }
 
 const Metadata *swift::getNSErrorMetadata() {
-  return SWIFT_LAZY_CONSTANT(
-    swift_getObjCClassMetadata((const ClassMetadata *)getNSErrorClass()));
+  return SWIFT_LAZYGLOBALOBJECT_CONSTANT(
+      swift_getObjCClassMetadata((const ClassMetadata *)getNSErrorClass()));
 }
 
 static Class getSwiftNativeNSErrorClass() {
-  return SWIFT_LAZY_CONSTANT([_SwiftNativeNSError class]);
+  return SWIFT_LAZYGLOBALOBJECT_CONSTANT([_SwiftNativeNSError class]);
 }
 
 /// Allocate a catchable error object.
@@ -246,9 +246,10 @@ static const WitnessTable *getNSErrorConformanceToError() {
   // to assume that that's been linked in if a user is using NSError in their
   // Swift source.
 
-  auto TheWitnessTable = SWIFT_LAZY_CONSTANT(dlsym(RTLD_DEFAULT,
-        MANGLE_AS_STRING(SELECT_MANGLING(WPCSo7CFErrors5Error10Foundation,
-                                         So7CFErrorCs5Error10FoundationWP))));
+  auto TheWitnessTable = SWIFT_LAZYGLOBALOBJECT_CONSTANT(dlsym(
+      RTLD_DEFAULT,
+      MANGLE_AS_STRING(SELECT_MANGLING(WPCSo7CFErrors5Error10Foundation,
+                                       So7CFErrorCs5Error10FoundationWP))));
   assert(TheWitnessTable &&
          "Foundation overlay not loaded, or 'CFError : Error' conformance "
          "not available");
@@ -257,9 +258,10 @@ static const WitnessTable *getNSErrorConformanceToError() {
 }
 
 static const HashableWitnessTable *getNSErrorConformanceToHashable() {
-  auto TheWitnessTable = SWIFT_LAZY_CONSTANT(dlsym(RTLD_DEFAULT, "_"
-      MANGLE_AS_STRING(SELECT_MANGLING(WPCSo8NSObjects8Hashable10ObjectiveC,
-                                       So8NSObjectCs8Hashable10ObjectiveCWP))));
+  auto TheWitnessTable = SWIFT_LAZYGLOBALOBJECT_CONSTANT(
+      dlsym(RTLD_DEFAULT, "_" MANGLE_AS_STRING(SELECT_MANGLING(
+                              WPCSo8NSObjects8Hashable10ObjectiveC,
+                              So8NSObjectCs8Hashable10ObjectiveCWP))));
   assert(TheWitnessTable &&
          "ObjectiveC overlay not loaded, or 'NSObject : Hashable' conformance "
          "not available");
@@ -408,9 +410,9 @@ extern "C" NSDictionary *swift_stdlib_getErrorDefaultUserInfo(
                                const Metadata *T,
                                const WitnessTable *Error);
 
-  auto foundationGetDefaultUserInfo = SWIFT_LAZY_CONSTANT(
-        reinterpret_cast<GetDefaultFn*>
-          (dlsym(RTLD_DEFAULT, "swift_Foundation_getErrorDefaultUserInfo")));
+  auto foundationGetDefaultUserInfo =
+      SWIFT_LAZYGLOBALOBJECT_CONSTANT(reinterpret_cast<GetDefaultFn *>(
+          dlsym(RTLD_DEFAULT, "swift_Foundation_getErrorDefaultUserInfo")));
   if (!foundationGetDefaultUserInfo) {
     T->vw_destroy(error);
     return nullptr;
@@ -444,7 +446,7 @@ static id _swift_bridgeErrorToNSError_(SwiftError *errorObject) {
 
   // Never produce an empty userInfo dictionary.
   if (!userInfo)
-    userInfo = SWIFT_LAZY_CONSTANT(@{});
+    userInfo = SWIFT_LAZYGLOBALOBJECT_CONSTANT(@{});
 
   // The error code shouldn't change, so we can store it blindly, even if
   // somebody beat us to it. The store can be relaxed, since we'll do a
@@ -490,7 +492,7 @@ swift::tryDynamicCastNSErrorToValue(OpaqueValue *dest,
                                     DynamicCastFlags flags) {
   Class NSErrorClass = getNSErrorClass();
 
-  auto CFErrorTypeID = SWIFT_LAZY_CONSTANT(CFErrorGetTypeID());
+  auto CFErrorTypeID = SWIFT_LAZYGLOBALOBJECT_CONSTANT(CFErrorGetTypeID());
   // @_silgen_name("swift_stdlib_bridgeNSErrorToError")
   // public func _stdlib_bridgeNSErrorToError<
   //   T : _ObjectiveCBridgeableError
@@ -498,14 +500,15 @@ swift::tryDynamicCastNSErrorToValue(OpaqueValue *dest,
   typedef SWIFT_CC(swift)
     bool BridgeFn(NSError *, OpaqueValue*, const Metadata *,
                   const WitnessTable *);
-  auto bridgeNSErrorToError = SWIFT_LAZY_CONSTANT(
-        reinterpret_cast<BridgeFn*>
-          (dlsym(RTLD_DEFAULT, "swift_stdlib_bridgeNSErrorToError")));
+  auto bridgeNSErrorToError =
+      SWIFT_LAZYGLOBALOBJECT_CONSTANT(reinterpret_cast<BridgeFn *>(
+          dlsym(RTLD_DEFAULT, "swift_stdlib_bridgeNSErrorToError")));
   // protocol _ObjectiveCBridgeableError
-  auto TheObjectiveCBridgeableError = SWIFT_LAZY_CONSTANT(
-    reinterpret_cast<const ProtocolDescriptor *>(dlsym(RTLD_DEFAULT,
-    MANGLE_AS_STRING(SELECT_MANGLING(Mp10Foundation26_ObjectiveCBridgeableError,
-                               10Foundation26_ObjectiveCBridgeableErrorMp)))));
+  auto TheObjectiveCBridgeableError = SWIFT_LAZYGLOBALOBJECT_CONSTANT(
+      reinterpret_cast<const ProtocolDescriptor *>(dlsym(
+          RTLD_DEFAULT, MANGLE_AS_STRING(SELECT_MANGLING(
+                            Mp10Foundation26_ObjectiveCBridgeableError,
+                            10Foundation26_ObjectiveCBridgeableErrorMp)))));
 
   // If the Foundation overlay isn't loaded, then NSErrors can't be bridged.
   if (!bridgeNSErrorToError || !TheObjectiveCBridgeableError)

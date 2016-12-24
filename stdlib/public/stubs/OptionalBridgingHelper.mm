@@ -13,14 +13,14 @@
 #include "swift/Runtime/Config.h"
 
 #if SWIFT_OBJC_INTEROP
-#include "swift/Basic/Lazy.h"
 #include "swift/Basic/LLVM.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/Mutex.h"
 #include "swift/Runtime/ObjCBridge.h"
-#include <vector>
-#import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
+#import <Foundation/Foundation.h>
+#include <vector>
 
 using namespace swift;
 
@@ -49,7 +49,7 @@ struct SwiftNullSentinelCache {
   StaticReadWriteLock Lock;
 };
 
-static Lazy<SwiftNullSentinelCache> Sentinels;
+static LazyGlobalObject<SwiftNullSentinelCache> Sentinels;
 
 static id getSentinelForDepth(unsigned depth) {
   // For unnested optionals, use NSNull.

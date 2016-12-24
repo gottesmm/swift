@@ -14,20 +14,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/MathExtras.h"
+#include "swift/Runtime/Metadata.h"
+#include "MetadataCache.h"
 #include "swift/Basic/Demangle.h"
 #include "swift/Basic/LLVM.h"
+#include "swift/Basic/LazyGlobalObject.h"
 #include "swift/Basic/Range.h"
-#include "swift/Basic/Lazy.h"
 #include "swift/Runtime/HeapObject.h"
-#include "swift/Runtime/Metadata.h"
 #include "swift/Runtime/Mutex.h"
 #include "swift/Strings.h"
-#include "MetadataCache.h"
+#include "llvm/Support/MathExtras.h"
 #include <algorithm>
+#include <cctype>
 #include <condition_variable>
 #include <new>
-#include <cctype>
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 // Avoid defining macro max(), min() which conflict with std::max(), std::min()
@@ -104,7 +104,7 @@ namespace {
 } // end anonymous namespace
 
 using GenericMetadataCache = MetadataCache<GenericCacheEntry>;
-using LazyGenericMetadataCache = Lazy<GenericMetadataCache>;
+using LazyGenericMetadataCache = LazyGlobalObject<GenericMetadataCache>;
 
 /// Fetch the metadata cache for a generic metadata structure.
 static GenericMetadataCache &getCache(GenericMetadata *metadata) {
@@ -2478,7 +2478,7 @@ struct ForeignTypeState {
 };
 } // end anonymous namespace
 
-static Lazy<ForeignTypeState> ForeignTypes;
+static LazyGlobalObject<ForeignTypeState> ForeignTypes;
 
 const ForeignTypeMetadata *
 swift::swift_getForeignTypeMetadata(ForeignTypeMetadata *nonUnique) {
@@ -2673,7 +2673,7 @@ namespace {
 } // end anonymous namespace
 
 using GenericWitnessTableCache = MetadataCache<WitnessTableCacheEntry>;
-using LazyGenericWitnessTableCache = Lazy<GenericWitnessTableCache>;
+using LazyGenericWitnessTableCache = LazyGlobalObject<GenericWitnessTableCache>;
 
 /// Fetch the cache for a generic witness-table structure.
 static GenericWitnessTableCache &getCache(GenericWitnessTable *gen) {

@@ -393,7 +393,12 @@ bool swift::performLLVM(IRGenOptions &Opts, DiagnosticEngine *Diags,
     // Open in binary mode if we're doing binary output.
     llvm::sys::fs::OpenFlags OSFlags = llvm::sys::fs::F_None;
     std::error_code EC;
-    RawOS.emplace(OutputFilename, EC, OSFlags);
+    if (!OutputFilename.equals("-")) {
+      RawOS.emplace(OutputFilename, EC, OSFlags);
+    } else {
+      RawOS = std::outs();
+    }
+
     if (RawOS->has_error() || EC) {
       if (Diags) {
         if (DiagMutex)

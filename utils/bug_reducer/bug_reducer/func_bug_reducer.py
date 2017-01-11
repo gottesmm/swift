@@ -63,54 +63,20 @@ class ReduceMiscompilingFunctions(list_reducer.ListReducer):
             m.update(f)
         return m.hexdigest()
 
-
-class OptimizerTester(object):
-
-    def __init__(self, silopt, passes):
-        self.silopt = silopt
-        self.result = None
-        self.passes = ['-' + p for p in passes]
-        m = md5.new()
-        for p in passes:
-            m.update(p)
-        self.pass_hash = m.hexdigest()
-
-    def get_filepaths(self, optstem, nooptstem):
-        f = self.silopt.get_suffixed_filename
-        return (f(optstem + '_' + self.pass_hash),
-                f(nooptstem + '_' + self.pass_hash))
-
-    def __call__(self, filepath_to_opt, filepath_to_opt_stem,
-                 filepath_to_notopt, filepath_to_notopt_stem):
-        (out_optpath, out_nooptpath) = \
-            self.get_filepaths(filepath_to_opt_stem, filepath_to_notopt_stem)
-        sys.stdout.write("Trying to optimize functions...")
-        self.silopt.input_file = filepath_to_opt
-        result = self.silopt.invoke_with_passlist(self.passes, out_optpath)
-        if result['exit_code'] == 0:
-            print(' NOCRASH!\n')
-        else:
-            self.result = self.silopt.input_file
-            print(' CRASH!\n')
-        return result['exit_code']
-
-
 def function_bug_reducer(input_file, nm, sil_opt_invoker, sil_extract_invoker,
-                         pass_list):
+                         pass_list, tester):
     functions = [s[1] for s in nm.get_symbols(input_file) if s[0] == 'F']
 
     print("Base case crashes! Trying to reduce *.sib file")
 
     # Otherwise, reduce the list of pases that cause the optimzier to crash.
-    tester = OptimizerTester(sil_opt_invoker, pass_list)
     r = ReduceMiscompilingFunctions(functions, sil_extract_invoker,
                                     tester)
     if not r.reduce_list():
         print("Failed to find miscompiling pass list!")
-    sil_opt_invoker.input_file = tester.result
-    cmdline = sil_opt_invoker.cmdline_with_passlist(pass_list)
+    cmdline = tester.cmdline_with_passlist(pass_list)
     print("*** Successfully Reduced file!")
-    print("*** Final File: %s" % sil_opt_invoker.input_file)
+    print("*** Final File: %s" % tester.result)
     print("*** Final Functions: %s" % (' '.join(r.target_list)))
     print("*** Repro command line: %s" % (' '.join(cmdline)))
 
@@ -142,7 +108,7 @@ list of function given a specific pass that causes the perf pipeline to crash
                                                               input_file)
 
     function_bug_reducer(input_file, nm, sil_opt_invoker, sil_extract_invoker,
-                         args.pass_list)
+                         args.pass_list, OptimizerTester(sil_opt_invoker, pass_list))
 
 
 def add_parser_arguments(parser):

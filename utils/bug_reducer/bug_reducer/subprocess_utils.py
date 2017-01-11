@@ -16,6 +16,12 @@ def call_fingerprint(args, echo_stderr=False, echo_stdout=False):
     h.update(stderrdata)
     fingerprint = h.hexdigest()
 
+    if echo_stderr:
+        print "STDERR:"
+        print stderrdata
+    if echo_stdout:
+        print "STDOUT:"
+        print stdoutdata
     return {'exit_code': exit_code, 'fingerprint': fingerprint}
 
 

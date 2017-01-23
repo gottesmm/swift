@@ -5096,8 +5096,11 @@ ArgumentSource AccessorBaseArgPreparer::prepareAccessorAddressBaseArg() {
 
       base = SGF.emitLoad(loc, base.forward(SGF), SGF.getTypeLowering(baseLoweredType),
                           SGFContext(), shouldTake);
-      return ArgumentSource(loc, RValue(SGF, loc,
-                                        baseFormalType, base));
+      // If the final form of the base is guaranteed, then we need to emit a
+      // begin_borrow.
+      if (isDirectGuaranteed())
+        base = base.borrow(SGF, loc);
+      return ArgumentSource(loc, RValue(SGF, loc, baseFormalType, base));
     }
 
     // Handle inout bases specially here.
@@ -5129,6 +5132,13 @@ ArgumentSource AccessorBaseArgPreparer::prepareAccessorObjectBaseArg() {
   // We need to produce the value at +1 if it's going to be consumed.
   if (selfParam.isConsumed() && !base.hasCleanup()) {
     base = base.copyUnmanaged(SGF, loc);
+  }
+
+  // We need to produce the value at +0 if it is going to be used in a
+  // guaranteed manner.
+  if (isDirectGuaranteed() &&
+      base.getOwnershipKind() != ValueOwnershipKind::Guaranteed) {
+    base = base.borrow(SGF, loc);
   }
 
   // If the parameter is indirect, we need to drop the value into

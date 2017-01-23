@@ -906,24 +906,23 @@ SILGenFunction::getTryApplyErrorDest(SILLocation loc,
   // For now, don't try to re-use destination blocks for multiple
   // failure sites.
   SILBasicBlock *destBB = createBasicBlock(FunctionSection::Postmatter);
-  SILValue exn = destBB->createPHIArgument(getSILType(exnResult),
-                                           ValueOwnershipKind::Owned);
 
   assert(B.hasValidInsertionPoint() && B.insertingAtEndOfBlock());
   SavedInsertionPoint savedIP(*this, destBB, FunctionSection::Postmatter);
 
-  // If we're suppressing error paths, just wrap it up as unreachable
-  // and return.
-  if (suppressErrorPath) {
-    B.createUnreachable(loc);
-    return destBB;
+  {
+    // We don't want to exit here with a dead cleanup on the stack, so push the
+    // scope first.
+    FullExpr scope(Cleanups, CleanupLocation::get(loc));
+    ManagedValue exn = B.createOwnedPHIArgument(getSILType(exnResult));
+
+    if (!suppressErrorPath) {
+      emitThrow(loc, exn);
+      return destBB;
+    }
   }
 
-  // We don't want to exit here with a dead cleanup on the stack,
-  // so push the scope first.
-  FullExpr scope(Cleanups, CleanupLocation::get(loc));
-  emitThrow(loc, emitManagedRValueWithCleanup(exn));
-
+  B.createUnreachable(loc);
   return destBB;
 }
 

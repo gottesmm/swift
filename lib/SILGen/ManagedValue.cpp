@@ -104,3 +104,12 @@ void ManagedValue::assignInto(SILGenFunction &gen, SILLocation loc,
   gen.emitSemanticStore(loc, getValue(), address, addrTL,
                         IsNotInitialization);
 }
+
+ManagedValue ManagedValue::borrow(SILGenFunction &gen, SILLocation loc) const {
+  assert(getValue() && "cannot borrow an invalid or in-context value");
+  if (isLValue())
+    return *this;
+  if (getType().isAddress())
+    return ManagedValue::forUnmanaged(getValue());
+  return gen.emitManagedBeginBorrow(loc, getValue());
+}

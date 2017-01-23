@@ -230,7 +230,7 @@ ManagedValue LogicalPathComponent::getMaterialized(SILGenFunction &gen,
 
   // Otherwise, we need to emit a get and set.  Borrow the base for
   // the getter.
-  ManagedValue getterBase = (base ? base.borrow() : ManagedValue());
+  ManagedValue getterBase = (base ? base.borrow(gen, loc) : ManagedValue());
 
   // Clone anything else about the component that we might need in the
   // writeback.
@@ -243,7 +243,7 @@ ManagedValue LogicalPathComponent::getMaterialized(SILGenFunction &gen,
   // Push a writeback for the temporary.
   pushWriteback(gen, loc, std::move(clonedComponent), base,
                 MaterializedLValue(temporary));
-  return temporary.borrow();
+  return temporary.unmanagedBorrow();
 }
 
 void LogicalPathComponent::writeback(SILGenFunction &gen, SILLocation loc,
@@ -865,7 +865,7 @@ namespace {
 
       // If the base is a +1 r-value, just borrow it for materializeForSet.
       // prepareAccessorArgs will copy it if necessary.
-      ManagedValue borrowedBase = (base ? base.borrow() : ManagedValue());
+      ManagedValue borrowedBase = (base ? base.borrow(gen, loc) : ManagedValue());
 
       // Clone the component without cloning the indices.  We don't actually
       // consume them in writeback().
@@ -1714,8 +1714,9 @@ LValue SILGenLValue::visitOpaqueValueExpr(OpaqueValueExpr *e,
   assert(!entry.HasBeenConsumed && "opaque value already consumed");
   entry.HasBeenConsumed = true;
 
+  RegularLocation loc(e);
   LValue lv;
-  lv.add<ValueComponent>(entry.Value.borrow(), getValueTypeData(gen, e));
+  lv.add<ValueComponent>(entry.Value.borrow(gen, loc), getValueTypeData(gen, e));
   return lv;
 }
 

@@ -189,3 +189,11 @@ ManagedValue SILGenBuilder::createOwnedPHIArgument(SILType Type) {
       getInsertionBB()->createPHIArgument(Type, ValueOwnershipKind::Owned);
   return gen.emitManagedRValueWithCleanup(Arg);
 }
+
+ManagedValue SILGenBuilder::createTupleExtract(SILLocation Loc, ManagedValue Base, unsigned Index,
+                                               SILType Type) {
+  ManagedValue BorrowedBase = gen.emitManagedBeginBorrow(Loc, Base.getValue());
+  SILValue TupleExtract =
+    SILBuilder::createTupleExtract(Loc, BorrowedBase.getValue(), Index, Type);
+  return ManagedValue::forUnmanaged(TupleExtract);
+}

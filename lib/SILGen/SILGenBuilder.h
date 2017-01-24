@@ -121,6 +121,10 @@ public:
   ManagedValue createUnsafeCopyUnownedValue(SILLocation Loc,
                                             ManagedValue OriginalValue);
   ManagedValue createOwnedPHIArgument(SILType Type);
+
+  using SILBuilder::createTupleExtract;
+  ManagedValue createTupleExtract(SILLocation Loc, ManagedValue Value, unsigned Index,
+                                  SILType Type);
 };
 
 } // namespace Lowering

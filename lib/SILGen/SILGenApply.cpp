@@ -2446,12 +2446,33 @@ RValue SILGenFunction::emitApply(
   } else if (substFnConv.getNumDirectSILResults() == 1) {
     addManagedDirectResult(rawDirectResult, *directSILResults.begin());
   } else {
-    unsigned eltIdx = 0;
-    for (auto directResult : directSILResults) {
-      auto elt = B.createTupleExtract(loc, rawDirectResult, eltIdx,
-                                      substFnConv.getSILType(directResult));
-      addManagedDirectResult(elt, directResult);
-      ++eltIdx;
+    llvm::SmallVector<std::pair<SILValue, const SILResultInfo *>, 8> copiedResults;
+    {
+      Scope S(Cleanups, CleanupLocation::get(loc));
+
+      // First create a rvalue cleanup for our direct result.
+      ManagedValue managedDirectResult = emitManagedRValueWithCleanup(rawDirectResult);
+      // Then borrow the managed direct result.
+      ManagedValue borrowedDirectResult = managedDirectResult.borrow(*this, loc);
+      // Then create unmanaged copies of the direct result and forward the
+      // result as expected by addManageDirectResult.
+      for (auto P : enumerate(directSILResults)) {
+        const SILResultInfo *directResult = P.first;
+        unsigned index = P.second;
+        ManagedValue elt = B.createTupleExtract(loc, borrowedDirectResult, index,
+                                                substFnConv.getSILType(*directResult));
+        SILValue v = elt.copyUnmanaged(*this, loc).forward(*this);
+        // We assume that unowned inner pointers, autoreleased values, and
+        // indirect values are never returned in tuples.
+        assert(directResult->getConvention() == ResultConvention::Owned ||
+               directResult->getConvention() == ResultConvention::Unowned);
+        copiedResults.push_back({v, directResult});
+      }
+      // Then allow the cleanups to be emitted in the proper reverse order.
+    }
+    // Finally add our managed direct results.
+    for (auto p : copiedResults) {
+      addManagedDirectResult(p.first, *p.second);
     }
   }
 
@@ -5150,7 +5171,7 @@ ArgumentSource AccessorBaseArgPreparer::prepareAccessorObjectBaseArg() {
 
   // If the parameter is indirect, we need to drop the value into
   // temporary memory.
-  if (silConv.isSILIndirect(selfParam)) {
+  if (SGF.silConv.isSILIndirect(selfParam)) {
     // It's usually a really bad idea to materialize when we're
     // about to pass a value to an inout argument, because it's a
     // really easy way to silently drop modifications (e.g. from a

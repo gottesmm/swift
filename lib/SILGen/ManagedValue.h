@@ -74,6 +74,10 @@ public:
   ManagedValue(SILValue value, CleanupHandle cleanup)
     : valueAndFlag(value, false), cleanup(cleanup) {
     assert(value && "No value specified?!");
+    assert((value.getOwnershipKind() != ValueOwnershipKind::Owned ||
+            cleanup != CleanupHandle::invalid()) &&
+           "Owned parameters should always have a cleanup");
+            
   }
 
   /// Create a managed value for a +0 rvalue.
@@ -82,6 +86,8 @@ public:
   /// static constructors below!
   static ManagedValue forUnmanaged(SILValue value) {
     assert(value && "No value specified");
+    assert(value.getOwnershipKind() != ValueOwnershipKind::Owned &&
+           "Owned parameters should never be unmanaged");
     return ManagedValue(value, false, CleanupHandle::invalid());
   }
 
@@ -209,7 +215,14 @@ public:
   SILType getType() const { return getValue()->getType(); }
 
   ValueOwnershipKind getOwnershipKind() const {
-    return getValue().getOwnershipKind();
+    auto Kind = getValue().getOwnershipKind();
+    assert((Kind != ValueOwnershipKind::Owned || hasCleanup()) &&
+           "Expected ManagedValues with owned ownership to have a cleanup");
+    assert((Kind != ValueOwnershipKind::Guaranteed || !hasCleanup()) &&
+           "Expected ManagedValues with guranteed ownership to not have a cleanup");
+    assert((Kind != ValueOwnershipKind::Trivial || !hasCleanup()) &&
+           "Expected ManagedValues with trivial ownership to not have a cleanup");
+    return Kind;
   }
 
   /// Transform the given ManagedValue, replacing the underlying value, but

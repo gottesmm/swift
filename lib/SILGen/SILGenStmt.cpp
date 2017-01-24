@@ -922,6 +922,9 @@ SILGenFunction::getTryApplyErrorDest(SILLocation loc,
     }
   }
 
+  // We need to emit cleanups for a return to ensure everything balances out in
+  // terms of ownership.
+  Cleanups.emitCleanupsForReturn(CleanupLocation::get(loc));
   B.createUnreachable(loc);
   return destBB;
 }

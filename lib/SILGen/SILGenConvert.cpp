@@ -192,6 +192,7 @@ void SILGenFunction::emitPreconditionOptionalHasValue(SILLocation loc,
   // Call the standard library implementation of _diagnoseUnexpectedNilOptional.
   if (auto diagnoseFailure =
         getASTContext().getDiagnoseUnexpectedNilOptional(nullptr)) {
+    Cleanups.emitCleanupsForReturn(CleanupLocation::get(loc));
     ManagedValue args[4];
     emitSourceLocationArgs(*this, loc, args);
     

@@ -3236,6 +3236,13 @@ namespace {
         }
       } else {
         value = std::move(arg).getAsSingleValue(SGF, contexts.ForEmission);
+
+        // If our emitted value is not guaranteed, but we need a guaranteed
+        // parameter, insert the borrow.
+        if (param.getConvention() == ParameterConvention::Direct_Guaranteed &&
+            value.getOwnershipKind() != ValueOwnershipKind::Guaranteed) {
+          value = value.borrow(SGF, arg.getLocation());
+        }
       }
 
       if (param.isConsumed() &&

@@ -2404,7 +2404,8 @@ RValue SILGenFunction::emitApply(
   // Explode the direct results.
   SILFunctionConventions substFnConv(substFnType, SGM.M);
   SmallVector<ManagedValue, 4> directResults;
-  auto addManagedDirectResult = [&](SILValue result, SILResultInfo resultInfo) {
+  auto addManagedDirectResult = [&](SILValue result,
+                                    const SILResultInfo &resultInfo) {
     auto &resultTL = getTypeLowering(resultInfo.getType());
 
     switch (resultInfo.getConvention()) {
@@ -2446,7 +2447,7 @@ RValue SILGenFunction::emitApply(
   } else if (substFnConv.getNumDirectSILResults() == 1) {
     addManagedDirectResult(rawDirectResult, *directSILResults.begin());
   } else {
-    llvm::SmallVector<std::pair<SILValue, const SILResultInfo *>, 8> copiedResults;
+    llvm::SmallVector<std::pair<SILValue, const SILResultInfo &>, 8> copiedResults;
     {
       Scope S(Cleanups, CleanupLocation::get(loc));
 
@@ -2456,23 +2457,23 @@ RValue SILGenFunction::emitApply(
       ManagedValue borrowedDirectResult = managedDirectResult.borrow(*this, loc);
       // Then create unmanaged copies of the direct result and forward the
       // result as expected by addManageDirectResult.
-      for (auto P : enumerate(directSILResults)) {
-        const SILResultInfo *directResult = P.first;
-        unsigned index = P.second;
-        ManagedValue elt = B.createTupleExtract(loc, borrowedDirectResult, index,
-                                                substFnConv.getSILType(*directResult));
+      unsigned Index = 0;
+      for (const SILResultInfo &directResult : directSILResults) {
+        ManagedValue elt = B.createTupleExtract(loc, borrowedDirectResult, Index,
+                                                substFnConv.getSILType(directResult));
         SILValue v = elt.copyUnmanaged(*this, loc).forward(*this);
         // We assume that unowned inner pointers, autoreleased values, and
         // indirect values are never returned in tuples.
-        assert(directResult->getConvention() == ResultConvention::Owned ||
-               directResult->getConvention() == ResultConvention::Unowned);
+        assert(directResult.getConvention() == ResultConvention::Owned ||
+               directResult.getConvention() == ResultConvention::Unowned);
         copiedResults.push_back({v, directResult});
+        ++Index;
       }
       // Then allow the cleanups to be emitted in the proper reverse order.
     }
     // Finally add our managed direct results.
     for (auto p : copiedResults) {
-      addManagedDirectResult(p.first, *p.second);
+      addManagedDirectResult(p.first, p.second);
     }
   }
 

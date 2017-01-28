@@ -768,8 +768,8 @@ class AllocRefInst final : public AllocRefInstBase {
   static AllocRefInst *create(SILDebugLocation DebugLoc, SILFunction &F,
                               SILType ObjectType,
                               bool objc, bool canBeOnStack,
-                              ArrayRef<SILType> ElementTypes,
-                              ArrayRef<SILValue> ElementCountOperands,
+                              llvm::SmallVectorImpl<SILType> &ElementTypes,
+                              llvm::SmallVectorImpl<SILValue> &ElementCountOperands,
                               SILOpenedArchetypesState &OpenedArchetypes);
 
 public:
@@ -810,8 +810,8 @@ class AllocRefDynamicInst final : public AllocRefInstBase {
   static AllocRefDynamicInst *
   create(SILDebugLocation DebugLoc, SILFunction &F,
          SILValue metatypeOperand, SILType ty, bool objc,
-         ArrayRef<SILType> ElementTypes,
-         ArrayRef<SILValue> ElementCountOperands,
+         llvm::SmallVectorImpl<SILType> &ElementTypes,
+         llvm::SmallVectorImpl<SILValue> &ElementCountOperands,
          SILOpenedArchetypesState &OpenedArchetypes);
 
 public:

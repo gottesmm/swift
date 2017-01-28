@@ -269,23 +269,37 @@ public:
                                          Var));
   }
 
+
   AllocRefInst *createAllocRef(SILLocation Loc, SILType ObjectType,
                                bool objc, bool canAllocOnStack,
-                               ArrayRef<SILType> ElementTypes,
-                               ArrayRef<SILValue> ElementCountOperands) {
+                               llvm::SmallVectorImpl<SILType> &ElementTypes,
+                               llvm::SmallVectorImpl<SILValue> &ElementCountOperands) {
     // AllocRefInsts expand to function calls and can therefore not be
     // counted towards the function prologue.
     assert(!Loc.isInPrologue());
     return insert(AllocRefInst::create(getSILDebugLocation(Loc),
                                        F, ObjectType, objc, canAllocOnStack,
-                                       ElementTypes, ElementCountOperands,
+                                       ElementTypes,
+                                       ElementCountOperands,
                                        OpenedArchetypes));
+  }
+
+  AllocRefInst *createAllocRef(SILLocation Loc, SILType ObjectType,
+                               bool objc, bool canAllocOnStack,
+                               ArrayRef<SILType> ElementTypes,
+                               ArrayRef<SILValue> ElementCountOperands) {
+    llvm::SmallVector<SILValue, 8> AllOperands(ElementCountOperands.begin(),
+                                               ElementCountOperands.end());
+    llvm::SmallVector<SILType, 8> AllElementTypes(ElementTypes.begin(),
+                                                  ElementTypes.end());
+    return createAllocRef(Loc, ObjectType, objc, canAllocOnStack,
+                          AllElementTypes, AllOperands);
   }
 
   AllocRefDynamicInst *createAllocRefDynamic(SILLocation Loc, SILValue operand,
                                              SILType type, bool objc,
-                                    ArrayRef<SILType> ElementTypes,
-                                    ArrayRef<SILValue> ElementCountOperands) {
+                                             llvm::SmallVectorImpl<SILType> &ElementTypes,
+                                             llvm::SmallVectorImpl<SILValue> &ElementCountOperands) {
     // AllocRefDynamicInsts expand to function calls and can therefore
     // not be counted towards the function prologue.
     assert(!Loc.isInPrologue());
@@ -294,6 +308,17 @@ public:
                                               ElementTypes,
                                               ElementCountOperands,
                                               OpenedArchetypes));
+  }
+
+  AllocRefDynamicInst *createAllocRefDynamic(SILLocation Loc, SILValue operand,
+                                             SILType type, bool objc,
+                                             ArrayRef<SILType> ElementTypes,
+                                             ArrayRef<SILValue> ElementCountOperands) {
+    llvm::SmallVector<SILType, 8> AllElementTypes(ElementTypes.begin(), ElementTypes.end());
+    llvm::SmallVector<SILValue, 8> AllElementCountOperands(ElementCountOperands.begin(),
+                                                           ElementCountOperands.end());
+    return createAllocRefDynamic(Loc, operand, type, objc, AllElementTypes,
+                                 AllElementCountOperands);
   }
 
   AllocValueBufferInst *

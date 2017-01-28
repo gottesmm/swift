@@ -178,51 +178,50 @@ AllocRefInstBase::AllocRefInstBase(ValueKind Kind,
          sizeof(SILType) * ElementTypes.size());
 }
 
+
 AllocRefInst *AllocRefInst::create(SILDebugLocation Loc, SILFunction &F,
                                    SILType ObjectType,
                                    bool objc, bool canBeOnStack,
-                                   ArrayRef<SILType> ElementTypes,
-                                   ArrayRef<SILValue> ElementCountOperands,
+                                   llvm::SmallVectorImpl<SILType> &AllElementTypes,
+                                   llvm::SmallVectorImpl<SILValue> &AllOperands,
                                    SILOpenedArchetypesState &OpenedArchetypes) {
-  assert(ElementTypes.size() == ElementCountOperands.size());
-  assert(!objc || ElementTypes.size() == 0);
-  SmallVector<SILValue, 8> AllOperands(ElementCountOperands.begin(),
-                                       ElementCountOperands.end());
-  for (SILType ElemType : ElementTypes) {
+  for (SILType ElemType : AllElementTypes) {
     collectTypeDependentOperands(AllOperands, OpenedArchetypes, F,
                                  ElemType.getSwiftRValueType());
   }
+
+  assert(AllElementTypes.size() == AllOperands.size());
+  assert(!objc || AllElementTypes.size() == 0);
+
   void *Buffer = F.getModule().allocateInst(
                       sizeof(AllocRefInst)
                         + decltype(Operands)::getExtraSize(AllOperands.size())
-                        + sizeof(SILType) * ElementTypes.size(),
+                        + sizeof(SILType) * AllElementTypes.size(),
                       alignof(AllocRefInst));
   return ::new (Buffer) AllocRefInst(Loc, F, ObjectType, objc, canBeOnStack,
-                                     ElementTypes, AllOperands);
+                                     AllElementTypes, AllOperands);
 }
 
 AllocRefDynamicInst *
 AllocRefDynamicInst::create(SILDebugLocation DebugLoc, SILFunction &F,
                             SILValue metatypeOperand, SILType ty, bool objc,
-                            ArrayRef<SILType> ElementTypes,
-                            ArrayRef<SILValue> ElementCountOperands,
+                            llvm::SmallVectorImpl<SILType> &AllElementTypes,
+                            llvm::SmallVectorImpl<SILValue> &AllOperands,
                             SILOpenedArchetypesState &OpenedArchetypes) {
-  SmallVector<SILValue, 8> AllOperands(ElementCountOperands.begin(),
-                                       ElementCountOperands.end());
   AllOperands.push_back(metatypeOperand);
   collectTypeDependentOperands(AllOperands, OpenedArchetypes, F,
                                ty.getSwiftRValueType());
-  for (SILType ElemType : ElementTypes) {
+  for (SILType ElemType : AllElementTypes) {
     collectTypeDependentOperands(AllOperands, OpenedArchetypes, F,
                                  ElemType.getSwiftRValueType());
   }
   void *Buffer = F.getModule().allocateInst(
                       sizeof(AllocRefDynamicInst)
                         + decltype(Operands)::getExtraSize(AllOperands.size())
-                        + sizeof(SILType) * ElementTypes.size(),
+                        + sizeof(SILType) * AllElementTypes.size(),
                       alignof(AllocRefDynamicInst));
   return ::new (Buffer)
-      AllocRefDynamicInst(DebugLoc, ty, objc, ElementTypes, AllOperands);
+      AllocRefDynamicInst(DebugLoc, ty, objc, AllElementTypes, AllOperands);
 }
 
 AllocBoxInst::AllocBoxInst(SILDebugLocation Loc, CanSILBoxType BoxType,

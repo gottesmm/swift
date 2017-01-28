@@ -202,3 +202,37 @@ ManagedValue SILGenBuilder::createTupleExtract(SILLocation Loc, ManagedValue Val
   SILType Type = Value.getType().getTupleElementType(Index);
   return createTupleExtract(Loc, Value, Index, Type);
 }
+
+ManagedValue SILGenBuilder::createAllocRef(SILLocation Loc, SILType RefType, bool objc, bool canAllocOnStack,
+                                           ArrayRef<SILType> InputElementTypes,
+                                           ArrayRef<ManagedValue> InputElementCountOperands) {
+  llvm::SmallVector<SILType, 8> ElementTypes(InputElementTypes.begin(),
+                                             InputElementTypes.end());
+  llvm::SmallVector<SILValue, 8> ElementCountOperands;
+  std::transform(std::begin(InputElementCountOperands),
+                 std::end(InputElementCountOperands),
+                 std::back_inserter(ElementCountOperands),
+                 [](ManagedValue M) -> SILValue { return M.getValue(); });
+
+  AllocRefInst *ARI =
+    SILBuilder::createAllocRef(Loc, RefType, objc, canAllocOnStack,
+                               ElementTypes, ElementCountOperands);
+  return gen.emitManagedRValueWithCleanup(ARI);
+}
+
+ManagedValue SILGenBuilder::createAllocRefDynamic(SILLocation Loc, ManagedValue Operand, SILType RefType, bool objc,
+                                                  ArrayRef<SILType> InputElementTypes,
+                                                  ArrayRef<ManagedValue> InputElementCountOperands) {
+  llvm::SmallVector<SILType, 8> ElementTypes(InputElementTypes.begin(),
+                                             InputElementTypes.end());
+  llvm::SmallVector<SILValue, 8> ElementCountOperands;
+  std::transform(std::begin(InputElementCountOperands),
+                 std::end(InputElementCountOperands),
+                 std::back_inserter(ElementCountOperands),
+                 [](ManagedValue M) -> SILValue { return M.getValue(); });
+
+  AllocRefDynamicInst *ARDI =
+    SILBuilder::createAllocRefDynamic(Loc, Operand.getValue(), RefType, objc,
+                                      ElementTypes, ElementCountOperands);
+  return gen.emitManagedRValueWithCleanup(ARDI);
+}

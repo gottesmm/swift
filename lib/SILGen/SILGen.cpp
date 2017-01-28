@@ -609,9 +609,12 @@ void SILGenModule::preEmitFunction(SILDeclRef constant,
         });
 }
 
+static unsigned Count = 0;
+
 void SILGenModule::postEmitFunction(SILDeclRef constant,
                                     SILFunction *F) {
   assert(!F->isExternalDeclaration() && "did not emit any function body?!");
+  llvm::errs() << "Emitted: #" << ++Count << " '" << F->getName() << "'\n";
   DEBUG(llvm::dbgs() << "lowered sil:\n";
         F->print(llvm::dbgs()));
   F->verify();

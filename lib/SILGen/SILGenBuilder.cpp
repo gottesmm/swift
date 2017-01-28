@@ -236,3 +236,9 @@ ManagedValue SILGenBuilder::createAllocRefDynamic(SILLocation Loc, ManagedValue 
                                       ElementTypes, ElementCountOperands);
   return gen.emitManagedRValueWithCleanup(ARDI);
 }
+
+ManagedValue SILGenBuilder::createUncheckedEnumData(SILLocation Loc, ManagedValue Operand, EnumElementDecl *Element) {
+  if (Operand.hasCleanup()) {
+    return ManagedValueSILBuilder
+  }
+}

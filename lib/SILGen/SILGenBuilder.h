@@ -129,12 +129,15 @@ public:
 
   using SILBuilder::createAllocRef;
   ManagedValue createAllocRef(SILLocation Loc, SILType RefType, bool objc, bool canAllocOnStack,
-                              ArrayRef<SILType> &ElementTypes,
+                              ArrayRef<SILType> ElementTypes,
                               ArrayRef<ManagedValue> ElementCountOperands);
   using SILBuilder::createAllocRefDynamic;
   ManagedValue createAllocRefDynamic(SILLocation Loc, ManagedValue Operand, SILType RefType, bool objc,
                                      ArrayRef<SILType> ElementTypes,
                                      ArrayRef<ManagedValue> ElementCountOperands);
+
+  using SILBuilder::createUncheckedEnumData;
+  ManagedValue createUncheckedEnumData(SILLocation Loc, ManagedValue Operand, EnumElementDecl *Element);
 };
 
 } // namespace Lowering

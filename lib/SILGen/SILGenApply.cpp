@@ -1829,12 +1829,26 @@ static SILValue emitRawApply(SILGenFunction &gen,
     argValues.push_back(argValue);
   }
 
-  auto resultType = substFnConv.getSILResultType();
-  auto calleeType = SILType::getPrimitiveObjectType(substFnType);
+  SILType resultType = substFnConv.getSILResultType();
+  SILType calleeType = SILType::getPrimitiveObjectType(substFnType);
 
   // If we don't have an error result, we can make a simple 'apply'.
   SILValue result;
   if (!substFnType->hasErrorResult()) {
+    // At this point, we have forwarded any operations that we need to
+    // forward. Check if we have a no return function. In such a case, we must
+    // emit all top level cleanups for a return. If any of our values were meant
+    // to be forwarded, they will have already been forwarded and their cleanup
+    // eliminated.
+    //
+    // *NOTE* We do not insert unreachables since we need to allow for
+    // unreachable code to be diagnosed by the DiagnoseUnreachable pass. The
+    // SILOwnershipVerifier is smart enough to be able to ignore double uses
+    // after no-return functions.
+    if (calleeType.isNoReturnFunction()) {
+      gen.Cleanups.emitCleanupsForReturn(CleanupLocation::get(loc));
+    }
+
     result = gen.B.createApply(loc, fnValue, calleeType,
                                resultType, subs, argValues);
 

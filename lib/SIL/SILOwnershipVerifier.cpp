@@ -9,6 +9,51 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
+///
+/// \file
+///
+/// # High Level Overview
+///
+/// This file contains verifiers for the SILOwnershipModel. The first verifier
+/// is a simple SSA ownership verifier. The second is a general linear model
+/// checker. The SSA ownership verifier gathers uses of SSA values and sorts the
+/// uses into "normal" and lifetime ending uses. Then this is passed to the
+/// general linear model checker that verifies that:
+///
+/// 1. Exactly one lifetime ending use occurs along any single path through the
+/// program.
+/// 2. All normal uses occur before a lifetime ending use.
+///
+/// This is implemented by marking the blocks that the uses are at and then
+/// walking up block predecessors/successors lists to ensure good performance.
+///
+/// # SSA Use Verifier
+///
+/// Given an SSA value, the use verifier iterates over all uses of the value and
+/// classifies whether or not the use is compatible with the ownership kind of
+/// the SSA value and then if the use is a lifetime ending use. This is done by
+/// hard coded per instruction verification routines. We use metaprogramming to
+/// ease the burden of duplicate code paths.
+///
+/// # Dataflow Verifier
+///
+/// *FILL IN DESIGN HERE*
+///
+/// The dataflow verifier must be able to ignore errors that occur in
+/// unreachable code. This is because the verifiers must be able to be run at
+/// SILGen time. SILGen will often times emit code into unreachable
+/// regions. This includes cases where cleanups are emitted multiple times. We
+/// must be able to recognize and ignore such cases where multiple cleanups
+/// occur. We deal with this by noting that:
+///
+/// 1. Any such uses must be in the lifetime ending user set.
+/// 2. If we discover an intra-block double consumption, we can iterate in
+/// between the new instruction and the original found instruction and see if
+/// there is a no-return function. If there is, then we ignore the double
+/// consume.
+/// 3. Given an inter-block double consumption, 
+///
+//===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "sil-ownership-verifier"
 

@@ -1852,6 +1852,14 @@ static SILValue emitRawApply(SILGenFunction &gen,
     result = gen.B.createApply(loc, fnValue, calleeType,
                                resultType, subs, argValues);
 
+    // Once we called the function, again if we have a no-return in order to
+    // maintain SIL invaraints, emit a direct branch to a new block and perform
+    // any necessary cleanups. This will allow for all no return functions to be
+    // the instruction before a terminator.
+    if (calleeType.isNoReturnFunction()) {
+      gen.B.emitBlock(gen.B.splitBlockForFallthrough(), loc);
+    }
+
   // Otherwise, we need to create a try_apply.
   } else {
     SILBasicBlock *normalBB = gen.createBasicBlock();

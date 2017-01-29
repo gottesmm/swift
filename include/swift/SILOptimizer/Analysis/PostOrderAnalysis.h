@@ -18,6 +18,7 @@
 #include "swift/SIL/CFG.h"
 #include "swift/SIL/SILBasicBlock.h"
 #include "swift/SIL/SILFunction.h"
+#include "swift/SIL/PostOrder.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/DenseMap.h"
@@ -27,66 +28,6 @@ namespace swift {
 
 class SILBasicBlock;
 class SILFunction;
-
-class PostOrderFunctionInfo {
-  std::vector<SILBasicBlock *> PostOrder;
-  llvm::DenseMap<SILBasicBlock *, unsigned> BBToPOMap;
-
-public:
-  PostOrderFunctionInfo(SILFunction *F) {
-    for (auto *BB : make_range(po_begin(F), po_end(F))) {
-      BBToPOMap[BB] = PostOrder.size();
-      PostOrder.push_back(BB);
-    }
-  }
-
-  using iterator = decltype(PostOrder)::iterator;
-  using const_iterator = decltype(PostOrder)::const_iterator;
-  using reverse_iterator = decltype(PostOrder)::reverse_iterator;
-  using const_reverse_iterator = decltype(PostOrder)::const_reverse_iterator;
-
-  using range = iterator_range<iterator>;
-  using const_range = iterator_range<const_iterator>;
-  using reverse_range = iterator_range<reverse_iterator>;
-  using const_reverse_range = iterator_range<const_reverse_iterator>;
-
-  range getPostOrder() {
-    return make_range(PostOrder.begin(), PostOrder.end());
-  }
-  const_range getPostOrder() const {
-    return make_range(PostOrder.begin(), PostOrder.end());
-  }
-  reverse_range getReversePostOrder() {
-    return make_range(PostOrder.rbegin(), PostOrder.rend());
-  }
-  const_reverse_range getReversePostOrder() const {
-    return make_range(PostOrder.rbegin(), PostOrder.rend());
-  }
-
-  using enumerated_range = EnumeratorRange<decltype(PostOrder)::iterator>;
-  enumerated_range getEnumeratedPostOrder() { return enumerate(PostOrder); }
-  using reverse_enumerated_range =
-      EnumeratorRange<decltype(PostOrder)::reverse_iterator>;
-  reverse_enumerated_range getEnumeratedReversePostOrder() {
-    return enumerate(PostOrder.rbegin(), PostOrder.rend());
-  }
-
-  unsigned size() const { return PostOrder.size(); }
-
-  Optional<unsigned> getPONumber(SILBasicBlock *BB) const {
-    auto Iter = BBToPOMap.find(BB);
-    if (Iter != BBToPOMap.end())
-      return Iter->second;
-    return None;
-  }
-
-  Optional<unsigned> getRPONumber(SILBasicBlock *BB) const {
-    auto Iter = BBToPOMap.find(BB);
-    if (Iter != BBToPOMap.end())
-      return PostOrder.size() - Iter->second - 1;
-    return None;
-  }
-};
 
 /// This class is a simple wrapper around the POT iterator provided by LLVM. It
 /// lazily re-evaluates the post order when it is invalidated so that we do not

@@ -158,7 +158,7 @@ namespace {
           result = finishFromResultBuffer(hasAbstraction, resultBuffer,
                                           abstraction, origTargetTL, ctx);
         } else {
-          SILValue argument = trueBB->createPHIArgument(
+         SILValue argument = trueBB->createPHIArgument(
               origTargetTL.getLoweredType(), ValueOwnershipKind::Owned);
           result = finishFromResultScalar(hasAbstraction, argument, consumption,
                                           abstraction, origTargetTL, ctx);
@@ -176,7 +176,9 @@ namespace {
         // If we're using the scalar strategy, handle the consumption rules.
         if (Strategy != CastStrategy::Address &&
             shouldDestroyOnFailure(consumption)) {
-          SGF.B.emitDestroyValueOperation(Loc, scalarOperandValue);
+          FullExpr argScope(SGF.Cleanups, CleanupLocation::get(Loc));
+          ManagedValue result = SGF.B.createOwnedPHIArgument(scalarOperandValue->getType());
+          (void)result;
         }
 
         handleFalse();

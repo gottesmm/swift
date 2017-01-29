@@ -2463,8 +2463,11 @@ public:
                 CBI->getCastType(),
             "success dest block argument of checked_cast_br must match type of "
             "cast");
-    require(CBI->getFailureBB()->args_empty(),
-            "failure dest of checked_cast_br must take no arguments");
+    require(CBI->getFailureBB()->args_size() == 1,
+            "failure dest of checked_cast_br must take one arguments");
+    require(CBI->getFailureBB()->args_begin()[0]->getType() ==
+            CBI->getOperand()->getType(),
+            "failure dest block argument must match type of original type");
   }
 
   void checkCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CCABI) {

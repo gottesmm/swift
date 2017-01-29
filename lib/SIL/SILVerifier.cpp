@@ -874,13 +874,21 @@ public:
               "apply instruction cannot call function with error result");
     }
 
-    // Check that if the apply is of a noreturn callee, make sure that an
-    // unreachable is the next instruction.
-    if (AI->getModule().getStage() == SILStage::Raw ||
-        !AI->isCalleeNoReturn())
+    // If the apply is not a noreturn callee, then we have no more verification
+    // to perform.
+    if (!AI->isCalleeNoReturn())
       return;
-    require(isa<UnreachableInst>(std::next(SILBasicBlock::iterator(AI))),
-            "No return apply without an unreachable as a next instruction.");
+
+    // Otherwise, make sure in all SIL stages that the no return function is the
+    // last non-terminator instruction in the block. This makes it trivial to
+    // find non-terminators by just checking the instruction before a block
+    // terminator.
+    auto Next = std::next(SILBasicBlock::iterator(AI));
+    require(isa<TermInst>(Next), "No return apply must have a terminator as a next instruction in all SIL stages");
+    if (AI->getModule().getStage() == SILStage::Raw)
+      return;
+    require(isa<UnreachableInst>(Next),
+            "No return apply without an unreachable as a next instruction in Canonical SIL?!.");
   }
 
   void checkTryApplyInst(TryApplyInst *AI) {

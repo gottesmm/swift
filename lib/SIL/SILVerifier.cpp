@@ -17,6 +17,7 @@
 #include "swift/SIL/SILOpenedArchetypesTracker.h"
 #include "swift/SIL/SILVisitor.h"
 #include "swift/SIL/SILVTable.h"
+#include "swift/SIL/PostOrder.h"
 #include "swift/SIL/Dominance.h"
 #include "swift/SIL/DynamicCasts.h"
 #include "swift/AST/AnyFunctionRef.h"
@@ -108,6 +109,7 @@ class SILVerifier : public SILVerifierBase<SILVerifier> {
   SILOpenedArchetypesTracker OpenedArchetypes;
   const SILInstruction *CurInstruction = nullptr;
   DominanceInfo *Dominance = nullptr;
+  llvm::Optional<PostOrderFunctionInfo> PostOrder;
   bool SingleFunction = true;
 
   SILVerifier(const SILVerifier&) = delete;
@@ -413,7 +415,7 @@ public:
       : M(F.getModule().getSwiftModule()), F(F),
         fnConv(F.getLoweredFunctionType(), F.getModule()),
         TC(F.getModule().Types), OpenedArchetypes(F), Dominance(nullptr),
-        SingleFunction(SingleFunction) {
+        PostOrder(), SingleFunction(SingleFunction) {
     if (F.isExternalDeclaration())
       return;
       
@@ -426,6 +428,7 @@ public:
     }
 
     Dominance = new DominanceInfo(const_cast<SILFunction*>(&F));
+    PostOrder.emplace(const_cast<SILFunction *>(&F));
 
     auto *DebugScope = F.getDebugScope();
     require(DebugScope, "All SIL functions must have a debug scope");
@@ -476,7 +479,7 @@ public:
     // ownership.
     if (!F->hasQualifiedOwnership())
       return;
-    SILValue(V).verifyOwnership(F->getModule());
+    SILValue(V).verifyOwnership(F->getModule(), &PostOrder.getValue());
   }
 
   void checkSILInstruction(SILInstruction *I) {

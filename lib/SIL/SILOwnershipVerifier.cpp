@@ -835,9 +835,32 @@ OwnershipCompatibilityUseChecker::visitMarkDependenceInst(
 
 namespace {
 
+struct OwnershipUser {
+  enum OwnershipUserLivenessFlag { IsLive_t = 0, IsDead_t = 1 };
+
+  using PointerTy =
+      llvm::PointerIntPair<SILInstruction *, 1, OwnershipUserLivenessFlag>;
+  PointerTy User;
+
+  OwnershipUser(SILInstruction *I) : User(I, IsLive_t) {}
+  OwnershipUser(PointerTy User) : User(User) {}
+
+  bool isLive() const { return User.getInt() == IsLive_t; }
+
+  bool isDead() const { return !isLive(); }
+
+  SILInstruction *getInst() const { return User.getPointer(); }
+
+  SILBasicBlock *getParent() const { return getInst()->getParent(); }
+
+  void setDead() { User.setInt(IsDead_t); }
+};
+
 class SILValueOwnershipChecker {
   /// The module that we are in.
   SILModule &Mod;
+
+  const PostOrderFunctionInfo &POFI;
 
   /// The value whose ownership we will check.
   SILValue Value;
@@ -861,7 +884,9 @@ class SILValueOwnershipChecker {
   llvm::SmallPtrSet<SILBasicBlock *, 8> SuccessorBlocksThatMustBeVisited;
 
 public:
-  SILValueOwnershipChecker(SILModule &M, SILValue V) : Mod(M), Value(V) {}
+  SILValueOwnershipChecker(SILModule &M, const PostOrderFunctionInfo &POFI,
+                           SILValue V)
+      : Mod(M), POFI(POFI), Value(V) {}
 
   ~SILValueOwnershipChecker() = default;
   SILValueOwnershipChecker(SILValueOwnershipChecker &) = delete;
@@ -880,11 +905,12 @@ public:
 private:
   bool checkUses();
   void checkDataflow();
+  void checkDataflowEndConditions();
   void
-  gatherUsers(llvm::SmallVectorImpl<SILInstruction *> &LifetimeEndingUsers,
-              llvm::SmallVectorImpl<SILInstruction *> &NonLifetimeEndingUsers);
-  void uniqueNonLifetimeEndingUsers(
-      ArrayRef<SILInstruction *> NonLifetimeEndingUsers);
+  gatherUsers(llvm::SmallVectorImpl<OwnershipUser> &LifetimeEndingUsers,
+              llvm::SmallVectorImpl<OwnershipUser> &NonLifetimeEndingUsers);
+  void
+  uniqueNonLifetimeEndingUsers(ArrayRef<OwnershipUser> NonLifetimeEndingUsers);
 
   /// Returns true if the given block is in the BlocksWithLifetimeEndingUses
   /// set. This is a helper to extract out large logging messages so that the
@@ -902,6 +928,9 @@ private:
                                     SILBasicBlock *UserBlock);
 
   bool checkValueWithoutLifetimeEndingUses();
+  bool pruneUnreachableUsers(
+      llvm::SmallVectorImpl<OwnershipUser> &LifetimeEndingUsers,
+      llvm::SmallVectorImpl<OwnershipUser> &NonLifetimeEndingUsers);
 };
 
 } // end anonymous namespace
@@ -951,8 +980,8 @@ bool SILValueOwnershipChecker::doesBlockDoubleConsume(
 }
 
 void SILValueOwnershipChecker::gatherUsers(
-    llvm::SmallVectorImpl<SILInstruction *> &LifetimeEndingUsers,
-    llvm::SmallVectorImpl<SILInstruction *> &NonLifetimeEndingUsers) {
+    llvm::SmallVectorImpl<OwnershipUser> &LifetimeEndingUsers,
+    llvm::SmallVectorImpl<OwnershipUser> &NonLifetimeEndingUsers) {
 
   // See if Value is guaranteed. If we are guaranteed and not forwarding, then
   // we need to look through subobject uses for more uses. Otherwise, if we are
@@ -979,10 +1008,10 @@ void SILValueOwnershipChecker::gatherUsers(
 
     if (OwnershipCompatibilityUseChecker(Mod, *Op, Value).check(User)) {
       DEBUG(llvm::dbgs() << "        Lifetime Ending User: " << *User);
-      LifetimeEndingUsers.push_back(User);
+      LifetimeEndingUsers.push_back(OwnershipUser{User});
     } else {
       DEBUG(llvm::dbgs() << "        Regular User: " << *User);
-      NonLifetimeEndingUsers.push_back(User);
+      NonLifetimeEndingUsers.push_back(OwnershipUser{User});
     }
 
     // If our base value is not guaranteed or our intermediate value is not an
@@ -1013,12 +1042,12 @@ void SILValueOwnershipChecker::gatherUsers(
 // Unique our non lifetime ending user list by only selecting the last user in
 // each block.
 void SILValueOwnershipChecker::uniqueNonLifetimeEndingUsers(
-    ArrayRef<SILInstruction *> NonLifetimeEndingUsers) {
-  for (SILInstruction *User : NonLifetimeEndingUsers) {
-    auto *UserBlock = User->getParent();
+    ArrayRef<OwnershipUser> NonLifetimeEndingUsers) {
+  for (const OwnershipUser &User : NonLifetimeEndingUsers) {
+    auto *UserBlock = User.getParent();
     // First try to associate User with User->getParent().
-    auto Result =
-        BlocksWithNonLifetimeEndingUses.insert(std::make_pair(UserBlock, User));
+    auto Result = BlocksWithNonLifetimeEndingUses.insert(
+        std::make_pair(UserBlock, User.getInst()));
 
     // If the insertion succeeds, then we know that there is no more work to
     // be done, so process the next use.
@@ -1033,14 +1062,14 @@ void SILValueOwnershipChecker::uniqueNonLifetimeEndingUsers(
     // to keep the already mapped value, not use, so continue.
     if (std::find_if(Result.first->second->getIterator(), UserBlock->end(),
                      [&User](const SILInstruction &I) -> bool {
-                       return User == &I;
+                       return User.getInst() == &I;
                      }) == UserBlock->end()) {
       continue;
     }
 
     // At this point, we know that Use is later in the Block than
     // Result.first->second, so store Use instead.
-    Result.first->second = User;
+    Result.first->second = User.getInst();
   }
 }
 
@@ -1102,15 +1131,15 @@ bool SILValueOwnershipChecker::checkValueWithoutLifetimeEndingUses() {
 
 static bool isGuaranteedFunctionArgWithLifetimeEndingUses(
     SILFunctionArgument *Arg,
-    const llvm::SmallVectorImpl<SILInstruction *> &LifetimeEndingUsers) {
+    const llvm::SmallVectorImpl<OwnershipUser> &LifetimeEndingUsers) {
   if (Arg->getOwnershipKind() != ValueOwnershipKind::Guaranteed)
     return true;
 
   llvm::errs() << "    Function: '" << Arg->getFunction()->getName() << "'\n"
                << "    Guaranteed function parameter with life ending uses!\n"
                << "    Value: " << *Arg;
-  for (auto *U : LifetimeEndingUsers) {
-    llvm::errs() << "    Lifetime Ending User: " << *U;
+  for (const auto &U : LifetimeEndingUsers) {
+    llvm::errs() << "    Lifetime Ending User: " << *U.getInst();
   }
   llvm::errs() << '\n';
   if (IsSILOwnershipVerifierTestingEnabled)
@@ -1120,17 +1149,177 @@ static bool isGuaranteedFunctionArgWithLifetimeEndingUses(
 
 static bool isSubobjectProjectionWithLifetimeEndingUses(
     SILValue Value,
-    const llvm::SmallVectorImpl<SILInstruction *> &LifetimeEndingUsers) {
+    const llvm::SmallVectorImpl<OwnershipUser> &LifetimeEndingUsers) {
   llvm::errs() << "    Function: '" << Value->getFunction()->getName() << "'\n"
                << "    Subobject projection with life ending uses!\n"
                << "    Value: " << *Value;
-  for (auto *U : LifetimeEndingUsers) {
-    llvm::errs() << "    Lifetime Ending User: " << *U;
+  for (const auto &U : LifetimeEndingUsers) {
+    llvm::errs() << "    Lifetime Ending User: " << *U.getInst();
   }
   llvm::errs() << '\n';
   if (IsSILOwnershipVerifierTestingEnabled)
     return false;
   llvm_unreachable("triggering standard assertion failure routine");
+}
+
+static bool isNoReturnBlock(SILBasicBlock *BB) {
+  auto Iter = prev_or_begin(BB->getTerminator()->getIterator(), BB->begin());
+  FullApplySite FAS = FullApplySite::isa(&*Iter);
+  if (!FAS || !FAS.isCalleeNoReturn())
+    return false;
+  return true;
+}
+
+static void markDeadUsers(SILBasicBlock *BB,
+                          llvm::SmallVectorImpl<OwnershipUser> &Users) {
+  auto Iter = std::lower_bound(
+      Users.begin(), Users.end(), BB,
+      [](const OwnershipUser &User, SILBasicBlock *BB) -> bool {
+        return User.getParent() < BB;
+      });
+  while (Iter != Users.end() && Iter->getParent() == BB) {
+    Iter->setDead();
+    ++Iter;
+  }
+}
+
+/// We are passed a list consisting of ownership users that are both live and
+/// dead. Partition the list so the live elements are first and then erase the
+/// rest of the array.
+static void
+removeDeadUsersFromArray(llvm::SmallVectorImpl<OwnershipUser> &Users) {
+  auto LiveBound = std::partition(
+      Users.begin(), Users.end(),
+      [](const OwnershipUser &User) -> bool { return User.isLive(); });
+  Users.erase(LiveBound, Users.end());
+}
+
+/// Prune any users that are known unreachable when we are running in Raw SIL.
+///
+/// We are taking advantage of a few different things here. First we note that
+/// we can ignore backedges since:
+///
+/// 1. SILGen does not emit irreducible loops. This means that there is always
+/// one entry into a loop. There may be multiple backedges though.
+///
+/// 2. This means that any backedges that we see during an RPO traversal must be
+/// control dependent on the rest of the non-backedge loop header blocks. This
+/// means that if all of the non-loop header blocks are unreachable, then the
+/// backedge must also be unreachable.
+///
+/// Then we note that we reduce the size of our walk by only walking from the
+/// value block to the use blocks.
+bool SILValueOwnershipChecker::pruneUnreachableUsers(
+    llvm::SmallVectorImpl<OwnershipUser> &LifetimeEndingUsers,
+    llvm::SmallVectorImpl<OwnershipUser> &NonLifetimeEndingUsers) {
+  // We only prune unreachable users during SILGen.
+  if (Mod.getStage() != SILStage::Raw)
+    return true;
+
+  DEBUG(llvm::dbgs() << "Pruning Unreachable Users!\n"
+        << "Before LifetimeEndingUsers:\n";
+        std::for_each(LifetimeEndingUsers.begin(), LifetimeEndingUsers.end(),
+                      [](const OwnershipUser &I) {
+                        llvm::dbgs() << "    " << *I.getInst();
+                      });
+        llvm::dbgs() << "Before NonLifetimeEndingUsers:\n";
+        std::for_each(NonLifetimeEndingUsers.begin(), NonLifetimeEndingUsers.end(),
+                      [](const OwnershipUser &I) {
+                        llvm::dbgs() << "    " << *I.getInst();
+                      }));
+
+  // Sort our lifetime ending user array and non lifetime ending users array by
+  // the instruction block IDs. We use this for quick retrieval.
+  std::sort(LifetimeEndingUsers.begin(), LifetimeEndingUsers.end(),
+            [](const OwnershipUser &I1, const OwnershipUser &I2) -> bool {
+              return I1.getParent() < I2.getParent();
+            });
+  std::sort(NonLifetimeEndingUsers.begin(), NonLifetimeEndingUsers.end(),
+            [](const OwnershipUser &I1, const OwnershipUser &I2) -> bool {
+              return I1.getParent() < I2.getParent();
+            });
+
+  llvm::SmallPtrSet<SILBasicBlock *, 32> BlocksToVisit;
+  for (const OwnershipUser &I : LifetimeEndingUsers) {
+    BlocksToVisit.insert(I.getParent());
+  }
+  for (const OwnershipUser &I : NonLifetimeEndingUsers) {
+    BlocksToVisit.insert(I.getParent());
+  }
+
+  llvm::Optional<unsigned> RPONumber =
+      POFI.getRPONumber(Value->getParentBlock());
+  // If we do not have an RPO number that we must be unreachable, so return, we
+  // have nothing to verify.
+  if (!RPONumber)
+    return false;
+
+  llvm::SmallPtrSet<SILBasicBlock *, 32> DeadBlocks;
+  for (SILBasicBlock *BB : POFI.getReversePostOrder(*RPONumber)) {
+    unsigned BBRPONumber = POFI.getRPONumber(BB).getValue();
+
+    // If we have visited all blocks that we wanted to visit, exit the loop. We
+    // have pruned everything we needed to.
+    if (BlocksToVisit.empty())
+      break;
+
+    // Then if this block is in the blocks to visit list, remove it so we can
+    // achieve our exit condition.
+    BlocksToVisit.erase(BB);
+
+    // Then see if we are not a no-return block. This means that either we are a
+    // no-return block ourselves, or all of our predecessors (ignoring
+    // back-edges) are already in the no-return block set.
+    if (!isNoReturnBlock(BB)
+        && (BB->pred_empty()
+            || any_of(BB->getPredecessorBlocks(),
+                      [this, &DeadBlocks, &BBRPONumber]
+                      (SILBasicBlock *PredBB) -> bool {
+                        // Look up our predecessor's RPO number.
+                        llvm::Optional<unsigned> PredRPO =
+                          POFI.getRPONumber(PredBB);
+
+                        // If our predecessor does not have an RPO number, then
+                        // it must be unreachable and thus should be ignored.
+                        if (!PredRPO)
+                          return false;
+
+                        // If the pred's RPO number is greater than ours, then
+                        // it must be a back edge. If it is a backedge, we can
+                        // ignore it. Treat it as dead so all_of ignores it. See
+                        // the comment at the top of this method.
+                        if (PredRPO.getValue() > BBRPONumber)
+                          return false;
+
+                        // Otherwise, we may have a predecessor that we need to
+                        // consult the DeadBlocks set to determine if it is
+                        // dead.
+                        return !DeadBlocks.count(PredBB);
+                      })))
+      continue;
+
+    markDeadUsers(BB, LifetimeEndingUsers);
+    markDeadUsers(BB, NonLifetimeEndingUsers);
+  }
+
+  // Ok,  now we  have  marked all  of  our dead  uses  appropriately. Now  lets
+  // partition our  arrays into dead and  non-dead parts and then  eliminate the
+  // dead parts.
+  removeDeadUsersFromArray(LifetimeEndingUsers);
+  removeDeadUsersFromArray(NonLifetimeEndingUsers);
+
+  DEBUG(llvm::dbgs() << "After LifetimeEndingUsers:\n";
+        std::for_each(LifetimeEndingUsers.begin(), LifetimeEndingUsers.end(),
+                      [](const OwnershipUser &I) {
+                        llvm::dbgs() << "    " << *I.getInst();
+                      });
+        llvm::dbgs() << "After NonLifetimeEndingUsers:\n";
+        std::for_each(NonLifetimeEndingUsers.begin(), NonLifetimeEndingUsers.end(),
+                      [](const OwnershipUser &I) {
+                        llvm::dbgs() << "    " << *I.getInst();
+                      }));
+
+  return true;
 }
 
 bool SILValueOwnershipChecker::checkUses() {
@@ -1141,9 +1330,18 @@ bool SILValueOwnershipChecker::checkUses() {
   // 1. Verify that none of the uses are in the same block. This would be an
   // overconsume so in this case we assert.
   // 2. Verify that the uses are compatible with our ownership convention.
-  llvm::SmallVector<SILInstruction *, 16> LifetimeEndingUsers;
-  llvm::SmallVector<SILInstruction *, 16> NonLifetimeEndingUsers;
+  llvm::SmallVector<OwnershipUser, 16> LifetimeEndingUsers;
+  llvm::SmallVector<OwnershipUser, 16> NonLifetimeEndingUsers;
   gatherUsers(LifetimeEndingUsers, NonLifetimeEndingUsers);
+
+  // Prune our user list by eliminating any users that are in unreachable
+  // code. This only occurs due to no return functions in SILGen. In non-raw
+  // SIL, this never occurs.
+  //
+  // We only return false to signal that the value itself (and thus all uses)
+  // are in unreachable, uninteresting code.
+  if (!pruneUnreachableUsers(LifetimeEndingUsers, NonLifetimeEndingUsers))
+    return false;
 
   // We can only have no lifetime ending uses if we have:
   //
@@ -1204,41 +1402,49 @@ bool SILValueOwnershipChecker::checkUses() {
   // predecessor.
   llvm::SmallVector<std::pair<SILInstruction *, SILBasicBlock *>, 32>
       PredsToAddToWorklist;
-  for (SILInstruction *User : LifetimeEndingUsers) {
-    SILBasicBlock *UserBlock = User->getParent();
+  for (const OwnershipUser &User : LifetimeEndingUsers) {
+    SILBasicBlock *UserBlock = User.getParent();
     // If the block does over consume, we either assert or return false. We only
     // return false when debugging.
-    if (doesBlockDoubleConsume(UserBlock, User, true)) {
+    if (doesBlockDoubleConsume(UserBlock, User.getInst(), true)) {
       if (IsSILOwnershipVerifierTestingEnabled)
         return false;
       llvm_unreachable("triggering standard assertion failure routine");
     }
 
     // Then check if the given block has a use after free.
-    if (doesBlockContainUseAfterFree(User, UserBlock)) {
+    if (doesBlockContainUseAfterFree(User.getInst(), UserBlock)) {
       if (IsSILOwnershipVerifierTestingEnabled)
         return false;
       llvm_unreachable("triggering standard assertion failure routine");
     }
 
+    // If this user is in the same block as the value, do not visit
+    // predecessors. We must be extra tolerant here since we allow for
+    // unreachable code.
+    if (UserBlock == Value->getParentBlock())
+      continue;
+
     // Then for each predecessor of this block...
     for (auto *Pred : UserBlock->getPredecessorBlocks()) {
-      // If this block is not a block that we have already put on the list, add
-      // it to the worklist.
-      PredsToAddToWorklist.push_back({User, Pred});
+      // If this block is not a block that we have already put on the list and
+      // is not a no-return block, add it to the worklist.
+      if (isNoReturnBlock(Pred))
+        continue;
+      PredsToAddToWorklist.push_back({User.getInst(), Pred});
     }
   }
 
-  for (auto *I : LifetimeEndingUsers) {
+  for (const auto &I : LifetimeEndingUsers) {
     // Finally add the user block to the visited list so we do not try to add it
     // to our must visit successor list.
-    VisitedBlocks.insert(I->getParent());
+    VisitedBlocks.insert(I.getParent());
   }
 
   // Make sure not to add predecessors to our worklist if we only have 1
   // lifetime ending user and it is in the same block as our def.
   if (LifetimeEndingUsers.size() == 1 &&
-      LifetimeEndingUsers[0]->getParent() == Value->getParentBlock()) {
+      LifetimeEndingUsers[0].getParent() == Value->getParentBlock()) {
     return true;
   }
 
@@ -1249,6 +1455,10 @@ bool SILValueOwnershipChecker::checkUses() {
     SILBasicBlock *PredBlock;
     SILInstruction *User;
     std::tie(User, PredBlock) = Pair;
+
+    // This is a no return edge, ignore it.
+    if (isNoReturnBlock(PredBlock))
+      continue;
 
     // Make sure that the predecessor is not in our
     // BlocksWithLifetimeEndingUses list.
@@ -1287,19 +1497,24 @@ void SILValueOwnershipChecker::checkDataflow() {
     // users.
     BlocksWithNonLifetimeEndingUses.erase(BB);
 
-    // Ok, now we know that we do not have an overconsume. So now we need to
-    // update our state for our successors to make sure by the end of the
-    // traversal we visit them.
-    for (SILBasicBlock *SuccBlock : BB->getSuccessorBlocks()) {
-      // If we already visited the successor, there is nothing to do since we
-      // already visited the successor.
-      if (VisitedBlocks.count(SuccBlock))
-        continue;
+    // Ok, now we know that we do not have an overconsume. If this block does
+    // not end in a no return function, we need to update our state for our
+    // successors to make sure by the end of the traversal we visit them.
+    //
+    // We must consider such no-return blocks since we may be running during
+    // SILGen before NoReturn folding has run.
+    if (!isNoReturnBlock(BB)) {
+      for (SILBasicBlock *SuccBlock : BB->getSuccessorBlocks()) {
+        // If we already visited the successor, there is nothing to do since we
+        // already visited the successor.
+        if (VisitedBlocks.count(SuccBlock))
+          continue;
 
-      // Otherwise, add the successor to our SuccessorBlocksThatMustBeVisited
-      // set to ensure that we assert if we do not visit it by the end of the
-      // algorithm.
-      SuccessorBlocksThatMustBeVisited.insert(SuccBlock);
+        // Otherwise, add the successor to our SuccessorBlocksThatMustBeVisited
+        // set to ensure that we assert if we do not visit it by the end of the
+        // algorithm.
+        SuccessorBlocksThatMustBeVisited.insert(SuccBlock);
+      }
     }
 
     // If we are at the dominating block of our walk, continue. There is nothing
@@ -1317,6 +1532,12 @@ void SILValueOwnershipChecker::checkDataflow() {
     //
     // 2. We add the predecessor to the worklist if we have not visited it yet.
     for (auto *PredBlock : BB->getPredecessorBlocks()) {
+      // See if we have a call to a no-return function in this predecessor. In
+      // such a case, we would be moving along an unreachable edge. We ignore
+      // such edges.
+      if (isNoReturnBlock(PredBlock))
+        continue;
+
       if (doesBlockDoubleConsume(PredBlock)) {
         if (IsSILOwnershipVerifierTestingEnabled)
           return;
@@ -1326,6 +1547,7 @@ void SILValueOwnershipChecker::checkDataflow() {
       if (VisitedBlocks.count(PredBlock)) {
         continue;
       }
+
       VisitedBlocks.insert(PredBlock);
       Worklist.push_back(PredBlock);
     }
@@ -1399,6 +1621,11 @@ void SILInstruction::verifyOperandOwnership() const {
 
 void SILValue::verifyOwnership(SILModule &Mod, PostOrderFunctionInfo *POFI) const {
 #ifndef NDEBUG
-  SILValueOwnershipChecker(Mod, *this).check();
+  if (POFI) {
+    SILValueOwnershipChecker(Mod, *POFI, *this).check();
+  } else {
+    PostOrderFunctionInfo NewF((*this)->getFunction());
+    SILValueOwnershipChecker(Mod, NewF, *this).check();
+  }
 #endif
 }

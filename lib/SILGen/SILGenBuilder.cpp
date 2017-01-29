@@ -237,8 +237,13 @@ ManagedValue SILGenBuilder::createAllocRefDynamic(SILLocation Loc, ManagedValue 
   return gen.emitManagedRValueWithCleanup(ARDI);
 }
 
-ManagedValue SILGenBuilder::createUncheckedEnumData(SILLocation Loc, ManagedValue Operand, EnumElementDecl *Element) {
-  if (Operand.hasCleanup()) {
-    return ManagedValueSILBuilder
+ManagedValue SILGenBuilder::createUncheckedEnumData(SILLocation loc, ManagedValue operand, EnumElementDecl *element) {
+  if (operand.hasCleanup()) {
+    SILValue newValue = SILBuilder::createUncheckedEnumData(loc, operand.forward(gen), element);
+    return gen.emitManagedRValueWithCleanup(newValue);
   }
+
+  ManagedValue borrowedBase = operand.borrow(gen, loc);
+  SILValue newValue = SILBuilder::createUncheckedEnumData(loc, borrowedBase.getValue(), element);
+  return ManagedValue::forUnmanaged(newValue);
 }

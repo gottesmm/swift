@@ -3834,6 +3834,14 @@ public:
   void emit(SILGenFunction &gen, CleanupLocation l) override {
     gen.B.createDeallocBox(l, box);
   }
+
+  void dump() const override {
+#ifndef NDEBUG
+    llvm::errs() << "DeallocateUninitializedBox "
+                 << "State:" << getState() << " "
+                 << "Box: " << box << "\n"; 
+#endif
+  }
 };
 } // end anonymous namespace
 
@@ -4452,7 +4460,7 @@ namespace {
                              uncurriedArgs.end());
           uncurriedArgs[foreignSelf.getSelfIndex()] = selfArg;
         }
-        
+
         // Emit the uncurried call.
         
         // Special case for superclass method calls.
@@ -4950,6 +4958,14 @@ namespace {
 
     void emit(SILGenFunction &gen, CleanupLocation l) override {
       gen.emitUninitializedArrayDeallocation(l, Array);
+    }
+
+    void dump() const override {
+#ifndef NDEBUG
+      llvm::errs() << "DeallocateUninitializedArray "
+                   << "State:" << getState() << " "
+                   << "Array:" << Array << "\n"; 
+#endif
     }
   };
 } // end anonymous namespace

@@ -28,6 +28,8 @@
 namespace swift {
 
 class DominanceInfo;
+class PostOrderFunctionInfo;
+class ReversePostOrderInfo;
 class Operand;
 class SILBasicBlock;
 class SILFunction;
@@ -278,7 +280,7 @@ public:
   ValueOwnershipKind getOwnershipKind() const;
 
   /// Verify that this SILValue and its uses respects ownership invariants.
-  void verifyOwnership(SILModule &Mod) const;
+  void verifyOwnership(SILModule &Mod, PostOrderFunctionInfo *POFI=nullptr) const;
 };
 
 /// A formal SIL reference to a value, suitable for use as a stored

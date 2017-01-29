@@ -1397,7 +1397,7 @@ void SILInstruction::verifyOperandOwnership() const {
 #endif
 }
 
-void SILValue::verifyOwnership(SILModule &Mod) const {
+void SILValue::verifyOwnership(SILModule &Mod, PostOrderFunctionInfo *POFI) const {
 #ifndef NDEBUG
   SILValueOwnershipChecker(Mod, *this).check();
 #endif

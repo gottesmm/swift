@@ -1375,23 +1375,29 @@ emitTupleDispatch(ArrayRef<RowToSpecialize> rows, ConsumableManagedValue src,
   auto sourceType = cast<TupleType>(firstPat->getType()->getCanonicalType());
   SILLocation loc = firstPat;
 
-  SILValue v = src.getFinalManagedValue().forward(SGF);
+  ManagedValue v = src.getFinalManagedValue();
+  SILValue underlyingV = v.forward(SGF);
   SmallVector<ConsumableManagedValue, 4> destructured;
 
   // Break down the values.
-  auto tupleSILTy = v->getType();
+  auto tupleSILTy = v.getType();
   for (unsigned i = 0, e = sourceType->getNumElements(); i < e; ++i) {
     SILType fieldTy = tupleSILTy.getTupleElementType(i);
     auto &fieldTL = SGF.getTypeLowering(fieldTy);
 
     SILValue member;
     if (tupleSILTy.isAddress()) {
-      member = SGF.B.createTupleElementAddr(loc, v, i, fieldTy);
+      member = SGF.B.createTupleElementAddr(loc, underlyingV, i, fieldTy);
       if (!fieldTL.isAddressOnly())
         member =
             fieldTL.emitLoad(SGF.B, loc, member, LoadOwnershipQualifier::Take);
     } else {
-      member = SGF.B.createTupleExtract(loc, v, i, fieldTy);
+      // Since we do not have a take, we need to do a borrow-copy-dance here.
+      FullExpr borrowCopyForwardScope(SGF.Cleanups, CleanupLocation::get(loc));
+      ManagedValue copiedTupleElt =
+        SGF.B.createCopyValue(loc,
+                              SGF.B.createTupleExtract(loc, v, i, fieldTy));
+      member = copiedTupleElt.forward(SGF);
     }
     auto memberCMV = getManagedSubobject(SGF, member, fieldTL,
                                          src.getFinalConsumption());

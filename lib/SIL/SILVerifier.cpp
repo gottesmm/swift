@@ -3515,10 +3515,35 @@ public:
           stack.pop_back();
         }
         if (auto term = dyn_cast<TermInst>(&i)) {
+          // If we have a function exiting terminator, all alloc_stack must have
+          // already hit a dealloc_stack.
           if (term->isFunctionExiting()) {
             require(stack.empty(),
                     "return with stack allocs that haven't been deallocated");
+            continue;
           }
+
+          // If we are in RawSIL and have a no-return function before the
+          // terminator, we are at a function exiting point before no return
+          // folding has run.
+          if (F->getModule().getStage() == SILStage::Raw) {
+            auto prev = prev_or_begin(i.getIterator(), BB->begin());
+            if (FullApplySite FAS = FullApplySite::isa(&*prev)) {
+              if (FAS.isCalleeNoReturn()) {
+                require(stack.empty(),
+                        "return with stack allocs that haven't been deallocated");
+                continue;
+              }
+            }
+            if (auto *BI = dyn_cast<BuiltinInst>(&*prev)) {
+              if (F->getModule().isNoReturnBuiltinOrIntrinsic(BI->getName())) {
+                require(stack.empty(),
+                        "return with stack allocs that haven't been deallocated");
+                continue;
+              }
+            }
+          }
+
           for (auto &successor : term->getSuccessors()) {
             SILBasicBlock *SuccBB = successor.getBB();
             auto found = visitedBBs.find(SuccBB);

@@ -26,8 +26,15 @@
 #include "swift/SIL/SILUndef.h"
 #include "swift/Subsystems.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SaveAndRestore.h"
 using namespace swift;
+
+llvm::cl::opt<bool> AssumeParsingRawSIL(
+    "assume-parsing-raw-sil",
+    llvm::cl::desc("Should the parser ignore sil_stage and assume it is "
+                   "parsing raw SIL? This is only meant for testing purposes"),
+    llvm::cl::init(false));
 
 //===----------------------------------------------------------------------===//
 // SILParserState implementation
@@ -60,6 +67,10 @@ namespace swift {
 
 SILParserState::SILParserState(SILModule *M) : M(M) {
   S = M ? new SILParserTUState(*M) : nullptr;
+  if (AssumeParsingRawSIL) {
+    S->DidParseSILStage = true;
+    M->setStage(SILStage::Raw);
+  }
 }
 
 SILParserState::~SILParserState() {
@@ -4425,7 +4436,14 @@ bool Parser::parseDeclSILStage() {
     consumeToken();
     return true;
   }
-  
+
+  // If we were asked to assume RawSIL, do not set the SIL stage, just
+  // return. We do this at this point to ensure that we consume the sil_stage
+  // tokens.
+  if (AssumeParsingRawSIL) {
+    return false;
+  }
+
   if (SIL->S->DidParseSILStage) {
     diagnose(stageLoc, diag::multiple_sil_stage_decls);
     return false;

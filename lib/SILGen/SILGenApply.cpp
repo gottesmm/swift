@@ -30,6 +30,26 @@
 using namespace swift;
 using namespace Lowering;
 
+static bool isNoReturnNamedBuiltin(SILModule &M, Identifier Name) {
+  const auto &IntrinsicInfo = M.getIntrinsicInfo(Name);
+  if (IntrinsicInfo.ID != llvm::Intrinsic::not_intrinsic) {
+    return IntrinsicInfo.hasAttribute(llvm::Attribute::NoReturn);
+  }
+  const auto &BuiltinInfo = M.getBuiltinInfo(Name);
+  switch (BuiltinInfo.ID) {
+  default:
+    return false;
+  case BuiltinValueKind::Unreachable:
+    return true;
+  case BuiltinValueKind::CondUnreachable:
+    return true;
+  case BuiltinValueKind::UnexpectedError:
+    return true;
+  case BuiltinValueKind::ErrorInMain:
+    return true;
+  }
+}
+
 /// Retrieve the type to use for a method found via dynamic lookup.
 static CanAnyFunctionType getDynamicMethodFormalType(SILGenModule &SGM,
                                                      SILValue proto,
@@ -4555,11 +4575,26 @@ namespace {
           for (auto arg : uncurriedArgs) {
             consumedArgs.push_back(arg.forward(gen));
           }
+
+          // If we are a no return function, then we need to emit our cleanups.
+          if (isNoReturnNamedBuiltin(gen.F.getModule(), builtinName)) {
+            gen.Cleanups.emitCleanupsForReturn(CleanupLocation::get(uncurriedLoc.getValue()));
+          }
+
           SILFunctionConventions substConv(substFnType, gen.SGM.M);
           auto resultVal =
               gen.B.createBuiltin(uncurriedLoc.getValue(), builtinName,
                                   substConv.getSILResultType(),
                                   callee.getSubstitutions(), consumedArgs);
+
+          // Once we called the function, again if we have a no-return in order to
+          // maintain SIL invaraints, emit a direct branch to a new block and perform
+          // any necessary cleanups. This will allow for all no return functions to be
+          // the instruction before a terminator.
+          if (isNoReturnNamedBuiltin(gen.F.getModule(), builtinName)) {
+            gen.B.emitBlock(gen.B.splitBlockForFallthrough(), uncurriedLoc.getValue());
+          }
+
           result = RValue(gen, *uncurriedLoc, formalApplyType.getResult(),
                           gen.emitManagedRValueWithCleanup(resultVal));
         }

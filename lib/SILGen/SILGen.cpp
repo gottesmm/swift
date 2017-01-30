@@ -31,6 +31,7 @@
 #include "llvm/Support/Debug.h"
 #include "ManagedValue.h"
 #include "RValue.h"
+#include <cstdio>
 using namespace swift;
 using namespace Lowering;
 
@@ -610,11 +611,14 @@ void SILGenModule::preEmitFunction(SILDeclRef constant,
 }
 
 static unsigned Count = 0;
+constexpr unsigned MaxCount = 7470;
 
 void SILGenModule::postEmitFunction(SILDeclRef constant,
                                     SILFunction *F) {
   assert(!F->isExternalDeclaration() && "did not emit any function body?!");
-  llvm::errs() << "Emitted: #" << ++Count << " '" << F->getName() << "'\n";
+  ++Count;
+  printf("Emitted %%%.2f #%u/%u '%s'\n", float(Count*100)/float(MaxCount),
+         Count, MaxCount, F->getName().data());
   DEBUG(llvm::dbgs() << "lowered sil:\n";
         F->print(llvm::dbgs()));
   F->verify();

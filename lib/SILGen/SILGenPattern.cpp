@@ -1415,18 +1415,8 @@ emitTupleDispatch(ArrayRef<RowToSpecialize> rows, ConsumableManagedValue src,
     }
   }
 
-  // Maybe revert to the original cleanups during failure branches.
-  const FailureHandler *innerFailure = &outerFailure;
-  FailureHandler specializedFailure = [&](SILLocation loc) {
-    ArgUnforwarder unforwarder(SGF);
-    unforwarder.unforwardBorrowedValues(src, destructured);
-    outerFailure(loc);
-  };
-  if (ArgUnforwarder::requiresUnforwarding(src))
-    innerFailure = &specializedFailure;
-
   // Recurse.
-  handleCase(destructured, specializedRows, *innerFailure);
+  handleCase(destructured, specializedRows, outerFailure);
 }
 
 static CanType getTargetType(const RowToSpecialize &row) {
@@ -1646,8 +1636,9 @@ emitEnumElementDispatch(ArrayRef<RowToSpecialize> rows,
       }
     }
 
-    if (!exhaustive)
+    if (!exhaustive) {
       defaultBB = SGF.createBasicBlock(curBB);
+    }
   }
 
   assert(caseBBs.size() == caseInfos.size());
@@ -1824,16 +1815,7 @@ emitEnumElementDispatch(ArrayRef<RowToSpecialize> rows,
                                          origEltTy, substEltTy);
     }
 
-    const FailureHandler *innerFailure = &outerFailure;
-    FailureHandler specializedFailure = [&](SILLocation loc) {
-      ArgUnforwarder unforwarder(SGF);
-      unforwarder.unforwardBorrowedValues(src, origCMV);
-      outerFailure(loc);
-    };
-    if (ArgUnforwarder::requiresUnforwarding(src))
-      innerFailure = &specializedFailure;
-
-    handleCase(eltCMV, specializedRows, *innerFailure);
+    handleCase(eltCMV, specializedRows, outerFailure);
     assert(!SGF.B.hasValidInsertionPoint() && "did not end block");
   }
 

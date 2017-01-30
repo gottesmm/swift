@@ -138,7 +138,10 @@ public:
 
   using SILBuilder::createUncheckedEnumData;
   ManagedValue createUncheckedEnumData(SILLocation Loc, ManagedValue Operand, EnumElementDecl *Element);
-};
+
+  using SILBuilder::createUncheckedTakeEnumDataAddr;
+  ManagedValue createUncheckedTakeEnumDataAddr(SILLocation Loc, ManagedValue Operand,
+                                               EnumElementDecl *Element, SILType Ty);
 
 } // namespace Lowering
 } // namespace swift

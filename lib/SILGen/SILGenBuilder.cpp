@@ -247,3 +247,10 @@ ManagedValue SILGenBuilder::createUncheckedEnumData(SILLocation loc, ManagedValu
   SILValue newValue = SILBuilder::createUncheckedEnumData(loc, borrowedBase.getValue(), element);
   return ManagedValue::forUnmanaged(newValue);
 }
+
+ManagedValue SILGenBuilder::
+createUncheckedTakeEnumDataAddr(SILLocation Loc, ManagedValue Operand,
+                                EnumElementDecl *Element, SILType Ty) {
+  return gen.emitManagedRValueWithCleanup(
+      SILBuilder::createUncheckedTakeEnumDataAddr(Loc, Operand, Element, Ty));
+}

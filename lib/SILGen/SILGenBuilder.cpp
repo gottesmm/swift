@@ -251,6 +251,33 @@ ManagedValue SILGenBuilder::createUncheckedEnumData(SILLocation loc, ManagedValu
 ManagedValue SILGenBuilder::
 createUncheckedTakeEnumDataAddr(SILLocation Loc, ManagedValue Operand,
                                 EnumElementDecl *Element, SILType Ty) {
-  return gen.emitManagedRValueWithCleanup(
-      SILBuilder::createUncheckedTakeEnumDataAddr(Loc, Operand, Element, Ty));
+  // First see if we have a cleanup. If we do, we are going to forward and emit
+  // a managed buffer with cleanup.
+  if (Operand.hasCleanup()) {
+    return gen.emitManagedBufferWithCleanup(
+        SILBuilder::createUncheckedTakeEnumDataAddr(Loc, Operand.forward(gen),
+                                                    Element, Ty));
+  }
+
+  SILValue V = SILBuilder::createUncheckedTakeEnumDataAddr(
+      Loc, Operand.getUnmanagedValue(), Element, Ty);
+  if (Operand.isLValue())
+    return ManagedValue::forLValue(V);
+  return ManagedValue::forUnmanaged(V);
+}
+
+ManagedValue SILGenBuilder::createLoadTake(SILLocation loc, ManagedValue v) {
+  auto &lowering = getFunction().getTypeLowering(v.getType());
+  return createLoadTake(loc, v, lowering);
+}
+
+ManagedValue SILGenBuilder::createLoadTake(SILLocation loc, ManagedValue v,
+                                           const TypeLowering &lowering) {
+  assert(lowering.getLoweredType().getAddressType() == v.getType());
+  SILValue result =
+      lowering.emitLoadOfCopy(*this, loc, v.forward(gen), IsNotTake);
+  if (lowering.isTrivial())
+    return ManagedValue::forUnmanaged(result);
+  assert(!lowering.isAddressOnly() && "cannot retain an unloadable type");
+  return gen.emitManagedRValueWithCleanup(result, lowering);
 }

@@ -143,6 +143,11 @@ public:
   ManagedValue createUncheckedTakeEnumDataAddr(SILLocation Loc, ManagedValue Operand,
                                                EnumElementDecl *Element, SILType Ty);
 
+  ManagedValue createLoadTake(SILLocation Loc, ManagedValue Addr);
+  ManagedValue createLoadTake(SILLocation Loc, ManagedValue Addr,
+                              const TypeLowering &Lowering);
+};
+
 } // namespace Lowering
 } // namespace swift
 

@@ -2115,6 +2115,7 @@ bool SILParser::parseSILInstruction(SILBasicBlock *BB, SILBuilder &B) {
     UNARY_INSTRUCTION(EndBorrowArgument)
     UNARY_INSTRUCTION(UnmanagedReleaseValue)
     UNARY_INSTRUCTION(UnmanagedRetainValue)
+    UNARY_INSTRUCTION(UnmanagedAutoreleaseValue)
     REFCOUNTING_INSTRUCTION(StrongPin)
     REFCOUNTING_INSTRUCTION(StrongRetain)
     REFCOUNTING_INSTRUCTION(StrongRelease)

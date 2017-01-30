@@ -1165,9 +1165,12 @@ static bool isSubobjectProjectionWithLifetimeEndingUses(
 static bool isNoReturnBlock(SILBasicBlock *BB) {
   auto Iter = prev_or_begin(BB->getTerminator()->getIterator(), BB->begin());
   FullApplySite FAS = FullApplySite::isa(&*Iter);
-  if (!FAS || !FAS.isCalleeNoReturn())
-    return false;
-  return true;
+  if (FAS && FAS.isCalleeNoReturn())
+    return true;
+  if (auto *BI = dyn_cast<BuiltinInst>(&*Iter)) {
+    return BI->getModule().isNoReturnBuiltinOrIntrinsic(BI->getName());
+  }
+  return false;
 }
 
 static void markDeadUsers(SILBasicBlock *BB,

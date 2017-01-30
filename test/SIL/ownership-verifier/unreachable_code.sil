@@ -108,3 +108,16 @@ bb2:
   %9999 = tuple()
   return %9999 : $()
 }
+
+sil @builtins_1 : $@convention(thin) () -> () {
+bb0:
+  %0 = alloc_box ${ var Builtin.Int32 }
+  destroy_value %0 : ${ var Builtin.Int32 }
+  %1 = builtin "unreachable"() : $Never
+  br bb1
+
+bb1:
+  destroy_value %0 : ${ var Builtin.Int32 }
+  %9999 = tuple()
+  return %9999 : $()
+}

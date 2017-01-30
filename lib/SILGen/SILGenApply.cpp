@@ -30,26 +30,6 @@
 using namespace swift;
 using namespace Lowering;
 
-static bool isNoReturnNamedBuiltin(SILModule &M, Identifier Name) {
-  const auto &IntrinsicInfo = M.getIntrinsicInfo(Name);
-  if (IntrinsicInfo.ID != llvm::Intrinsic::not_intrinsic) {
-    return IntrinsicInfo.hasAttribute(llvm::Attribute::NoReturn);
-  }
-  const auto &BuiltinInfo = M.getBuiltinInfo(Name);
-  switch (BuiltinInfo.ID) {
-  default:
-    return false;
-  case BuiltinValueKind::Unreachable:
-    return true;
-  case BuiltinValueKind::CondUnreachable:
-    return true;
-  case BuiltinValueKind::UnexpectedError:
-    return true;
-  case BuiltinValueKind::ErrorInMain:
-    return true;
-  }
-}
-
 /// Retrieve the type to use for a method found via dynamic lookup.
 static CanAnyFunctionType getDynamicMethodFormalType(SILGenModule &SGM,
                                                      SILValue proto,
@@ -4577,7 +4557,7 @@ namespace {
           }
 
           // If we are a no return function, then we need to emit our cleanups.
-          if (isNoReturnNamedBuiltin(gen.F.getModule(), builtinName)) {
+          if (gen.F.getModule().isNoReturnBuiltinOrIntrinsic(builtinName)) {
             gen.Cleanups.emitCleanupsForReturn(CleanupLocation::get(uncurriedLoc.getValue()));
           }
 
@@ -4591,7 +4571,7 @@ namespace {
           // maintain SIL invaraints, emit a direct branch to a new block and perform
           // any necessary cleanups. This will allow for all no return functions to be
           // the instruction before a terminator.
-          if (isNoReturnNamedBuiltin(gen.F.getModule(), builtinName)) {
+          if (gen.F.getModule().isNoReturnBuiltinOrIntrinsic(builtinName)) {
             gen.B.emitBlock(gen.B.splitBlockForFallthrough(), uncurriedLoc.getValue());
           }
 

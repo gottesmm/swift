@@ -1376,7 +1376,6 @@ emitTupleDispatch(ArrayRef<RowToSpecialize> rows, ConsumableManagedValue src,
   SILLocation loc = firstPat;
 
   ManagedValue v = src.getFinalManagedValue();
-  SILValue underlyingV = v.forward(SGF);
   SmallVector<ConsumableManagedValue, 4> destructured;
 
   // Break down the values.
@@ -1387,7 +1386,7 @@ emitTupleDispatch(ArrayRef<RowToSpecialize> rows, ConsumableManagedValue src,
 
     SILValue member;
     if (tupleSILTy.isAddress()) {
-      member = SGF.B.createTupleElementAddr(loc, underlyingV, i, fieldTy);
+      member = SGF.B.createTupleElementAddr(loc, v.getValue(), i, fieldTy);
       if (!fieldTL.isAddressOnly())
         member =
             fieldTL.emitLoad(SGF.B, loc, member, LoadOwnershipQualifier::Take);

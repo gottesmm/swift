@@ -96,9 +96,7 @@ static ManagedValue emitBuiltinAutorelease(SILGenFunction &gen,
                                            ArrayRef<ManagedValue> args,
                                            CanFunctionType formalApplyType,
                                            SGFContext C) {
-  // The value was produced at +1, so to produce an unbalanced
-  // autorelease we need to leave the cleanup intact.
-  gen.B.createAutoreleaseValue(loc, args[0].getValue(), Atomicity::Atomic);
+  gen.B.createUnmanagedAutoreleaseValue(loc, args[0].getValue());
   return ManagedValue::forUnmanaged(gen.emitEmptyTuple(loc));    
 }
 

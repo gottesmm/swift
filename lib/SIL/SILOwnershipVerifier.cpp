@@ -1267,36 +1267,46 @@ bool SILValueOwnershipChecker::pruneUnreachableUsers(
     // achieve our exit condition.
     BlocksToVisit.erase(BB);
 
-    // Then see if we are not a no-return block. This means that either we are a
-    // no-return block ourselves, or all of our predecessors (ignoring
+    // If we are a no-return block, mark this block as dead. Since our use must
+    // be at the end of the block, any uses in this specific block may be live,
+    // so we do not continue.
+    if (isNoReturnBlock(BB)) {
+      DeadBlocks.insert(BB);
+    }
+
+    // Then see if we are unreachable due to our predecessors being "dead"
+    // blocks. dead due to our a no-return block. This means that either we are
+    // a no-return block ourselves, or all of our predecessors (ignoring
     // back-edges) are already in the no-return block set.
-    if (!isNoReturnBlock(BB)
-        && (BB->pred_empty()
-            || any_of(BB->getPredecessorBlocks(),
-                      [this, &DeadBlocks, &BBRPONumber]
-                      (SILBasicBlock *PredBB) -> bool {
-                        // Look up our predecessor's RPO number.
-                        llvm::Optional<unsigned> PredRPO =
-                          POFI.getRPONumber(PredBB);
-
-                        // If our predecessor does not have an RPO number, then
-                        // it must be unreachable and thus should be ignored.
-                        if (!PredRPO)
-                          return false;
-
-                        // If the pred's RPO number is greater than ours, then
-                        // it must be a back edge. If it is a backedge, we can
-                        // ignore it. Treat it as dead so all_of ignores it. See
-                        // the comment at the top of this method.
-                        if (PredRPO.getValue() > BBRPONumber)
-                          return false;
-
-                        // Otherwise, we may have a predecessor that we need to
-                        // consult the DeadBlocks set to determine if it is
-                        // dead.
-                        return !DeadBlocks.count(PredBB);
-                      })))
+    if (BB->pred_empty()) {
       continue;
+    }
+
+    if (any_of(BB->getPredecessorBlocks(),
+               [this, &DeadBlocks, &BBRPONumber]
+               (SILBasicBlock *PredBB) -> bool {
+                 // Look up our predecessor's RPO number.
+                 llvm::Optional<unsigned> PredRPO = POFI.getRPONumber(PredBB);
+
+                 // If our predecessor does not have an RPO number, then
+                 // it must be unreachable and thus should be ignored.
+                 if (!PredRPO)
+                   return false;
+
+                 // If the pred's RPO number is greater or equal to ours,
+                 // then it must be a back edge. If it is a backedge, we
+                 // can ignore it. Treat it as dead so all_of ignores
+                 // it. See the comment at the top of this method.
+                 if (PredRPO.getValue() >= BBRPONumber)
+                   return false;
+
+                 // Otherwise, we may have a predecessor that we need to
+                 // consult the DeadBlocks set to determine if it is
+                 // dead.
+                 return !DeadBlocks.count(PredBB);
+               })) {
+      continue;
+    }
 
     markDeadUsers(BB, LifetimeEndingUsers);
     markDeadUsers(BB, NonLifetimeEndingUsers);

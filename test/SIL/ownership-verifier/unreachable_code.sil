@@ -15,6 +15,8 @@ import Builtin
 enum Never {}
 
 sil @no_return_function : $@convention(thin) () -> Never
+sil @create_object : $@convention(thin) () -> @owned Builtin.NativeObject
+sil @use_object : $@convention(thin) (@owned Builtin.NativeObject) -> ()
 
 ///////////
 // Tests //
@@ -66,6 +68,43 @@ bb12:
   br bb13
 
 bb13:
+  %9999 = tuple()
+  return %9999 : $()
+}
+
+sil @ignore_if_earlier_in_block : $@convention(thin) () -> () {
+bb0:
+  %0 = function_ref @create_object : $@convention(thin) () -> @owned Builtin.NativeObject
+  %1 = function_ref @no_return_function : $@convention(thin) () -> Never
+
+  %2 = apply %0() : $@convention(thin) () -> @owned Builtin.NativeObject
+  destroy_value %2 : $Builtin.NativeObject
+  apply %1() : $@convention(thin) () -> Never
+  br bb1
+
+bb1:
+  %9999 = tuple()
+  return %9999 : $()
+}
+
+// This test makes sure that if we have multiple unreachable blocks and control
+// flow after-wards, that we properly ignore later users.
+sil @dont_ignore_if_earlier_in_block_but_already_dead : $@convention(thin) () -> () {
+bb0:
+  %0 = function_ref @create_object : $@convention(thin) () -> @owned Builtin.NativeObject
+  %1 = function_ref @no_return_function : $@convention(thin) () -> Never
+  %2 = apply %0() : $@convention(thin) () -> @owned Builtin.NativeObject
+  destroy_value %2 : $Builtin.NativeObject
+  apply %1() : $@convention(thin) () -> Never
+  br bb1
+
+bb1:
+  destroy_value %2 : $Builtin.NativeObject
+  apply %1() : $@convention(thin) () -> Never
+  br bb2
+
+bb2:
+  destroy_value %2 : $Builtin.NativeObject
   %9999 = tuple()
   return %9999 : $()
 }

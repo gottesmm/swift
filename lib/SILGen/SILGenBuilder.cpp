@@ -158,6 +158,8 @@ ManagedValue SILGenBuilder::createStructExtract(SILLocation Loc,
 
 ManagedValue SILGenBuilder::createCopyValue(SILLocation Loc,
                                             ManagedValue OriginalValue) {
+  if (OriginalValue.getOwnershipKind() == ValueOwnershipKind::Trivial)
+    return OriginalValue;
   SILValue Result = SILBuilder::createCopyValue(Loc, OriginalValue.getValue());
   return gen.emitManagedRValueWithCleanup(Result);
 }
@@ -396,5 +398,5 @@ ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue
 
 ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue Value, unsigned Index) {
   SILType Type = Value.getType().getTupleElementType(Index);
-  return createTupleExtract(Loc, Value, Index, Type);
+  return createTupleElementAddr(Loc, Value, Index, Type);
 }

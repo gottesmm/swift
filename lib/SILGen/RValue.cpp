@@ -101,8 +101,9 @@ public:
         elt = gen.B.createTupleExtract(loc, tuple, i, eltTy);
         // If we're returning a +1 value, emit a cleanup for the member
         // to cover for the cleanup we disabled for the tuple aggregate.
-        if (!isPlusZero)
+        if (!isPlusZero) {
           elt = gen.B.createCopyValue(loc, elt);
+        }
       } else {
         elt = gen.B.createTupleElementAddr(loc, tuple, i, eltTy);
 

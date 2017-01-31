@@ -253,6 +253,7 @@ void CleanupManager::dump() const {
   while (begin != end) {
     auto iter = Stack.find(begin);
     const Cleanup &stackCleanup = *iter;
+    llvm::errs() << "CLEANUP DEPTH: " << begin.getDepth() << "\n";
     stackCleanup.dump();
     begin = Stack.stabilize(++iter);
     Stack.checkIterator(begin);

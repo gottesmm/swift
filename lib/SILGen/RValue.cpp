@@ -81,40 +81,47 @@ public:
     values.push_back(v);
   }
 
-  void visitTupleType(CanTupleType tupleFormalType, ManagedValue tupleMV) {
-    bool isPlusZero = tupleMV.isPlusZeroRValueOrTrivial();
-    SILValue tuple = tupleMV.forward(gen);
+  void visitTupleType(CanTupleType tupleFormalType, ManagedValue tuple) {
+    bool isPlusZero = tuple.isPlusZeroRValueOrTrivial();
+    // SEMANTIC ARC TODO: This needs to be a take.
+    tuple = tuple.borrow(gen, loc);
 
     for (auto i : indices(tupleFormalType->getElements())) {
       CanType eltFormalType = tupleFormalType.getElementType(i);
       assert(eltFormalType->isMaterializable());
 
-      auto eltTy = tuple->getType().getTupleElementType(i);
-      assert(eltTy.isAddress() == tuple->getType().isAddress());
+      auto eltTy = tuple.getType().getTupleElementType(i);
+      assert(eltTy.isAddress() == tuple.getType().isAddress());
       auto &eltTI = gen.getTypeLowering(eltTy);
 
       // Project the element.
-      SILValue elt;
-      if (tuple->getType().isObject()) {
+      ManagedValue elt;
+      if (tuple.getType().isObject()) {
         assert(eltTI.isLoadable() || !gen.silConv.useLoweredAddresses());
         elt = gen.B.createTupleExtract(loc, tuple, i, eltTy);
+        // If we're returning a +1 value, emit a cleanup for the member
+        // to cover for the cleanup we disabled for the tuple aggregate.
+        if (!isPlusZero)
+          elt = gen.B.createCopyValue(loc, elt);
       } else {
         elt = gen.B.createTupleElementAddr(loc, tuple, i, eltTy);
 
         // RValue has an invariant that loadable values have been
         // loaded.  Except it's not really an invariant, because
         // argument emission likes to lie sometimes.
+
+        // If we're returning a +1 value, emit a cleanup for the member
+        // to cover for the cleanup we disabled for the tuple aggregate.
         if (eltTI.isLoadable()) {
-          elt = eltTI.emitLoad(gen.B, loc, elt, LoadOwnershipQualifier::Take);
+          if (isPlusZero) {
+            elt = gen.B.createLoadBorrow(loc, elt);
+          } else {
+            elt = gen.B.createLoadCopy(loc, elt);
+          }
         }
       }
 
-      // If we're returning a +1 value, emit a cleanup for the member
-      // to cover for the cleanup we disabled for the tuple aggregate.
-      auto eltMV = isPlusZero ? ManagedValue::forUnmanaged(elt)
-                              : gen.emitManagedRValueWithCleanup(elt, eltTI);
-
-      visit(eltFormalType, eltMV);
+      visit(eltFormalType, elt);
     }
   }
 };

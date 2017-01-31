@@ -534,3 +534,16 @@ ManagedValue SILGenBuilder::createUpcast(SILLocation Loc, ManagedValue Original,
 
   return gen.emitManagedRValueWithCleanup(convertedValue);
 }
+
+ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue Base, unsigned Index,
+                                                   SILType Type) {
+  ManagedValue BorrowedBase = gen.emitManagedBeginBorrow(Loc, Base.getValue());
+  SILValue TupleEltAddr =
+    SILBuilder::createTupleElementAddr(Loc, BorrowedBase.getValue(), Index, Type);
+  return ManagedValue::forUnmanaged(TupleEltAddr);
+}
+
+ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue Value, unsigned Index) {
+  SILType Type = Value.getType().getTupleElementType(Index);
+  return createTupleExtract(Loc, Value, Index, Type);
+}

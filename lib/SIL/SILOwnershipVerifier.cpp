@@ -281,7 +281,6 @@ NO_OPERAND_INST(StrongRetain)
 NO_OPERAND_INST(StrongRetainUnowned)
 NO_OPERAND_INST(UnownedRetain)
 NO_OPERAND_INST(Unreachable)
-NO_OPERAND_INST(ValueMetatype)
 #undef NO_OPERAND_INST
 
 /// Instructions whose arguments are always compatible with one convention.
@@ -363,6 +362,7 @@ CONSTANT_OWNERSHIP_INST(Trivial, false, UnconditionalCheckedCastAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, false, UnmanagedToRef)
 CONSTANT_OWNERSHIP_INST(Trivial, false, AllocValueBuffer)
 CONSTANT_OWNERSHIP_INST(Trivial, false, DeallocValueBuffer)
+CONSTANT_OWNERSHIP_INST(Trivial, false, ValueMetatype)
 #undef CONSTANT_OWNERSHIP_INST
 
 /// Instructions whose arguments are always compatible with one convention.

@@ -50,6 +50,7 @@ public:
       : SILGenBuilder(gen, &*insertBB, insertInst) {}
 
   SILGenModule &getSILGenModule() const;
+  SILGenFunction &getSILGenFunction() const { return gen; }
 
   // Metatype instructions use the conformances necessary to instantiate the
   // type.
@@ -169,6 +170,9 @@ public:
 
   using SILBuilder::createLoadBorrow;
   ManagedValue createLoadBorrow(SILLocation Loc, ManagedValue Original);
+
+  using SILBuilder::createOpenExistentialRef;
+  ManagedValue createOpenExistentialRef(SILLocation Loc, ManagedValue Arg, SILType OpenedType);
 };
 
 } // namespace Lowering

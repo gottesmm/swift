@@ -1751,9 +1751,9 @@ class BeginBorrowInst
     : public UnaryInstructionBase<ValueKind::BeginBorrowInst> {
   friend class SILBuilder;
 
-  BeginBorrowInst(SILDebugLocation DebugLoc, SILValue LValue)
-      : UnaryInstructionBase(DebugLoc, LValue,
-                             LValue->getType().getObjectType()) {}
+  BeginBorrowInst(SILDebugLocation DebugLoc, SILValue Value)
+      : UnaryInstructionBase(DebugLoc, Value,
+                             Value->getType()) {}
 };
 
 /// Represents a store of a borrowed value into an address. Returns the borrowed

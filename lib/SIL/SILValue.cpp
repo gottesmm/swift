@@ -199,7 +199,6 @@ public:
     }                                                                          \
     return ValueOwnershipKind::OWNERSHIP;                                      \
   }
-CONSTANT_OWNERSHIP_INST(Guaranteed, BeginBorrow)
 CONSTANT_OWNERSHIP_INST(Guaranteed, LoadBorrow)
 CONSTANT_OWNERSHIP_INST(Owned, AllocBox)
 CONSTANT_OWNERSHIP_INST(Owned, AllocExistentialBox)
@@ -298,6 +297,7 @@ CONSTANT_OWNERSHIP_INST(Unowned, UnownedToRef)
   }
 CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, StructExtract)
 CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, TupleExtract)
+CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, BeginBorrow)
 #undef CONSTANT_OR_TRIVIAL_OWNERSHIP_INST
 
 // These are instructions that do not have any result, so we should never reach

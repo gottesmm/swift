@@ -78,28 +78,30 @@ namespace {
 
 void TupleInitialization::copyOrInitValueInto(SILGenFunction &SGF,
                                               SILLocation loc,
-                                              ManagedValue valueMV,
+                                              ManagedValue value,
                                               bool isInit) {
   // A scalar value is being copied into the tuple, break it into elements
   // and assign/init each element in turn.
-  SILValue value = valueMV.forward(SGF);
-  auto sourceType = valueMV.getType().castTo<TupleType>();
-  auto sourceSILType = value->getType();
+  value = value.borrow(SGF, loc);
+  auto sourceType = cast<TupleType>(value.getSwiftType());
+  auto sourceSILType = value.getType();
   for (unsigned i = 0, e = sourceType->getNumElements(); i != e; ++i) {
     SILType fieldTy = sourceSILType.getTupleElementType(i);
     auto &fieldTL = SGF.getTypeLowering(fieldTy);
         
-    SILValue member;
-    if (value->getType().isAddress()) {
-      member = SGF.B.createTupleElementAddr(loc, value, i, fieldTy);
-      if (!fieldTL.isAddressOnly())
-        member =
-            fieldTL.emitLoad(SGF.B, loc, member, LoadOwnershipQualifier::Take);
+    ManagedValue elt;
+
+    if (value.getType().isAddress()) {
+      elt = SGF.B.createTupleElementAddr(loc, value, i, fieldTy);
+      if (!fieldTL.isAddressOnly()) {
+        elt = SGF.B.createLoadTake(loc, elt);
+      } else {
+        elt = SGF.emitManagedRValueWithCleanup(elt.getValue());
+      }
     } else {
-      member = SGF.B.createTupleExtract(loc, value, i, fieldTy);
+      elt = SGF.B.createTupleExtract(loc, value, i, fieldTy);
+      elt = SGF.B.createCopyValue(loc, elt);
     }
-        
-    auto elt = SGF.emitManagedRValueWithCleanup(member, fieldTL);
         
     SubInitializations[i]->copyOrInitValueInto(SGF, loc, elt, isInit);
     SubInitializations[i]->finishInitialization(SGF);

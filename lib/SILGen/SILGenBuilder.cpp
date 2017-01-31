@@ -357,6 +357,28 @@ ManagedValue SILGenBuilder::createUpcast(SILLocation Loc, ManagedValue Original,
   return gen.emitManagedRValueWithCleanup(convertedValue);
 }
 
+ManagedValue SILGenBuilder::createUncheckedRefCast(SILLocation Loc, ManagedValue Original, SILType Type) {
+  bool hadCleanup = Original.hasCleanup();
+  bool isLValue = Original.isLValue();
+
+  SILValue convertedValue = SILBuilder::createUncheckedRefCast(Loc, Original.forward(gen), Type);
+
+  if (isLValue) {
+    return ManagedValue::forLValue(convertedValue);
+  }
+
+  if (!hadCleanup) {
+    return ManagedValue::forUnmanaged(convertedValue);
+  }
+
+  if (Type.isAddress()) {
+    return gen.emitManagedBufferWithCleanup(convertedValue);
+  }
+
+  return gen.emitManagedRValueWithCleanup(convertedValue);
+}
+
+
 ManagedValue SILGenBuilder::createLoadBorrow(SILLocation Loc, ManagedValue Original) {
   assert(Original.getType().isAddress());
   LoadBorrowInst *LBI = SILBuilder::createLoadBorrow(Loc, Original.getValue());

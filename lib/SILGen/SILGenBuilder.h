@@ -157,6 +157,8 @@ public:
   ManagedValue createEnum(SILLocation Loc, ManagedValue Payload, EnumElementDecl *Decl,
                           SILType Type);
 
+  using SILBuilder::createUpcast;
+  ManagedValue createUpcast(SILLocation Loc, ManagedValue Original, SILType Type);
 };
 
 } // namespace Lowering

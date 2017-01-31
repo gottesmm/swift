@@ -335,3 +335,24 @@ ManagedValue SILGenBuilder::createEnum(SILLocation Loc, ManagedValue Payload, En
     return ManagedValue::forUnmanaged(Enum);
   return gen.emitManagedRValueWithCleanup(Enum);
 }
+
+ManagedValue SILGenBuilder::createUpcast(SILLocation Loc, ManagedValue Original, SILType Type) {
+  bool hadCleanup = Original.hasCleanup();
+  bool isLValue = Original.isLValue();
+
+  SILValue convertedValue = SILBuilder::createUpcast(Loc, Original.forward(gen), Type);
+
+  if (isLValue) {
+    return ManagedValue::forLValue(convertedValue);
+  }
+
+  if (!hadCleanup) {
+    return ManagedValue::forUnmanaged(convertedValue);
+  }
+
+  if (Type.isAddress()) {
+    return gen.emitManagedBufferWithCleanup(convertedValue);
+  }
+
+  return gen.emitManagedRValueWithCleanup(convertedValue);
+}

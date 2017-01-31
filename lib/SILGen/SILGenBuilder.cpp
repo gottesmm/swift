@@ -396,6 +396,12 @@ ManagedValue SILGenBuilder::createUncheckedRefCast(SILLocation Loc, ManagedValue
 
 
 ManagedValue SILGenBuilder::createLoadBorrow(SILLocation Loc, ManagedValue Original) {
+  if (Original.getType().isTrivial(gen.F.getModule())) {
+    auto *LI = SILBuilder::createLoad(Loc, Original.getValue(),
+                                      LoadOwnershipQualifier::Trivial);
+    return ManagedValue::forUnmanaged(LI);
+  }
+
   assert(Original.getType().isAddress());
   LoadBorrowInst *LBI = SILBuilder::createLoadBorrow(Loc, Original.getValue());
   return gen.emitManagedBorrowedRValueWithCleanup(Original.getValue(),

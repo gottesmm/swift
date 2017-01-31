@@ -3201,6 +3201,9 @@ namespace {
         if (param.getConvention() == ParameterConvention::Direct_Guaranteed &&
             value.getOwnershipKind() != ValueOwnershipKind::Guaranteed) {
           value = value.borrow(SGF, arg.getLocation());
+        } else if (param.isConsumed() &&
+                   value.getOwnershipKind() == ValueOwnershipKind::Guaranteed) {
+          value = value.copyUnmanaged(SGF, arg.getLocation());
         }
       }
       Args.push_back(value);

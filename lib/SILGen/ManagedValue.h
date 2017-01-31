@@ -79,7 +79,10 @@ public:
     assert((value.getOwnershipKind() != ValueOwnershipKind::Owned ||
             cleanup != CleanupHandle::invalid()) &&
            "Owned parameters should always have a cleanup");
-            
+    assert((!getType().isObject() ||
+            value.getOwnershipKind() != ValueOwnershipKind::Trivial ||
+            !hasCleanup()) &&
+           "Objects with trivial ownership should never have a cleanup");
   }
 
   /// Create a managed value for a +0 rvalue.
@@ -357,6 +360,9 @@ public:
 
   SILType getType() const { return Value.getType(); }
   SILValue getValue() const { return Value.getValue(); }
+  ValueOwnershipKind getOwnershipKind() const {
+    return Value.getOwnershipKind();
+  }
 
   /// Return a managed value appropriate for the final use of this CMV.
   ManagedValue getFinalManagedValue() const { return Value; }

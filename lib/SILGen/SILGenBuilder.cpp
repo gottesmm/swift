@@ -573,6 +573,6 @@ ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue
 
 ManagedValue SILGenBuilder::createOpenExistentialRef(SILLocation Loc, ManagedValue Original, SILType Type) {
   CleanupCloner Cloner(*this, Original);
-  SILValue opendExistential = SILBuilder::createOpenExistentialRef(Loc, Original.forward(gen), Type);
+  SILValue openedExistential = SILBuilder::createOpenExistentialRef(Loc, Original.forward(gen), Type);
   return Cloner.clone(openedExistential);
 }

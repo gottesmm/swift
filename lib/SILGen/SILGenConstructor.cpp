@@ -254,7 +254,7 @@ void SILGenFunction::emitValueConstructor(ConstructorDecl *ctor) {
       failureExitArg = failureExitBB->createPHIArgument(
           resultLowering.getLoweredType(), ValueOwnershipKind::Owned);
       SILValue nilResult =
-        B.createEnum(ctor, {}, getASTContext().getOptionalNoneDecl(),
+        B.createEnum(ctor, SILValue(), getASTContext().getOptionalNoneDecl(),
                      resultLowering.getLoweredType());
       B.createBranch(ctor, failureExitBB, nilResult);
 
@@ -578,12 +578,12 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
              TupleType::getEmpty(F.getASTContext()), ctor, ctor->hasThrows());
 
   SILType selfTy = getLoweredLoadableType(selfDecl->getType());
-  SILValue selfArg = F.begin()->createFunctionArgument(selfTy, selfDecl);
+  ManagedValue selfArg = B.createFunctionArgument(selfTy, selfDecl);
 
   if (!NeedsBoxForSelf) {
     SILLocation PrologueLoc(selfDecl);
     PrologueLoc.markAsPrologue();
-    B.createDebugValue(PrologueLoc, selfArg);
+    B.createDebugValue(PrologueLoc, selfArg.getValue());
   }
 
   if (!ctor->hasStubImplementation()) {
@@ -593,12 +593,11 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
       SILLocation prologueLoc = RegularLocation(ctor);
       prologueLoc.markAsPrologue();
       // SEMANTIC ARC TODO: When the verifier is complete, review this.
-      B.emitStoreValueOperation(prologueLoc, selfArg, VarLocs[selfDecl].value,
+      B.emitStoreValueOperation(prologueLoc, selfArg.forward(*this), VarLocs[selfDecl].value,
                                 StoreOwnershipQualifier::Init);
     } else {
-      selfArg = B.createMarkUninitialized(selfDecl, selfArg, MUKind);
-      VarLocs[selfDecl] = VarLoc::get(selfArg);
-      enterDestroyCleanup(VarLocs[selfDecl].value);
+      selfArg  = B.createMarkUninitialized(selfDecl, selfArg, MUKind);
+      VarLocs[selfDecl] = VarLoc::get(selfArg.getValue());
     }
   }
 
@@ -633,7 +632,7 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
         resultLowering.getLoweredType(), ValueOwnershipKind::Owned);
 
     Cleanups.emitCleanupsForReturn(ctor);
-    SILValue nilResult = B.createEnum(loc, {},
+    SILValue nilResult = B.createEnum(loc, SILValue(),
                                       getASTContext().getOptionalNoneDecl(),
                                       resultLowering.getLoweredType());
     B.createBranch(loc, failureExitBB, nilResult);
@@ -683,8 +682,9 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
       if (Expr *SI = ctor->getSuperInitCall())
         emitRValue(SI);
 
-      selfArg = B.emitLoadValueOperation(cleanupLoc, VarLocs[selfDecl].value,
-                                         LoadOwnershipQualifier::Copy);
+      ManagedValue storedSelf =
+        ManagedValue::forUnmanaged(VarLocs[selfDecl].value);
+      selfArg = B.createLoadCopy(cleanupLoc, storedSelf);
     } else {
       // We have to do a retain because we are returning the pointer +1.
       //
@@ -694,7 +694,7 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
       // the returned selfArg may be deleted causing us to have a
       // dead-pointer. Instead just use the old self value since we have a
       // class.
-      selfArg = B.emitCopyValueOperation(cleanupLoc, selfArg);
+      selfArg = B.createCopyValue(cleanupLoc, selfArg);
     }
 
     // Inject the self value into an optional if the constructor is failable.
@@ -715,9 +715,9 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
   // only one SIL return instruction per SIL function.
   if (B.hasValidInsertionPoint()) {
     if (failureExitBB)
-      B.createBranch(returnLoc, failureExitBB, selfArg);
+      B.createBranch(returnLoc, failureExitBB, selfArg.forward(*this));
     else
-      B.createReturn(returnLoc, selfArg);
+      B.createReturn(returnLoc, selfArg.forward(*this));
   }
 }
 

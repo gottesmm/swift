@@ -275,9 +275,63 @@ ManagedValue SILGenBuilder::createLoadTake(SILLocation loc, ManagedValue v,
                                            const TypeLowering &lowering) {
   assert(lowering.getLoweredType().getAddressType() == v.getType());
   SILValue result =
+      lowering.emitLoadOfCopy(*this, loc, v.forward(gen), IsTake);
+  if (lowering.isTrivial())
+    return ManagedValue::forUnmanaged(result);
+  assert(!lowering.isAddressOnly() && "cannot retain an unloadable type");
+  return gen.emitManagedRValueWithCleanup(result, lowering);
+}
+
+ManagedValue SILGenBuilder::createLoadCopy(SILLocation loc, ManagedValue v) {
+  auto &lowering = getFunction().getTypeLowering(v.getType());
+  return createLoadCopy(loc, v, lowering);
+}
+
+ManagedValue SILGenBuilder::createLoadCopy(SILLocation loc, ManagedValue v,
+                                           const TypeLowering &lowering) {
+  assert(lowering.getLoweredType().getAddressType() == v.getType());
+  SILValue result =
       lowering.emitLoadOfCopy(*this, loc, v.forward(gen), IsNotTake);
   if (lowering.isTrivial())
     return ManagedValue::forUnmanaged(result);
   assert(!lowering.isAddressOnly() && "cannot retain an unloadable type");
   return gen.emitManagedRValueWithCleanup(result, lowering);
+}
+
+ManagedValue SILGenBuilder::createFunctionArgument(SILType Type, ValueDecl *Decl) {
+  SILFunction &F = getFunction();
+
+  SILFunctionArgument *Arg = F.begin()->createFunctionArgument(Type, Decl);
+  if (Arg->getType().isObject()) {
+    if (Arg->getOwnershipKind().isTrivialOr(ValueOwnershipKind::Owned))
+      return gen.emitManagedRValueWithCleanup(Arg);
+    return ManagedValue::forBorrowedRValue(Arg);
+  }
+
+  return gen.emitManagedBufferWithCleanup(Arg);
+}
+
+ManagedValue SILGenBuilder::createMarkUninitialized(
+    ValueDecl *Decl, ManagedValue Operand, MarkUninitializedInst::Kind MUKind) {
+  bool isOwned =
+    Operand.getOwnershipKind() == ValueOwnershipKind::Owned;
+
+  // We either have an owned or trivial value.
+  SILValue Value =
+    SILBuilder::createMarkUninitialized(Decl, Operand.forward(gen), MUKind);
+  assert(Value->getType().isObject() && "Expected only objects here");
+
+  if (!isOwned) {
+    return ManagedValue::forUnmanaged(Value);
+  }
+
+  return gen.emitManagedRValueWithCleanup(Value);
+}
+
+ManagedValue SILGenBuilder::createEnum(SILLocation Loc, ManagedValue Payload, EnumElementDecl *Decl,
+                                       SILType Type) {
+  SILValue Enum = SILBuilder::createEnum(Loc, Payload.forward(gen), Decl, Type);
+  if (Enum.getOwnershipKind() != ValueOwnershipKind::Owned)
+    return ManagedValue::forUnmanaged(Enum);
+  return gen.emitManagedRValueWithCleanup(Enum);
 }

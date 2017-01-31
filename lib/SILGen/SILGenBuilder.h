@@ -121,6 +121,9 @@ public:
   ManagedValue createUnsafeCopyUnownedValue(SILLocation Loc,
                                             ManagedValue OriginalValue);
   ManagedValue createOwnedPHIArgument(SILType Type);
+  ManagedValue createFunctionArgument(SILType Type, ValueDecl *Decl);
+  using SILBuilder::createMarkUninitialized;
+  ManagedValue createMarkUninitialized(ValueDecl *Decl, ManagedValue Operand, MarkUninitializedInst::Kind MUKind);
 
   using SILBuilder::createTupleExtract;
   ManagedValue createTupleExtract(SILLocation Loc, ManagedValue Value, unsigned Index,
@@ -146,6 +149,14 @@ public:
   ManagedValue createLoadTake(SILLocation Loc, ManagedValue Addr);
   ManagedValue createLoadTake(SILLocation Loc, ManagedValue Addr,
                               const TypeLowering &Lowering);
+  ManagedValue createLoadCopy(SILLocation Loc, ManagedValue Addr);
+  ManagedValue createLoadCopy(SILLocation Loc, ManagedValue Addr,
+                              const TypeLowering &Lowering);
+
+  using SILBuilder::createEnum;
+  ManagedValue createEnum(SILLocation Loc, ManagedValue Payload, EnumElementDecl *Decl,
+                          SILType Type);
+
 };
 
 } // namespace Lowering

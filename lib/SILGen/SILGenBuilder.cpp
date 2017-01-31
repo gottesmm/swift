@@ -17,6 +17,40 @@ using namespace swift;
 using namespace Lowering;
 
 //===----------------------------------------------------------------------===//
+//                             Cleanup Forwarder
+//===----------------------------------------------------------------------===//
+
+namespace {
+  class CleanupCloner {
+    SILGenFunction &gen;
+    bool hasCleanup;
+    bool isLValue;
+    ValueOwnershipKind ownershipKind;
+
+  public:
+    CleanupCloner(SILGenBuilder &Builder, ManagedValue M)
+        : gen(Builder.getSILGenFunction()), hasCleanup(M.hasCleanup()), isLValue(M.isLValue()),
+          ownershipKind(M.getOwnershipKind()) {}
+
+    ManagedValue clone(SILValue value) {
+      if (isLValue) {
+        return ManagedValue::forLValue(value);
+      }
+
+      if (!hasCleanup) {
+        return ManagedValue::forUnmanaged(value);
+      }
+
+      if (value->getType().isAddress()) {
+        return gen.emitManagedBufferWithCleanup(value);
+      }
+
+      return gen.emitManagedRValueWithCleanup(value);
+    }
+  };
+} // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
 //                              Utility Methods
 //===----------------------------------------------------------------------===//
 
@@ -512,27 +546,16 @@ void SILGenBuilder::createCheckedCastBranch(SILLocation loc, bool isExact,
                                       trueBlock, falseBlock);
 }
 
-ManagedValue SILGenBuilder::createUpcast(SILLocation Loc, ManagedValue Original,
-                                         SILType Type) {
-  bool hadCleanup = Original.hasCleanup();
-  bool isLValue = Original.isLValue();
+ManagedValue SILGenBuilder::createUpcast(SILLocation Loc, ManagedValue Original, SILType Type) {
+  CleanupCloner Cloner(*this, Original);
+  SILValue convertedValue = SILBuilder::createUpcast(Loc, Original.forward(gen), Type);
+  return Cloner.clone(convertedValue);
+}
 
-  SILValue convertedValue =
-      SILBuilder::createUpcast(Loc, Original.forward(gen), Type);
-
-  if (isLValue) {
-    return ManagedValue::forLValue(convertedValue);
-  }
-
-  if (!hadCleanup) {
-    return ManagedValue::forUnmanaged(convertedValue);
-  }
-
-  if (Type.isAddress()) {
-    return gen.emitManagedBufferWithCleanup(convertedValue);
-  }
-
-  return gen.emitManagedRValueWithCleanup(convertedValue);
+ManagedValue SILGenBuilder::createUncheckedRefCast(SILLocation Loc, ManagedValue Original, SILType Type) {
+  CleanupCloner Cloner(*this, Original);
+  SILValue convertedValue = SILBuilder::createUncheckedRefCast(Loc, Original.forward(gen), Type);
+  return Cloner.clone(convertedValue);
 }
 
 ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue Base, unsigned Index,
@@ -546,4 +569,10 @@ ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue
 ManagedValue SILGenBuilder::createTupleElementAddr(SILLocation Loc, ManagedValue Value, unsigned Index) {
   SILType Type = Value.getType().getTupleElementType(Index);
   return createTupleExtract(Loc, Value, Index, Type);
+}
+
+ManagedValue SILGenBuilder::createOpenExistentialRef(SILLocation Loc, ManagedValue Original, SILType Type) {
+  CleanupCloner Cloner(*this, Original);
+  SILValue opendExistential = SILBuilder::createOpenExistentialRef(Loc, Original.forward(gen), Type);
+  return Cloner.clone(openedExistential);
 }

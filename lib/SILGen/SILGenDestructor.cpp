@@ -50,6 +50,7 @@ void SILGenFunction::emitDestroyingDestructor(DestructorDecl *dd) {
   // If we have a superclass, invoke its destructor.
   SILValue resultSelfValue;
   SILType objectPtrTy = SILType::getNativeObjectType(F.getASTContext());
+  SILType classTy = selfValue.getType();
   if (cd->hasSuperclass()) {
     Type superclassTy = dd->mapTypeIntoContext(cd->getSuperclass());
     ClassDecl *superclass = superclassTy->getClassOrBoundGenericClass();
@@ -67,13 +68,22 @@ void SILGenFunction::emitDestroyingDestructor(DestructorDecl *dd) {
     resultSelfValue = B.createApply(cleanupLoc, dtorValue.forward(*this),
                                     dtorTy, objectPtrTy, subs, baseSelf);
   } else {
-    resultSelfValue = B.createUncheckedRefCast(cleanupLoc, selfValue,
-                                                 objectPtrTy);
+    resultSelfValue = selfValue;
   }
 
-  // Release our members.
-  emitClassMemberDestruction(selfValue, cd, cleanupLoc);
+  {
+    ManagedValue borrowedResultSelfValue =
+      emitManagedBeginBorrow(cleanupLoc, resultSelfValue);
+    SILValue castBorrowedValue = B.createUncheckedRefCast(cleanupLoc,
+                                                          borrowedResultSelfValue.getUnmanagedValue(),
+                                                          classTy);
 
+    // Release our members.
+    emitClassMemberDestruction(castBorrowedValue, cd, cleanupLoc);
+  }
+
+  resultSelfValue = B.createUncheckedRefCast(cleanupLoc, resultSelfValue,
+                                             objectPtrTy);
   B.createReturn(returnLoc, resultSelfValue);
 }
 

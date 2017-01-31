@@ -159,6 +159,9 @@ public:
 
   using SILBuilder::createUpcast;
   ManagedValue createUpcast(SILLocation Loc, ManagedValue Original, SILType Type);
+
+  using SILBuilder::createLoadBorrow;
+  ManagedValue createLoadBorrow(SILLocation Loc, ManagedValue Original);
 };
 
 } // namespace Lowering

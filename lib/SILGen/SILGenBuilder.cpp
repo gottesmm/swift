@@ -356,3 +356,10 @@ ManagedValue SILGenBuilder::createUpcast(SILLocation Loc, ManagedValue Original,
 
   return gen.emitManagedRValueWithCleanup(convertedValue);
 }
+
+ManagedValue SILGenBuilder::createLoadBorrow(SILLocation Loc, ManagedValue Original) {
+  assert(Original.getType().isAddress());
+  LoadBorrowInst *LBI = SILBuilder::createLoadBorrow(Loc, Original.getValue());
+  return gen.emitManagedBorrowedRValueWithCleanup(Original.getValue(),
+                                                  LBI);
+}

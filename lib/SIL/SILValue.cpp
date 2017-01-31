@@ -290,7 +290,7 @@ CONSTANT_OWNERSHIP_INST(Unowned, UnownedToRef)
 #define CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(OWNERSHIP, INST)                    \
   ValueOwnershipKind ValueOwnershipKindVisitor::visit##INST##Inst(             \
       INST##Inst *I) {                                                         \
-    if (I->getType().isTrivial(I->getModule())) {                              \
+    if (I->getType().isTrivial(I->getModule()) || I->getType().isAddress()) { \
       return ValueOwnershipKind::Trivial;                                      \
     }                                                                          \
     return ValueOwnershipKind::OWNERSHIP;                                      \

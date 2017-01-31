@@ -666,11 +666,18 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
   // Emit the constructor body.
   emitStmt(ctor->getBody());
 
-  
+  CleanupStateRestorationScope SelfCleanupSave(Cleanups);
+
   // Build a custom epilog block, since the AST representation of the
   // constructor decl (which has no self in the return type) doesn't match the
   // SIL representation.
   {
+    // Ensure that before we add additional cleanups, that we have emitted all
+    // cleanups at this point.
+    assert(!Cleanups.hasAnyActiveCleanups(getCleanupsDepth(),
+                                          ReturnDest.getDepth()) &&
+           "emitting epilog in wrong scope");
+
     SavedInsertionPoint savedIP(*this, ReturnDest.getBlock());
     assert(B.getInsertionBB()->empty() && "Epilog already set up?");
     auto cleanupLoc = CleanupLocation(ctor);
@@ -705,10 +712,28 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
                              getASTContext().getOptionalSomeDecl(),
                              getLoweredLoadableType(resultType));
     }
+
+    // Save our cleanup state. We want all other potential cleanups to fire, but
+    // not this one.
+    if (selfArg.hasCleanup())
+      SelfCleanupSave.pushCleanupState(selfArg.getCleanup(), CleanupState::Dormant);
+
+    // Translate our cleanup to the new top cleanup.
+    //
+    // This is needed to preserve the invariant in getEpilogBB that when
+    // cleanups are emitted, everything above ReturnDest.getDepth() has been
+    // emitted. This is not true if we use ManagedValue and friends in the
+    // epilogBB, thus the translation. We perform the same check above that
+    // getEpilogBB performs to ensure that we still do not have the same
+    // problem.
+    ReturnDest = std::move(ReturnDest).translate(getTopCleanup());
   }
   
   // Emit the epilog and post-matter.
   auto returnLoc = emitEpilog(ctor, /*UsesCustomEpilog*/true);
+
+  // Unpop our selfArg cleanup, so we can forward.
+  std::move(SelfCleanupSave).pop();
 
   // Finish off the epilog by returning.  If this is a failable ctor, then we
   // actually jump to the failure epilog to keep the invariant that there is

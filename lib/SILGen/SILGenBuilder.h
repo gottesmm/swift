@@ -129,6 +129,11 @@ public:
   ManagedValue createTupleExtract(SILLocation Loc, ManagedValue Value, unsigned Index,
                                   SILType Type);
   ManagedValue createTupleExtract(SILLocation Loc, ManagedValue Value, unsigned Index);
+  using SILBuilder::createTupleElementAddr;
+  ManagedValue createTupleElementAddr(SILLocation Loc, ManagedValue Addr, unsigned Index,
+                                      SILType Type);
+  ManagedValue createTupleElementAddr(SILLocation Loc, ManagedValue Addr, unsigned Index);
+
 
   using SILBuilder::createAllocRef;
   ManagedValue createAllocRef(SILLocation Loc, SILType RefType, bool objc, bool canAllocOnStack,

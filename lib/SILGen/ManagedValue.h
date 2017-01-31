@@ -222,8 +222,8 @@ public:
            "Expected ManagedValues with owned ownership to have a cleanup");
     assert((Kind != ValueOwnershipKind::Guaranteed || !hasCleanup()) &&
            "Expected ManagedValues with guranteed ownership to not have a cleanup");
-    assert((Kind != ValueOwnershipKind::Trivial || !hasCleanup()) &&
-           "Expected ManagedValues with trivial ownership to not have a cleanup");
+    assert((getType().isAddress() || Kind != ValueOwnershipKind::Trivial || !hasCleanup()) &&
+           "Expected object typed ManagedValues with trivial ownership to not have a cleanup");
     return Kind;
   }
 

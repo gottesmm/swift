@@ -228,8 +228,8 @@ public:
                                SILBasicBlock *falseBlock);
 
   using SILBuilder::createUpcast;
-  ManagedValue createUpcast(SILLocation Loc, ManagedValue Original,
-                            SILType Type);
+  ManagedValue createUpcast(SILLocation loc, ManagedValue original,
+                            SILType type);
 };
 
 } // namespace Lowering

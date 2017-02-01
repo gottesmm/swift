@@ -1426,9 +1426,9 @@ static CanType getTargetType(const RowToSpecialize &row) {
 
 static ConsumableManagedValue
 emitCastOperand(SILGenFunction &SGF, SILLocation loc,
-                      ConsumableManagedValue src, CanType sourceType,
-                      CanType targetType,
-                      SmallVectorImpl<ConsumableManagedValue> &borrowedValues) {
+                ConsumableManagedValue src, CanType sourceType,
+                CanType targetType,
+                SmallVectorImpl<ConsumableManagedValue> &borrowedValues) {
   // Reabstract to the most general abstraction, and put it into a
   // temporary if necessary.
 
@@ -1455,13 +1455,11 @@ emitCastOperand(SILGenFunction &SGF, SILLocation loc,
     // this is easy.
     if (!hasAbstraction) {
       SGF.B.emitStoreValueOperation(
-          loc, src.getFinalManagedValue().forward(SGF), init->getAddress(),
-          StoreOwnershipQualifier::Init);
+          loc, src.getFinalManagedValue().copy(SGF, loc).forward(SGF),
+          init->getAddress(), StoreOwnershipQualifier::Init);
       init->finishInitialization(SGF);
       ConsumableManagedValue result =
         { init->getManagedAddress(), src.getFinalConsumption() };
-      if (ArgUnforwarder::requiresUnforwarding(src))
-        borrowedValues.push_back(result);
       return result;
     }
 
@@ -1491,7 +1489,7 @@ void PatternMatchEmission::emitIsDispatch(ArrayRef<RowToSpecialize> rows,
   SmallVector<ConsumableManagedValue, 4> borrowedValues;
   ConsumableManagedValue operand =
     emitCastOperand(SGF, rows[0].Pattern, src, sourceType, targetType,
-                          borrowedValues);
+                    borrowedValues);
 
   // Emit the 'is' check.
 

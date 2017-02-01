@@ -711,10 +711,32 @@ public:
   /// inside the same basic block.
   static bool isSingleBlockUsage(AllocStackInst *ASI, DominanceInfo *Dominance){
     SILBasicBlock *BB = ASI->getParent();
-    for (auto UI = ASI->use_begin(), E = ASI->use_end(); UI != E; ++UI)
-      if (UI->getUser()->getParent() != BB &&
-          Dominance->isReachableFromEntry(UI->getUser()->getParent()))
+    for (auto UI = ASI->use_begin(), E = ASI->use_end(); UI != E; ++UI) {
+      if (UI->getUser()->getParent() == BB)
+        continue;
+      if (Dominance->isReachableFromEntry(UI->getUser()->getParent()))
+        continue;
+      if (ASI->getModule().getStage() != SILStage::Raw)
+        continue;
+      auto *Term = dyn_cast<BranchInst>(BB->getTerminator());
+      if (!Term || Term->getDestBB() != UI->getUser()->getParent())
         return false;
+
+      auto Prev = prev_or_begin(Term->getIterator(), BB->begin());
+      if (FullApplySite FAS = FullApplySite::isa(&*Prev)) {
+        if (FAS.isCalleeNoReturn()) {
+          continue;
+        }
+      }
+
+      if (auto *BI = dyn_cast<BuiltinInst>(&*Prev)) {
+        if (ASI->getModule().isNoReturnBuiltinOrIntrinsic(BI->getName())) {
+          continue;
+        }
+      }
+
+      return false;
+    }
 
     return true;
   }

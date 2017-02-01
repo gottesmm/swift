@@ -846,10 +846,11 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
   
   emitOrDeleteBlock(SGF, endDest, S);
   SGF.BreakContinueDestStack.pop_back();
-  
-  // We do not need to destroy the value in the 'nextBuf' slot here, because
-  // either the 'for' loop finished naturally and the buffer contains '.None',
-  // or we exited by 'break' and the value in the buffer was consumed.
+
+  // We need to destroy the value in the 'nextBuf' slot here for now to maintain
+  // ownership constraints.
+  //
+  // If we switch this loop to a foreach form, this can go away.
 }
 
 void StmtEmitter::visitBreakStmt(BreakStmt *S) {

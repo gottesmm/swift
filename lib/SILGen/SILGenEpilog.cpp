@@ -78,8 +78,12 @@ SILGenFunction::emitEpilogBB(SILLocation TopLevel) {
 
   // If the current BB isn't terminated, and we require a return, then we
   // are not allowed to fall off the end of the function and can't reach here.
-  if (NeedsReturn && B.hasValidInsertionPoint())
+  if (NeedsReturn && B.hasValidInsertionPoint()) {
+    CleanupLocation ImplicitTopLevelReturnCleanupLoc =
+      CleanupLocation::get(ImplicitReturnFromTopLevel);
+    Cleanups.emitCleanupsForReturn(ImplicitTopLevelReturnCleanupLoc);
     B.createUnreachable(ImplicitReturnFromTopLevel);
+  }
 
   if (epilogBB->pred_empty()) {
     // If the epilog was not branched to at all, kill the BB and

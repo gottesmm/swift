@@ -244,6 +244,48 @@ public:
 
   using SILBuilder::createOpenExistentialRef;
   ManagedValue createOpenExistentialRef(SILLocation loc, ManagedValue arg, SILType openedType);
+
+  using SILBuilder::createOptionalSome;
+  ManagedValue createOptionalSome(SILLocation Loc, ManagedValue Arg);
+  ManagedValue createManagedOptionalNone(SILLocation Loc, SILType Type);
+};
+
+/// A class for building switch enums that handles all of the ownership
+/// requirements for the user.
+///
+/// It assumes that the user passes in a block that takes in a ManagedValue and
+/// returns a ManagedValue for the blocks exit argument. Should return an empty
+/// ManagedValue to signal no result.
+class SwitchEnumBuilder {
+public:
+  using NormalCaseHandler = std::function<void (ManagedValue)>;
+  using DefaultCaseHandler = std::function<void (ManagedValue)>;
+
+private:
+  using CaseData = std::tuple<EnumElementDecl *, SILBasicBlock *, NormalCaseHandler>;
+
+  SILGenBuilder &Builder;
+  SILLocation Loc;
+  ManagedValue Optional;
+  llvm::Optional<std::pair<SILBasicBlock *, DefaultCaseHandler>> DefaultBBData;
+  llvm::SmallVector<CaseData, 8> CaseArray;
+
+public:
+  SwitchEnumBuilder(SILGenBuilder &Builder, SILLocation Loc, ManagedValue Optional)
+      : Builder(Builder), Loc(Loc), Optional(Optional) {}
+
+  void addDefaultCase(SILBasicBlock *DefaultBlock, DefaultCaseHandler Handle) {
+    DefaultBBData.emplace(DefaultBlock, Handle);
+  }
+
+  void addCase(EnumElementDecl *Decl, SILBasicBlock *CaseBlock, NormalCaseHandler Handle) {
+    CaseArray.push_back({Decl, CaseBlock, Handle});
+  }
+
+  void emit() &&;
+
+private:
+  SILGenFunction &getSGF() const { return Builder.getSILGenFunction(); }
 };
 
 } // namespace Lowering

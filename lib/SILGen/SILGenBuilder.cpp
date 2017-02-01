@@ -12,6 +12,9 @@
 
 #include "SILGenBuilder.h"
 #include "SILGenFunction.h"
+#include "Scope.h"
+#include "RValue.h"
+#include "ArgumentSource.h"
 
 using namespace swift;
 using namespace Lowering;
@@ -585,4 +588,107 @@ ManagedValue SILGenBuilder::createOpenExistentialRef(SILLocation Loc, ManagedVal
   CleanupCloner Cloner(*this, Original);
   SILValue openedExistential = SILBuilder::createOpenExistentialRef(Loc, Original.forward(gen), Type);
   return Cloner.clone(openedExistential);
+}
+
+ManagedValue SILGenBuilder::createOptionalSome(SILLocation Loc, ManagedValue Arg) {
+  CleanupCloner Cloner(*this, Arg);
+  auto &ArgTL = getFunction().getTypeLowering(Arg.getType());
+  SILType OptionalType = Arg.getType().wrapAnyOptionalType(getFunction());
+  if (ArgTL.isLoadable()) {
+    SILValue SomeValue =
+      SILBuilder::createOptionalSome(Loc, Arg.forward(gen), OptionalType);
+    return Cloner.clone(SomeValue);
+  }
+
+  SILValue TempResult = gen.emitTemporaryAllocation(Loc, OptionalType);
+  RValue R(gen, Loc, Arg.getType().getSwiftRValueType(), Arg);
+  ArgumentSource ArgValue(Loc, std::move(R));
+  gen.emitInjectOptionalValueInto(Loc, std::move(ArgValue), TempResult,
+                                  getFunction().getTypeLowering(TempResult->getType()));
+  return ManagedValue::forUnmanaged(TempResult);
+}
+
+ManagedValue SILGenBuilder::createManagedOptionalNone(SILLocation Loc, SILType Type) {
+  SILType OptionalType = Type.wrapAnyOptionalType(getFunction());
+  if (!Type.isAddressOnly(getModule())) {
+    SILValue NoneValue = SILBuilder::createOptionalNone(Loc, OptionalType);
+    return ManagedValue::forUnmanaged(NoneValue);
+  }
+
+  SILValue TempResult = gen.emitTemporaryAllocation(Loc, OptionalType);
+  gen.emitInjectOptionalNothingInto(Loc, TempResult, gen.getTypeLowering(OptionalType));
+  return ManagedValue::forUnmanaged(TempResult);
+}
+
+void SwitchEnumBuilder::emit() && {
+  bool isAddressOnly = Optional.getType().isAddressOnly(Builder.getModule());
+  using DeclBlockPair = std::pair<EnumElementDecl *, SILBasicBlock *>;
+  {
+    // TODO: We could store the data in CaseBB form and not have to do this.
+    llvm::SmallVector<DeclBlockPair, 8> CaseBBs;
+    std::transform(CaseArray.begin(), CaseArray.end(),
+                   CaseBBs.begin(),
+                   [](CaseData &T) -> DeclBlockPair {
+                     return {std::get<0>(T), std::get<1>(T)};
+                   });
+    SILBasicBlock *DefaultBB =
+      DefaultBBData ? DefaultBBData.getValue().first : nullptr;
+    if (isAddressOnly) {
+      Builder.createSwitchEnumAddr(Loc, Optional.getValue(), DefaultBB,
+                                   CaseBBs);
+    } else {
+      if (Optional.getType().isAddress()) {
+        // TODO: Refactor this into a maybe load.
+        if (Optional.hasCleanup()) {
+          Optional = Builder.createLoadTake(Loc, Optional);
+        } else {
+          Optional = Builder.createLoadCopy(Loc, Optional);
+        }
+      }
+      Builder.createSwitchEnum(Loc, Optional.forward(getSGF()), DefaultBB,
+                               CaseBBs);
+    }
+  }
+
+  for (auto &Data : CaseArray) {
+    EnumElementDecl *Decl;
+    SILBasicBlock *CaseBlock;
+    NormalCaseHandler Handler;
+
+    std::tie(Decl, CaseBlock, Handler) = Data;
+
+    // Don't allow cleanups to escape the conditional block.
+    FullExpr presentScope(Builder.getSILGenFunction().Cleanups,
+                          CleanupLocation::get(Loc));
+    Builder.emitBlock(CaseBlock);
+    // Pull the value out.
+    CanType ResultValueTy =
+      ResultTy.getSwiftRValueType().getAnyOptionalObjectType();
+    assert(ResultValueTy);
+    SILType InputType =
+      Optional.getType().getEnumElementType(Decl, Builder.getModule());
+    ManagedValue Input = Optional;
+    if (!isAddressOnly) {
+      Input = Builder.createOwnedPHIArgument(InputType);
+    }
+    Handler(Input);
+  }
+
+  // If we have a default BB, create an argument for the original loaded value
+  // and destroy it there.
+  if (DefaultBBData) {
+    SILBasicBlock *DefaultBB;
+    DefaultCaseHandler Handler;
+    std::tie(DefaultBB, Handler) = DefaultBBData.getValue();
+
+    // Don't allow cleanups to escape the conditional block.
+    FullExpr presentScope(Builder.getSILGenFunction().Cleanups,
+                          CleanupLocation::get(Loc));
+    Builder.emitBlock(DefaultBB);
+    ManagedValue Input = Optional;
+    if (!isAddressOnly) {
+      Input = Builder.createOwnedPHIArgument(Optional.getType());
+    }
+    Handler(Input);
+  }
 }

@@ -662,9 +662,6 @@ void SwitchEnumBuilder::emit() && {
                           CleanupLocation::get(Loc));
     Builder.emitBlock(CaseBlock);
     // Pull the value out.
-    CanType ResultValueTy =
-      ResultTy.getSwiftRValueType().getAnyOptionalObjectType();
-    assert(ResultValueTy);
     SILType InputType =
       Optional.getType().getEnumElementType(Decl, Builder.getModule());
     ManagedValue Input = Optional;

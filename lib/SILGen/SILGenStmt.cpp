@@ -751,9 +751,9 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
   if (!SGF.B.hasValidInsertionPoint()) return;
   
   // If generator's optional result is address-only, create a stack allocation
-  // to hold the results.  This will be initialized on every entry into the loop
-  // header and consumed by the loop body. On loop exit, the terminating value
-  // will be in the buffer.
+  // to hold the results before we enter the loop.  This will be initialized on
+  // every entry into the loop header and consumed by the loop body. On loop
+  // exit, the terminating value will be in the buffer.
   auto optTy = S->getIteratorNext()->getType()->getCanonicalType();
   auto &optTL = SGF.getTypeLowering(optTy);
   SILValue addrOnlyBuf;
@@ -764,12 +764,12 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
 
   // Create a new basic block and jump into it.
   JumpDest loopDest = createJumpDest(S->getBody());
+  SGF.B.emitBlock(loopDest.getBlock(), S);
 
   // Set the destinations for 'break' and 'continue'.
   JumpDest endDest = createJumpDest(S->getBody());
   SGF.BreakContinueDestStack.push_back({ S, endDest, loopDest });
 
-  // Then emit the loop destination block.
 #if 1
   // Advance the generator.  Use a scope to ensure that any temporary stack
   // allocations in the subexpression are immediately released.
@@ -789,7 +789,7 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
   SwitchEnumBuilder switchEnumBuilder(SGF.B, S, nextBufOrValue);
 
   switchEnumBuilder.addCase(
-    SGF.getASTContext().getOptionalSomeDecl(), loopDest.getBlock(),
+    SGF.getASTContext().getOptionalSomeDecl(), createBasicBlock(),
     [&](ManagedValue inputValue) {
       SGF.emitProfilerIncrement(S->getBody());
 
@@ -804,17 +804,27 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
         InitializationPtr initLoopVars
           = SGF.emitPatternBindingInitialization(S->getPattern(), loopDest);
 
-        // If we had a loadable "next" generator value, we know it is present.
-        // Get the value out of the optional, and wrap it up with a cleanup so
-        // that any exits out of this scope properly clean it up.
+        // If we had an address only "next" generator value, we passed it in as
+        // if it was already forwarded. The switch builder allows for +0 address
+        // onyl types to be switched upon. Since we are switching in a +1 case,
+        // we need to create our own buffer cleanup for it. If we have a
+        // loadable value, then the builder has already created an owned PHI
+        // argument for us, so we do not need to do anything.
         if (optTL.isAddressOnly()) {
-          inputValue = SGF.emitManagedBufferWithCleanup(nextBufOrValue.getValue());
+          inputValue = SGF.emitManagedBufferWithCleanup(inputValue.getValue());
+          inputValue =
+            SGF.emitUncheckedGetOptionalValueFrom(S, inputValue, optTL,
+                                                  SGFContext(initLoopVars.get()));
+
+        } else {
+          assert(isa<SILPHIArgument>(inputValue.getValue()) &&
+                 "Expected a PHI argument");
         }
-        inputValue = SGF.emitUncheckedGetOptionalValueFrom(S, inputValue, optTL,
-                                                           SGFContext(initLoopVars.get()));
-        if (!inputValue.isInContext())
+
+        if (!inputValue.isInContext()) {
           RValue(SGF, S, optTy.getAnyOptionalObjectType(), inputValue)
             .forwardInto(SGF, S, initLoopVars.get());
+        }
 
         // Now that the pattern has been initialized, check any where condition.
         // If it fails, loop around as if 'continue' happened.
@@ -826,10 +836,10 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
           cond.exitTrue(SGF);
           cond.complete(SGF);
         }
-        
+
         visit(S->getBody());
       }
-    
+
       // Loop back to the header.
       if (SGF.B.hasValidInsertionPoint()) {
         // Associate the loop body's closing brace with this branch.
@@ -845,7 +855,6 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
   std::move(switchEnumBuilder).emit();
   SGF.B.emitBlock(contBB);
 #else
-  SGF.B.emitBlock(loopDest.getBlock(), S);
 
   // Advance the generator.  Use a scope to ensure that any temporary stack
   // allocations in the subexpression are immediately released.

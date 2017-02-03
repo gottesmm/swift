@@ -229,8 +229,7 @@ SILGenBuilder::createUnsafeCopyUnownedValue(SILLocation Loc,
   SILValue Result = SILBuilder::createUnmanagedToRef(
       Loc, OriginalValue.getValue(),
       SILType::getPrimitiveObjectType(UnmanagedType.getReferentType()));
-  SILBuilder::createUnmanagedRetainValue(Loc, Result);
-  return gen.emitManagedRValueWithCleanup(Result);
+  return createCopyValue(Loc, ManagedValue::forUnmanaged(Result));
 }
 
 ManagedValue SILGenBuilder::createOwnedPHIArgument(SILType Type) {
@@ -340,7 +339,7 @@ ManagedValue SILGenBuilder::createLoadCopy(SILLocation loc, ManagedValue v,
                                            const TypeLowering &lowering) {
   assert(lowering.getLoweredType().getAddressType() == v.getType());
   SILValue result =
-      lowering.emitLoadOfCopy(*this, loc, v.forward(gen), IsNotTake);
+    lowering.emitLoadOfCopy(*this, loc, v.getValue(), IsNotTake);
   if (lowering.isTrivial())
     return ManagedValue::forUnmanaged(result);
   assert(!lowering.isAddressOnly() && "cannot retain an unloadable type");

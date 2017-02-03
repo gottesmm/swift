@@ -467,7 +467,7 @@ void SwitchEnumBuilder::emit() && {
     // TODO: We could store the data in CaseBB form and not have to do this.
     llvm::SmallVector<DeclBlockPair, 8> CaseBBs;
     std::transform(CaseArray.begin(), CaseArray.end(),
-                   CaseBBs.begin(),
+                   std::back_inserter(CaseBBs),
                    [](CaseData &T) -> DeclBlockPair {
                      return {std::get<0>(T), std::get<1>(T)};
                    });
@@ -501,14 +501,19 @@ void SwitchEnumBuilder::emit() && {
     FullExpr presentScope(Builder.getSILGenFunction().Cleanups,
                           CleanupLocation::get(Loc));
     Builder.emitBlock(CaseBlock);
-    // Pull the value out.
-    SILType InputType =
-      Optional.getType().getEnumElementType(Decl, Builder.getModule());
-    ManagedValue Input = Optional;
-    if (!isAddressOnly) {
-      Input = Builder.createOwnedPHIArgument(InputType);
+
+    ManagedValue Input;
+    if (Decl->hasArgumentType()) {
+      // Pull the payload out if we have one.
+      SILType InputType =
+        Optional.getType().getEnumElementType(Decl, Builder.getModule());
+      Input = Optional;
+      if (!isAddressOnly) {
+        Input = Builder.createOwnedPHIArgument(InputType);
+      }
     }
     Handler(Input);
+    Builder.clearInsertionPoint();
   }
 
   // If we have a default BB, create an argument for the original loaded value
@@ -527,5 +532,6 @@ void SwitchEnumBuilder::emit() && {
       Input = Builder.createOwnedPHIArgument(Optional.getType());
     }
     Handler(Input);
+    Builder.clearInsertionPoint();
   }
 }

@@ -780,9 +780,22 @@ void StmtEmitter::visitForEachStmt(ForEachStmt *S) {
     nextBufOrValue =
       ManagedValue::forUnmanaged(nextInit->getManagedAddress().forward(SGF));
   } else {
-    Scope InnerForScope(SGF.Cleanups, CleanupLocation(S->getIteratorNext()));
+    // SEMANTIC SIL TODO: I am doing this to match previous behavior. We need to
+    // forward tmp below to ensure that we do not prematurely destroy the
+    // induction variable at the end of scope. I tried to use the
+    // CleanupRestorationScope and dormant, but it seemingly did not work and I
+    // do not have time to look into this now = (.
+    SILValue tmpValue;
+    bool hasCleanup;
+    {
+      Scope InnerForScope(SGF.Cleanups, CleanupLocation(S->getIteratorNext()));
+      ManagedValue tmp =
+        SGF.emitRValueAsSingleValue(S->getIteratorNext());
+      hasCleanup = tmp.hasCleanup();
+      tmpValue = tmp.forward(SGF);
+    }
     nextBufOrValue =
-      SGF.emitRValueAsSingleValue(S->getIteratorNext());
+      hasCleanup ? SGF.emitManagedRValueWithCleanup(tmpValue) : ManagedValue::forUnmanaged(tmpValue);
   }
 
   SILBasicBlock *contBB = createBasicBlock();

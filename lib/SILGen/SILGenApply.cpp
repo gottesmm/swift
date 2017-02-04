@@ -4984,7 +4984,7 @@ void SILGenFunction::emitUninitializedArrayDeallocation(SILLocation loc,
   // Invoke the intrinsic.
   Substitution sub{arrayElementTy, {}};
   emitApplyOfLibraryIntrinsic(loc, deallocate, sub,
-                              ManagedValue::forUnmanaged(array),
+                              emitManagedRValueWithCleanup(array),
                               SGFContext());
 }
 

@@ -367,7 +367,6 @@ CONSTANT_OWNERSHIP_INST(Trivial, false, UnconditionalCheckedCastAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, false, UnmanagedToRef)
 CONSTANT_OWNERSHIP_INST(Trivial, false, AllocValueBuffer)
 CONSTANT_OWNERSHIP_INST(Trivial, false, DeallocValueBuffer)
-CONSTANT_OWNERSHIP_INST(Trivial, false, ValueMetatype)
 #undef CONSTANT_OWNERSHIP_INST
 
 /// Instructions whose arguments are always compatible with one convention.
@@ -407,6 +406,7 @@ ACCEPTS_ANY_OWNERSHIP_INST(ProjectBox)           // The result is a T*.
 ACCEPTS_ANY_OWNERSHIP_INST(DynamicMethodBranch)
 ACCEPTS_ANY_OWNERSHIP_INST(UncheckedTrivialBitCast)
 ACCEPTS_ANY_OWNERSHIP_INST(ExistentialMetatype)
+ACCEPTS_ANY_OWNERSHIP_INST(ValueMetatype)
 #undef ACCEPTS_ANY_OWNERSHIP_INST
 
 // Trivial if trivial typed, otherwise must accept owned?

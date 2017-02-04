@@ -174,3 +174,15 @@ To give clarity of what is expected of our members, Swift has adopted the
 code of conduct defined by the Contributor Covenant. This document is used
 across many open source communities, and we think it articulates our values
 well. For more, see the [Code of Conduct](https://swift.org/community/#code-of-conduct).
+
+## Continuous Integration on Github
+
+In order to commit to the Swift github repo, a pull request must go through
+continuous integration. A pull request can be filed by anyone, but testing and
+performing the actual merging must be triggered by a Swift commiter. For more
+information on the Swift CI on Github please see
+the
+[Continuous Integration Guide](https://swift.org/continuous-integration/). For
+information on how to gain commit access to Swift see
+the [Commit Access Subsection](https://swift.org/contributing/#commit-access) of
+the [Contributing to Swift guide](https://swift.org/contributing/).

@@ -124,6 +124,7 @@ KNOWN_SETTINGS=(
     skip-build-libdispatch      ""               "set to skip building libdispatch"
     skip-build-libicu           ""               "set to skip building libicu"
     skip-build-benchmarks       ""               "set to skip building Swift Benchmark Suite"
+    skip-build-benchmarks-linux "1"              "set to skip building Swift Benchmark Suite on Linux. This is a staging flag until the lldb builders are updated"
     skip-build-playgroundlogger ""               "set to skip building PlaygroundLogger"
     skip-build-playgroundsupport ""              "set to skip building PlaygroundSupport"
     skip-test-cmark             ""               "set to skip testing CommonMark"
@@ -1326,8 +1327,10 @@ function calculate_targets_for_host() {
                 swift_sdk="LINUX"
                 build_for_this_target=$(not ${SKIP_BUILD_LINUX})
                 test_this_target=$(not ${SKIP_TEST_LINUX})
-                build_benchmark_this_target=$(not ${SKIP_BUILD_LINUX})
-                test_benchmark_this_target=$(not ${SKIP_BUILD_LINUX})
+                if [[ -z "${SKIP_BUILD_BENCHMARKS_LINUX}" ]]; then
+                    build_benchmark_this_target=$(not ${SKIP_BUILD_LINUX})
+                    test_benchmark_this_target=$(not ${SKIP_BUILD_LINUX})
+                fi
                 ;;
             freebsd-*)
                 swift_sdk="FREEBSD"

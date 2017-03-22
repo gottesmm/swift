@@ -57,6 +57,15 @@ public:
 
   bool isValid() const { return depth.isValid(); }
 
+  ManagedValue popPreservingValue(ManagedValue mv) {
+    // If we have a value, make sure that it is an object.
+    assert(!mv.getValue() || mv.getType().isObject());
+    CleanupCloner cloner(cleanups.SGF, mv);
+    SILValue value = mv.forward(cleanups.SGF);
+    pop();
+    return cloner.clone(value);
+  }
+
 private:
   void popImpl() {
     cleanups.stack.checkIterator(depth);

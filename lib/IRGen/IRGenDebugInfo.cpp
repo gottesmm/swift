@@ -120,6 +120,7 @@ class IRGenDebugInfoImpl : public IRGenDebugInfo {
 public:
   IRGenDebugInfoImpl(const IRGenOptions &Opts, ClangImporter &CI,
                      IRGenModule &IGM, llvm::Module &M, SourceFile *SF);
+  virtual ~IRGenDebugInfoImpl() = default;
   void finalize();
 
   void setCurrentLoc(IRBuilder &Builder, const SILDebugScope *DS,

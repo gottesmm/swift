@@ -49,6 +49,7 @@ public:
                                               ClangImporter &CI,
                                               IRGenModule &IGM, llvm::Module &M,
                                               SourceFile *SF);
+  virtual ~IRGenDebugInfo() = default;
 
   /// Finalize the llvm::DIBuilder owned by this object.
   void finalize();

@@ -43,8 +43,11 @@ class SILArgument : public ValueBase {
   SILBasicBlock *ParentBB;
   const ValueDecl *Decl;
   ValueOwnershipKind OwnershipKind;
+  uint64_t Count;
 
 public:
+  ~SILArgument();
+
   ValueOwnershipKind getOwnershipKind() const { return OwnershipKind; }
   void setOwnershipKind(ValueOwnershipKind NewKind) { OwnershipKind = NewKind; }
 

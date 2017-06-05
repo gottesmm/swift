@@ -355,3 +355,24 @@ bool SILBasicBlock::isTrampoline() const {
     return false;
   return begin() == Branch->getIterator();
 }
+
+void SILBasicBlock::dropAllArguments() {
+  for (auto *arg : ArgumentList) {
+    // First replace all of our users with undef.
+    arg->replaceAllUsesWithUndef();
+
+    // Then call the destructors for each of our arguments.
+    if (auto *funcArg = dyn_cast<SILFunctionArgument>(arg)) {
+      funcArg->~SILFunctionArgument();
+      continue;
+    }
+    if (auto *phiArg = dyn_cast<SILPHIArgument>(arg)) {
+      phiArg->~SILPHIArgument();
+      continue;
+    }
+    llvm_unreachable("Unhandled argument");
+  }
+
+  // Then clear the argument list.
+  ArgumentList.clear();
+}

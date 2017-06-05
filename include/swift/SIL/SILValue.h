@@ -168,6 +168,11 @@ public:
   /// SILValue::replaceAllUsesWith.
   void replaceAllUsesWith(ValueBase *RHS);
 
+  /// \brief Replace all uses of this instruction with Undef.
+  ///
+  /// *NOTE* If the given value is an undef, this does nothing.
+  void replaceAllUsesWithUndef();
+
   /// Returns true if this value has no uses.
   /// To ignore debug-info instructions use swift::onlyHaveDebugUses instead
   /// (see comment in DebugUtils.h).

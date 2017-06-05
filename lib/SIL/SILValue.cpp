@@ -72,6 +72,21 @@ SILModule *ValueBase::getModule() const {
   return nullptr;
 }
 
+void ValueBase::replaceAllUsesWithUndef() {
+  SILModule *Mod = getModule();
+  if (!Mod) {
+    if (isa<SILUndef>(*this))
+      return;
+    llvm_unreachable("Failed to find ValueBase's nullptr for a ValueBase that "
+                     "is not undef?!");
+  }
+
+  while (!use_empty()) {
+    Operand *Op = *use_begin();
+    Op->set(SILUndef::get(Op->get()->getType(), *Mod));
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                             ValueOwnershipKind
 //===----------------------------------------------------------------------===//
@@ -164,3 +179,4 @@ ValueOwnershipKind SILValue::getOwnershipKind() const {
   sil::ValueOwnershipKindClassifier Classifier;
   return Classifier.visit(const_cast<ValueBase *>(Value));
 }
+

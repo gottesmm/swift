@@ -16,18 +16,27 @@
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILModule.h"
+#include <cstdint>
 
 using namespace swift;
+
+static uint64_t SILArgumentCounter = 0;
 
 //===----------------------------------------------------------------------===//
 // SILArgument Implementation
 //===----------------------------------------------------------------------===//
 
+SILArgument::~SILArgument() {
+  llvm::dbgs() << "Destroying argument: " << Count << "\n";
+}
+
 SILArgument::SILArgument(ValueKind ChildKind, SILBasicBlock *ParentBB,
                          SILType Ty, ValueOwnershipKind OwnershipKind,
                          const ValueDecl *D)
     : ValueBase(ChildKind, Ty), ParentBB(ParentBB), Decl(D),
-      OwnershipKind(OwnershipKind) {
+      OwnershipKind(OwnershipKind), Count(SILArgumentCounter) {
+  ++SILArgumentCounter;
+  llvm::dbgs() << "Creating argument: " << Count << "\n";
   ParentBB->insertArgument(ParentBB->args_end(), this);
 }
 
@@ -35,7 +44,11 @@ SILArgument::SILArgument(ValueKind ChildKind, SILBasicBlock *ParentBB,
                          SILBasicBlock::arg_iterator Pos, SILType Ty,
                          ValueOwnershipKind OwnershipKind,
                          const ValueDecl *D)
-    : ValueBase(ChildKind, Ty), ParentBB(ParentBB), Decl(D), OwnershipKind(OwnershipKind) {
+    : ValueBase(ChildKind, Ty), ParentBB(ParentBB), Decl(D), OwnershipKind(OwnershipKind),
+      Count(SILArgumentCounter) {
+  ++SILArgumentCounter;
+  llvm::dbgs() << "Creating argument: " << Count << "\n";
+
   // Function arguments need to have a decl.
   assert(
     !ParentBB->getParent()->isBare() &&

@@ -71,9 +71,9 @@ SILFunction *SILFunction::create(
   }
 
   auto fn = new (M) SILFunction(M, linkage, name, loweredType, genericEnv, loc,
-                                isBareSILFunction, isTrans, isSerialized,
-                                isThunk, classSubclassScope, inlineStrategy, E,
-                                insertBefore, debugScope);
+                            isBareSILFunction, isTrans, isSerialized,
+                            isThunk, classSubclassScope, inlineStrategy, E,
+                            insertBefore, debugScope);
 
   if (entry) entry->setValue(fn);
   return fn;

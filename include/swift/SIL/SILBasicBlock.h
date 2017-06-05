@@ -220,7 +220,7 @@ public:
   }
 
   /// \brief Remove all block arguments.
-  void dropAllArguments() { ArgumentList.clear(); }
+  void dropAllArguments();
 
   //===--------------------------------------------------------------------===//
   // Predecessors and Successors
@@ -400,6 +400,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
   BB.print(OS);
   return OS;
 }
+
 } // end swift namespace
 
 namespace llvm {

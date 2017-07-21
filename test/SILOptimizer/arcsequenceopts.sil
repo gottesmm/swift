@@ -2146,3 +2146,30 @@ bb0(%0 : $*Builtin.NativeObject):
   strong_release %1 : $Builtin.NativeObject
   return undef : $()
 }
+
+// CHECK-LABEL: sil @switch_enum_with_trivial_argument : $@convention(thin) (@owned @callee_owned () -> ()) -> () {
+// CHECK: strong_retain
+// CHECK-NOT: strong_retain
+// CHECK-NOT: strong_release
+// CHECK: } // end sil function 'switch_enum_with_trivial_argument'
+sil @switch_enum_with_trivial_argument : $@convention(thin) (@owned @callee_owned () -> ()) -> () {
+bb0(%0 : $@callee_owned () -> ()):
+  strong_retain %0 : $@callee_owned () -> ()
+  strong_retain %0 : $@callee_owned () -> ()
+  apply %0() : $@callee_owned () -> ()
+  %1 = integer_literal $Builtin.Int64, 0
+  %2 = enum $Optional<Builtin.Int64>, #Optional.some!enumelt.1, %1 : $Builtin.Int64
+  switch_enum %2 : $Optional<Builtin.Int64>, case #Optional.some!enumelt.1: bb1, case #Optional.none!enumelt: bb2
+
+bb1(%3 : $Builtin.Int64):
+  strong_release %0 : $@callee_owned () -> ()
+  br bb3
+
+bb2:
+  strong_release %0 : $@callee_owned () -> ()
+  br bb3
+
+bb3:
+  %9999 = tuple()
+  return %9999 : $()
+}

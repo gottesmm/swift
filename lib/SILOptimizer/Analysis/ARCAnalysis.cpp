@@ -233,6 +233,12 @@ static bool canTerminatorUseValue(TermInst *TI, SILValue Ptr,
   }
 
   if (auto *SWEI = dyn_cast<SwitchEnumInst>(TI)) {
+    // A switch_enum with a trivial argument can never be used in an ARC
+    // significant way since the trivial value is essentially just bits and has
+    // already been produced. We may care about how the value is produced, but
+    // that is not our problem here.
+    if (SWEI->getOperand()->getType().isTrivial(TI->getModule()))
+      return false;
     return doOperandsAlias(SWEI->getAllOperands(), Ptr, AA);
   }
 

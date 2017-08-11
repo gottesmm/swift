@@ -267,6 +267,33 @@ namespace swift {
     }
   };
 
+/// Given a specific type of analysis and its function info. Store the analysis
+/// and upon request instantiate the function info, caching the function info
+/// for subsequent requests.
+template <class AnalysisTy, class FunctionInfoTy>
+class LazyFunctionInfo {
+  SILFunction *F;
+  AnalysisTy *A;
+  NullablePtr<FunctionInfoTy> FTy;
+
+public:
+  LazyFunctionInfo(SILFunction *F, AnalysisTy *A) : F(F), A(A), FTy() {}
+
+  operator FunctionInfoTy *() const {
+    auto &This = const_cast<LazyFunctionInfo &>(*this);
+
+    if (FTy.isNull()) {
+      This.FTy = This.A->get(F);
+    }
+
+    return This.FTy.get();
+  }
+
+  FunctionInfoTy *operator->() const {
+    return *this;
+  }
+};
+
 #define ANALYSIS(NAME)                                                         \
   SILAnalysis *create##NAME##Analysis(SILModule *);
 #include "Analysis.def"

@@ -1356,6 +1356,252 @@ be triggered by valid SIL emitted by a correct Swift program using a correct
 standard library, but cannot in all cases be diagnosed or verified at the SIL
 level.
 
+Ownership Model
+---------------
+
+The SIL Ownership Model allows for static lifetime invariants to be expressed
+and enforced by the SIL IR along SSA edges. For more information on SSA and
+ownership see the next section, `Ownership SSA Form`_. The ownership relations
+are described by the enum ``ValueOwnershipKind`` and its cases:
+
+* **Trivial** - ``@trivial`` - An value with independent lifetime that has no
+  lifetime constraints.
+* **Owned** - ``@owned`` - A value with a unique, independent lifetime.
+* **Guaranteed** - ``@guaranteed`` - A value whose scoped lifetime is dependent
+  on a different value with owned ownership. This dependence constrains the
+  owned value's lifetime such that the owned value must be alive for the entire
+  lifetime of the guaranteed value.
+* **Unowned** - ``@unowned`` - A value with a transient lifetime that must be copied before any
+  side-effect having uses.
+* **Any** - Undefined ownership. This is mainly used for ``SILUndef``.
+
+For more information see the `ValueOwnershipKind`_ section. These static
+ownership relations allow for SIL to define a static ownership checker. See
+`Ownership Model Checker`_ for implementation details.
+
+Ownership SSA Form
+~~~~~~~~~~~~~~~~~~
+
+`Ownership SSA` or `OSSA` is a derived form of SSA that expresses ownership
+invariants along def-use edges. SILGen initially emits SIL in OSSA form. Once
+optimizations that depend on ownership have been completed, the SIL is lowered
+to normal SSA form by the SIL pass called the ``OwnershipModelEliminator``.
+
+OSSA augments the usual SSA properties (e.g. dominance) with the following
+properties:
+
+1. All defs (``SILValue``) must define a static ``ValueOwnershipKind`` that
+   defines the ownership semantics of the def.
+2. Every use (``Operand``) should specify a set of "allowed"
+   ``ValueOwnershipKind`` that all defs (``SILValue``) of the operand must
+   produce.
+3. A program is considered ill-formed if any defs have a use that will not
+   accept the def's ``ValueOwnershipKind``.
+4. A program is considered ill-formed if any def's use violates a per
+   ``ValueOwnershipKind`` dataflow rule. These dataflow rules enable us to make
+   program guarantees such as regions of code without leaks, use-after-frees, or
+   dangling pointers. We describe the dataflow constraints in the section on
+   `ValueOwnershipKind`_.
+
+We provide a list of properties of OSSA that are useful to know when working in
+OSSA in the section `Derived Properties`_.
+
+ValueOwnershipKind
+~~~~~~~~~~~~~~~~~~
+
+All defs produce a ``ValueOwnershipKind`` that defines a set of dataflow rules
+that the def and its uses (and potentially derived uses) must obey. This is
+implemented by all defs having the ability to partition their user set into a
+set of "lifetime-ending uses" and "normal uses" and then applying a
+``ValueOwnershipKind`` specific dataflow rule, as described in the next section.
+
+Trivial
+```````
+
+A SILValue with ``@trivial`` ownership is an independent, unmanaged value like
+``Int``, ``UnsafePointer<T>``, ``Builtin.RawPointer``, and
+``Unmanaged<T>``. Ownership SIL classifies all uses of a trivial value as
+non-lifetime ending uses and thus does not provide any dataflow guarantees on
+trivial values. See the `Derived Properties`_ section for an example. Of course,
+Ownership SIL does guarantee that trivial values will not be passed to uses that
+can not accept a trivial value.
+
+Owned
+`````
+
+A SILValue with ``@owned`` ownership is an independent, managed value like
+``Array<T>`` or a class. Ownership SIL defines ``@owned`` values as having the
+following dataflow guarantees::
+
+1. The value will be consumed entirely, exactly once along any path through the
+   program. This ensures that the compiler can prevent memory leaks and double
+   frees.
+2. Any non-consuming uses of the value will occur before any consuming uses of
+   the value. This ensures that the compiler can prevent any use after frees.
+
+Guaranteed
+``````````
+
+A value with ``@guaranteed`` ownership is a scoped-lifetime value that is
+derived from an ``@owned`` value. The ``@guaranteed`` value's lifetime acts as a
+constraint on the lifetime of the ``@owned`` value and statically prevent the
+``@owned`` value from being destroyed until the ``@guaranteed`` value's lifetime
+has ended. A ``@guaranteed`` value can be introduced via the following
+SILNodes:
+
+* ``load_borrow``
+* ``begin_borrow``
+* ``@guaranteed SILArgument``
+
+The values derivable from these SILNodes must be paired with exactly one
+``end_borrow`` use along all paths through the program.
+
+**NOTE** The act of producing an ``@guaranteed`` value is also known by the term
+of art "shared borrow". Often times colloquially an ``@guaranteed`` value will
+be called a "borrowed" value and the scoped-lifetime of the value a "borrow
+scope".
+
+**NOTE** In order to reduce the size of emitted SIL, we require recursive borrow
+scopes to be flattened into parent borrow scopes. In practice this means:
+
+1. ``@guaranteed`` function arguments are required to not be paired with any
+   ``end_borrow``. This is because the ``@guaranteed`` argument in the callee
+   acts as a sub-scope of a borrow scope in all caller bodies implying
+   redundancy.
+2. ``begin_borrow`` and ``end_borrow`` applied to an already borrowed value are
+   trivially dead.
+
+Unowned
+```````
+
+A SILValue with ``@unowned`` ownership kind is an independent value that has a
+lifetime that is only guaranteed to last until the next program visible
+side-effect. To maintain the lifetime of an ``@unowned`` value, it must be
+converted to an owned representation via a ``copy_value`` before any other uses
+of it.
+
+``@unowned`` ownership kind occurs mainly along method/function boundaries in
+between Swift and Objective-C code. This is because ``@unowned`` is the normal
+argument convention used in Objective-C.
+
+Any
+```
+
+A SILValue with undefined ownership. It can pair with /any/ ownership kind. This
+means that it could take on /any/ ownership semantics. This is meant only to
+model ``SILUndef`` and to express certain situations where we use unqualified
+ownership. This is a tool in migration that over time will be increasingly
+restricted until in the SIL ownership model, it will only be used to model
+``SILUndef``.
+
+Derived Properties
+~~~~~~~~~~~~~~~~~~
+
+1. Even though OSSA provides dataflow guarantees around SSA values, it does not
+   provide any guarantees around objects being loaded/stored to memory in it of
+   itself. When looking for memory errors, they are most likely to occur along
+   boundaries of verified regions where values are accessed through memory.
+2. OSSA guarantees that all ``ref_element_addr`` (i.e. fields) of a class typed
+   SSA value are not used after the class typed SSA value is consumed. This
+   ensures that use-after-free or dangling pointers due to fields can not occur
+   from a ``ref_element_addr`` directly. This is because in the process of
+   escaping the field must be copied, the compiler engineer can know in OSSA
+   that all fields are always copied before escaping. This is a general property
+   that we could use in other situations (for instance) with closures to start
+   closures on the stack and copy them to the heap in a safe way.
+3. Since all defs have a static lifetime semantics, PHIs (i.e. ``SILArguments``)
+   must have an assigned ownership convention. This allows us to verify a
+   program ignoring loops and will rigorously eliminate the program of
+   understanding how reference counting operations flow around loops.
+4. Previous algorithms around ownership in the Swift compiler have needed to
+   consider both joint-dominance and joint-postdominance of sets of
+   copies/destroys, the dominance property that comes with SSA causes the
+   verifier to only need to prove that a set of instructions that take owned
+   values joint-postdominate a single ``@owned`` producing def.
+5. All "value projection" (e.g. ``struct_extract``) operations can only operate
+   on ``@guaranteed`` values. This is because fundamentally these operations are
+   giving access to a subvalue of a different ``@owned`` value
+   non-destructively. Since we do not allow for a value to be partially destroy,
+   this necessarily implies that such operations can only occur on
+   ``@guaranteed`` values. To perform a destructive value projection, one must
+   consume the entire value at once via a destructure operation
+   (e.g. ``destructure_struct``). **NOTE** destructure operations inherently
+   have multiple result values so require special handling in code.
+6. There are a few instructions that are called "ownership forwarding
+   instructions". These instructions are polymorphic over a set of
+   ``ValueOwnershipKind`` and produce a value with the same ownership as one of
+   its operands. Some examples of these type of instructions are casts,
+   destructures, and enum routines.
+7. There are only certain "ownership conversion" instructions that allow one to
+   convert a value from one form of ownership to another. E.g.: ``copy_value``
+   (convert a ``@guaranteed``, ``@unowned``, or ``@owned`` value to an
+   ``@owned`` value), ``begin_borrow`` (convert an ``@owned`` or ``@guaranteed``
+   value to a ``@guaranteed`` value).
+8. Since there are no dataflow guarantees on trivial values, any trivial
+   pointers that are formed from owned or guaranteed values must communicate the
+   end of the use by calling ``fix_lifetime`` on the original object after the
+   last use of the derived trivial value. Otherwise, the optimizer may attempt
+   to shorten the life of the managed value to before the last unsafe use of the
+   value resulting in a use-after-free. For example in the following::
+
+     sil @foo : $@convention(thin) (@owned Class) -> () {
+     bb0(%0 : $@owned Class)
+       %1 = function_ref @get_raw_pointer : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       %2 = begin_borrow %0 : $Class
+       %3 = apply %1(%2) : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       end_borrow %2 from %0 : $Class
+       %4 = function_ref @use_raw_pointer : $@convention(thin) (Builtin.RawPointer) -> ()
+       apply %4(%3) : $@convention(thin) (Builtin.RawPointer) -> ()
+       destroy_value %0 : $Class
+       ...
+     }
+
+   OSSA assumes that there is no connection in between ``%1`` and ``%3``, so it
+   is legal for the optimizer to move the ``destroy_value`` of ``%0`` to before
+   the call to ``use_raw_pointer``. To do this safely, one would use the
+   ``fix_lifetime`` intrinsic::
+
+     sil @foo : $@convention(thin) (@owned Class) -> () {
+     bb0(%0 : $@owned Class)
+       %1 = function_ref @get_raw_pointer : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       %2 = begin_borrow %0 : $Class
+       %3 = apply %1(%2) : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       end_borrow %2 from %0 : $Class
+       %4 = function_ref @use_raw_pointer : $@convention(thin) (Builtin.RawPointer) -> ()
+       apply %4(%3) : $@convention(thin) (Builtin.RawPointer) -> ()
+       fix_lifetime %0 : $Class
+       destroy_value %0 : $Class
+       ...
+     }
+
+   The ``fix_lifetime`` states that ``%0`` has some unknown reason that it must
+   be live at this point. This would then tell the optimizer that it would not
+   be safe to move the ``destroy_value`` past that point.
+9. Since our dataflow conditions talk about paths to the end of the program,
+   naturally we ignore proving dataflow constraints in regions that are
+   unreachable or regions that are joint-postdominated by a set of
+   unreachables. We still require that reachable defs produce compatible
+   ValueOwnershipKind for unreachable uses.
+
+Ownership Model Checker
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The ownership model checker has two different parts: the use checker and the
+dataflow checker. The use checker runs over all def-use chains and validates
+that all defs are paired with compatible uses and splits the uses into lifetime
+ending and normal uses. The dataflow checker injests these sets and then perform
+a bottom-up def-use traversal and proves that:
+
+1. There is no path from a lifetime ending use to a non-lifetime ending use that
+   does not visit the dominating ``SILValue`` again. This would be a use after
+   free.
+2. Along all paths through the program, we only visit a member of the consuming
+   set exactly once. This would result in values being destroyed twice, i.e. use
+   after free.
+3. There does not exist a path through the program from the ``SILValue`` def
+   that doesn't go through the consuming use set. This would result in a value
+   being leaked.
+
 Calling Convention
 ------------------
 

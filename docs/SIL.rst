@@ -1356,6 +1356,231 @@ be triggered by valid SIL emitted by a correct Swift program using a correct
 standard library, but cannot in all cases be diagnosed or verified at the SIL
 level.
 
+Ownership Model
+---------------
+
+SIL enforces an ownership model on all functions marked with the attribute
+``[ownership]``. This ownership model is defined by augmenting SSA properties
+with ownership invariants that propagate along def-use edges. For more
+information on SSA and ownership see the next section `Ownership SSA
+Form`_. This in combination with SIL expressing ownership along call graph edges
+allows for an entire program to be verified as preserving ownership
+invariants. The ownership model relations are described by the enum
+``ValueOwnershipKind``, defining the ownership semantics a def provides, and the
+enum ``UseLifetimeConstraint``, defining the lifetime constraints put onto a def
+by a use. For more information see the section `ValueOwnershipKinds and
+UseLifetimeConstraints`_ below. These two enums allow for SIL to define a static
+ownership checker that can prove that a function is "statically ownership
+correct". See `SIL Programmer's Manual
+<SILProgrammersManual.md#ownership-model-checker>`_ for implementation details
+of this checker.
+
+Ownership SSA Form
+~~~~~~~~~~~~~~~~~~
+
+`Ownership SSA` or `OSSA` is a derived form of SSA that expresses ownership
+invariants along def-use edges. SILGen initially emits SIL in OSSA form. Once
+optimizations that depend on ownership have been completed, the SIL is lowered
+out of OSSA by a SIL pass called the ``OwnershipModelEliminator``. OSSA augments
+the usual SSA properties (e.x. dominance) with the following properties:
+
+1. All defs (``SILValue``) must define a static ``ValueOwnershipKind`` that
+   defines the ownership semantics of the def.
+2. Every use (``Operand``) must define a static ``OperandOwnershipKindMap`` that
+   maps a ``ValueOwnershipKind`` that the operand can accept to the
+   ``UseLifetimeConstraint`` that the use places on the value at the use-site.
+3. A SIL program is ill-formed if there exists any def-use edge whose def's
+   ``ValueOwnershipKind`` is not a key in the use's ``OperandOwnershipKindMap``.
+4. A SIL program is ill-formed if any def-use edge violates a per
+   ``ValueOwnershipKind`` dataflow rule given the ``UseLifetimeConstraint``
+   placed upon the def by the use. These dataflow rules enable us to make
+   program guarantees such as regions of code without leaks, use-after-frees, or
+   dangling pointers. The dataflow constraints are described in the next
+   section, `ValueOwnershipKinds and UseLifetimeConstraints`_.
+
+A list of derived properties of OSSA that are useful to know when working in OSSA is
+provided in the `SIL Programmer's Manual <SILProgrammersManual.md#derived-properties>`_.
+
+ValueOwnershipKinds and UseLifetimeConstraints
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In OSSA, all SILValues must produce a ``ValueOwnershipKind`` that describes the
+value's dataflow rules and how the value relates to its uses. A quick summary of
+each case of ``ValueOwnershipKind``:
+
+* **Trivial** - ``@trivial`` - A pure SSA value that is never invalidated and is
+  live throughout the program.
+* **Owned** - ``@owned`` - A value with a unique, independent lifetime that is
+  created once and invalidated exactly once along any path through the program.
+* **Guaranteed** - ``@guaranteed`` - A value whose scoped lifetime is dependent
+  on a different value with owned ownership. This dependence constrains the
+  owned value's lifetime such that the owned value must be alive for the entire
+  lifetime of the guaranteed value.
+* **Unowned** - ``@unowned`` - A value with a transient lifetime that must be
+  copied before any side-effect having uses.
+* **Any** - Undefined ownership. This is used to model ``SILUndef`` and
+  ownership in SIL once ownership has been stripped out.
+
+Every ``Operand`` in SIL defines an ``OperandOwnershipKindMap`` that maps an
+individual ``ValueOwnershipKind`` that the operand can be paired with to a
+``UseLifetimeConstraint`` that defines the effect that the use has upon the
+lifetime of the value. A quick summary of each case of
+``UseLifetimeConstraint``:
+
+* **MustBeLive** - The use requires that the value not be invalidated, that is
+  "live", at the use point.
+* **MustBeInvalidated** - The use invalidates the value and after the use point
+  can no longer be referenced or used without triggering undefined behavior.
+
+In combination, these two constructs define a set of dataflow rules that the def
+and its uses (and potentially derived uses) must obey. This is implemented by
+all defs having the ability to partition their use set into two according to
+each individual use's ``UseLifetimeConstraint`` and then applying the
+``ValueOwnershipKind`` specific dataflow rules to those use sets. We describe
+these dataflow rules below.
+
+Trivial
+```````
+
+A SILValue with ``@trivial`` ownership is an independent, unmanaged value like
+``Int``, ``UnsafePointer<T>``, ``Builtin.RawPointer``, and ``Unmanaged<T>``. It
+is assumed that all values with trivial ownership are of trivial type. Ownership
+SIL classifies all uses of a trivial value as putting a ``MustBeLive``
+constraint on the value and thus does not provide any dataflow guarantees on
+trivial values. A SIL module that attempts to put a ``MustBeInvalidated``
+lifetime constraint on a trivial value is ill formed.
+
+Owned
+`````
+
+A SILValue with ``@owned`` ownership is an independent, managed value like
+``Array<T>`` or a class. It is assumed that all values with ``@owned`` ownership
+are of non-trivial type. Ownership SIL defines ``@owned`` values as having the
+following dataflow guarantees::
+
+1. The value will have exactly one ``MustBeInvalidated`` use along any path
+   through the program. This ensures that the compiler can prevent memory leaks
+   and double frees.
+2. Any ``MustBeLive`` uses of the value will occur before any
+   ``MustBeInvalidated`` uses of the value. This ensures that the compiler can
+   prevent any use after frees.
+3. Any guaranteed values produced from the ``@owned`` value via a "shared
+   borrow" must be invalidated before the value is destroyed.
+
+Guaranteed
+``````````
+
+A value with ``@guaranteed`` ownership is a scoped-lifetime value that is
+derived from an ``@owned`` value. The ``@guaranteed`` value's lifetime acts as a
+``MustBeLive`` on the lifetime of the ``@owned`` value. For more information see
+the next section `Shared Borrows`_. A ``@guaranteed`` value can be introduced
+via the following SILNodes:
+
+* ``load_borrow``
+* ``begin_borrow``
+* ``@guaranteed SILArgument``
+
+The values derivable from these SILNodes must be paired with exactly one
+``end_borrow`` use along all paths through the program.
+
+Shared Borrows
+''''''''''''''
+
+The act of producing an ``@guaranteed`` value is also known by the term of art
+"shared borrow". Often times colloquially a ``@guaranteed`` value will be called
+a "borrowed" value and the scoped-lifetime of the value a "borrow scope". It is
+important to note that a SIL-borrow has different semantics than a Swift-borrow
+since SIL-borrow is a lower level implementation detail of a Swift-borrow. For
+instance, a Swift-borrow enforces additional dynamic language level guarantees
+that a SIL-borrow avoids by stating such conditions are undefined behavior. This
+is not an issue in practice since SILGen emits Swift-level borrow as a
+combination of a ``begin_access`` (providing the additional guarantees) and a
+SIL-level borrow as a low level implementation detail to perform the actual
++0 operation.
+
+Flattening Redundant Borrow Scopes
+''''''''''''''''''''''''''''''''''
+
+In order to reduce the size of emitted SIL, we require recursive borrow scopes
+to be flattened into parent borrow scopes. In practice this means:
+
+* ``begin_borrow`` and ``end_borrow`` applied to an already borrowed value are
+  trivially dead.
+* ``@guaranteed`` function arguments are required to not be paired with any
+  ``end_borrow``. This is because the ``@guaranteed`` argument in the callee
+  naturally can use the end of the function as the end of the borrow scope. In
+  contrast, we do require all guaranteed non-function arguments to have their
+  lifetimes ended by an end_borrow to ease ownership verification by making it
+  trivial to verify that the a guaranteed block argument is completely contained
+  within the borrow scopes of the argument's incoming values.
+
+Unowned
+```````
+
+A SILValue with ``@unowned`` ownership kind is an independent value that has a
+lifetime that is only guaranteed to last until the next program visible
+side-effect. To maintain the lifetime of an ``@unowned`` value, it must be
+converted to an owned representation via a ``copy_value`` before any other uses
+of it.
+
+``@unowned`` ownership kind occurs mainly along method/function boundaries in
+between Swift and Objective-C code. This is because ``@unowned`` is the normal
+argument convention used in Objective-C.
+
+Any
+```
+
+A SILValue with undefined ownership. It can pair with /any/ ownership kind. This
+means that it could take on /any/ ownership semantics. This is meant only to
+model ``SILUndef`` and to express certain situations where we use unqualified
+ownership. This is a tool in migration that over time will be increasingly
+restricted until in the SIL ownership model, it will only be used to model
+``SILUndef``.
+
+Arguments
+~~~~~~~~~
+
+Arguments in OSSA have special semantics to ease verification and to help model
+enums. Specifically:
+
+* All SIL arguments are required to have a static assigned ownership convention.
+  assigned ownership convention. This allows for the ownership verifier to not
+  need to consider loops when verifying allowing us to avoid needing to perform
+  an optimistic dataflow to determine argument ownership.
+
+* We require that all incoming values to non-enum types Arguments have
+  compatible ownership with the Argument.
+
+* If a SIL argument is of enum type, we allow for trivial enum cases to be
+  passed to the SIL argument even if the argument has non-trivial
+  ownership. E.x.::
+
+    enum MyEnum {
+    case trivial(Int)
+    case nonTrivial(Klass)
+    }
+
+    sil @useMyEnum : $@convention(thin) (@owned MyEnum) -> ()
+    sil @f : $@convention(thin) (Int) -> () {
+    bb0(%0 : @trivial Int):
+      %1 = function_ref @useMyEnum : $@convention(thin) (@owned MyEnum) -> ()
+      %2 = enum $MyEnum, #MyEnum.trivial!enumelt.1, %0
+      apply %1(%2) : $@convention(thin) (@owned MyEnum) -> ()
+      ...
+    }
+
+  We do this by allowing for block and function arguments to be places where a
+  trivial enum case can migrate to either a guaranteed or owned ownership. This
+  is safe since the trivial value is always live and the compiler knows how to
+  handle destroying a trivial case of an enum by no-oping appropriately. We do
+  require that all non-trivial inputs to such arguments have matching ownership.
+
+* We require that basic block arguments with guaranteed ownership must have
+  associated end_borrows to ease verification and optimization. The end_borrow
+  must occur before all input guaranteed parameter's end_borrow so that the
+  argument's lifetime is strictly contained withint its incoming value's
+  lifetimes.
+
 Calling Convention
 ------------------
 

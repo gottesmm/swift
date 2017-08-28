@@ -179,3 +179,115 @@ PassManager and its avaiable analyses.
 HighLevelSILOptimizations.rst discusses how the optimizer imbues
 certain special SIL types and SIL functions with higher level
 semantics.
+
+## Ownership SSA Form
+
+### Derived Properties
+
+1. Even though OSSA provides dataflow guarantees around SSA values, it does not
+   provide any guarantees around objects being loaded/stored to memory in it of
+   itself. When looking for memory errors, they are most likely to occur along
+   boundaries of verified regions where values are accessed through memory.
+2. OSSA guarantees that all ``ref_element_addr`` (i.e. fields) of a class typed
+   SSA value are not used after the class typed SSA value is consumed. This
+   ensures that use-after-free or dangling pointers due to fields can not occur
+   from a ``ref_element_addr`` directly. This is because in the process of
+   escaping the field must be copied, the compiler engineer can know in OSSA
+   that all fields are always copied before escaping. This is a general property
+   that we could use in other situations (for instance) with closures to start
+   closures on the stack and copy them to the heap in a safe way.
+3. Since all defs have a static lifetime semantics, PHIs (i.e. ``SILArguments``)
+   must have an assigned ownership convention. This allows us to verify a
+   program ignoring loops and will rigorously eliminate the program of
+   understanding how reference counting operations flow around loops.
+4. Previous algorithms around ownership in the Swift compiler have needed to
+   consider both joint-dominance and joint-postdominance of sets of
+   copies/destroys, the dominance property that comes with SSA causes the
+   verifier to only need to prove that a set of instructions that take owned
+   values joint-postdominate a single ``@owned`` producing def.
+5. All "value projection" (e.g. ``struct_extract``) operations can only operate
+   on ``@guaranteed`` values. This is because fundamentally these operations are
+   giving access to a subvalue of a different ``@owned`` value
+   non-destructively. Since we do not allow for a value to be partially destroy,
+   this necessarily implies that such operations can only occur on
+   ``@guaranteed`` values. To perform a destructive value projection, one must
+   consume the entire value at once via a destructure operation
+   (e.g. ``destructure_struct``). **NOTE** destructure operations inherently
+   have multiple result values so require special handling in code.
+6. There are a few instructions that are called "ownership forwarding
+   instructions". These instructions are polymorphic over a set of
+   ``ValueOwnershipKind`` and produce a value with the same ownership as one of
+   its operands. Some examples of these type of instructions are casts,
+   destructures, and enum routines.
+7. There are only certain "ownership conversion" instructions that allow one to
+   convert a value from one form of ownership to another. E.g.: ``copy_value``
+   (convert a ``@guaranteed``, ``@unowned``, or ``@owned`` value to an
+   ``@owned`` value), ``begin_borrow`` (convert an ``@owned`` or ``@guaranteed``
+   value to a ``@guaranteed`` value).
+8. Since there are no dataflow guarantees on trivial values, any trivial
+   pointers that are formed from owned or guaranteed values must communicate the
+   end of the use by calling ``fix_lifetime`` on the original object after the
+   last use of the derived trivial value. Otherwise, the optimizer may attempt
+   to shorten the life of the managed value to before the last unsafe use of the
+   value resulting in a use-after-free. For example in the following::
+
+```
+     sil @foo : $@convention(thin) (@owned Class) -> () {
+     bb0(%0 : $@owned Class)
+       %1 = function_ref @get_raw_pointer : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       %2 = begin_borrow %0 : $Class
+       %3 = apply %1(%2) : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       end_borrow %2 : $Class
+       %4 = function_ref @use_raw_pointer : $@convention(thin) (Builtin.RawPointer) -> ()
+       apply %4(%3) : $@convention(thin) (Builtin.RawPointer) -> ()
+       destroy_value %0 : $Class
+       ...
+     }
+```
+
+   OSSA assumes that there is no connection in between ``%1`` and ``%3``, so it
+   is legal for the optimizer to move the ``destroy_value`` of ``%0`` to before
+   the call to ``use_raw_pointer``. To do this safely, one would use the
+   ``fix_lifetime`` intrinsic::
+
+```
+     sil @foo : $@convention(thin) (@owned Class) -> () {
+     bb0(%0 : $@owned Class)
+       %1 = function_ref @get_raw_pointer : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       %2 = begin_borrow %0 : $Class
+       %3 = apply %1(%2) : $@convention(thin) (@guaranteed Class) -> Builtin.RawPointer
+       end_borrow %2 : $Class
+       %4 = function_ref @use_raw_pointer : $@convention(thin) (Builtin.RawPointer) -> ()
+       apply %4(%3) : $@convention(thin) (Builtin.RawPointer) -> ()
+       fix_lifetime %0 : $Class
+       destroy_value %0 : $Class
+       ...
+     }
+```
+
+   The ``fix_lifetime`` states that ``%0`` has some unknown reason that it must
+   be live at this point. This would then tell the optimizer that it would not
+   be safe to move the ``destroy_value`` past that point.
+9. Since our dataflow conditions talk about paths to the end of the program,
+   naturally we ignore proving dataflow constraints in regions that are
+   unreachable or regions that are joint-postdominated by a set of
+   unreachables. We still require that reachable defs produce compatible
+   ValueOwnershipKind for unreachable uses.
+
+### Ownership Model Checker
+
+The ownership model checker has two different parts: the use checker and the
+dataflow checker. The use checker runs over all def-use chains and validates
+that all defs are paired with compatible uses and splits the uses into lifetime
+ending and normal uses. The dataflow checker injests these sets and then perform
+a bottom-up def-use traversal and proves that:
+
+1. There is no path from a lifetime ending use to a non-lifetime ending use that
+   does not visit the dominating ``SILValue`` again. This would be a use after
+   free.
+2. Along all paths through the program, we only visit a member of the consuming
+   set exactly once. This would result in values being destroyed twice, i.e. use
+   after free.
+3. There does not exist a path through the program from the ``SILValue`` def
+   that doesn't go through the consuming use set. This would result in a value
+   being leaked.

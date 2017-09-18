@@ -268,6 +268,8 @@ namespace {
     void collectContainerUses(AllocBoxInst *ABI);
     void addElementUses(unsigned BaseEltNo, SILType UseTy,
                         SILInstruction *User, DIUseKind Kind);
+    void collectApplyUses(ApplyInst *AI, unsigned BaseEltNo, SILType UseTy,
+                          unsigned ArgumentNumber);
     void collectTupleElementUses(TupleElementAddrInst *TEAI,
                                  unsigned BaseEltNo);
     void collectStructElementUses(StructElementAddrInst *SEAI,
@@ -363,6 +365,52 @@ static bool isSanitizerInstrumentation(SILInstruction *Instruction,
     return true;
 
   return false;
+}
+
+void ElementUseCollector::collectApplyUses(ApplyInst *AI, unsigned BaseEltNo,
+                                           SILType PointeeType,
+                                           unsigned ArgumentNumber) {
+  auto substConv = AI->getSubstCalleeConv();
+
+  // If this is an out-parameter, it is like a store.
+  unsigned NumIndirectResults = substConv.getNumIndirectSILResults();
+  if (ArgumentNumber < NumIndirectResults) {
+    assert(!InStructSubElement && "We're initializing sub-members?");
+    addElementUses(BaseEltNo, PointeeType, AI, DIUseKind::Initialization);
+    return;
+  }
+
+  // Otherwise, adjust the argument index.
+  ArgumentNumber -= NumIndirectResults;
+
+  auto ParamConvention =
+      substConv.getParameters()[ArgumentNumber].getConvention();
+
+  switch (ParamConvention) {
+  case ParameterConvention::Direct_Owned:
+  case ParameterConvention::Direct_Unowned:
+  case ParameterConvention::Direct_Guaranteed:
+    llvm_unreachable("address value passed to indirect parameter");
+
+  // If this is an in-parameter, it is like a load.
+  case ParameterConvention::Indirect_In:
+  case ParameterConvention::Indirect_In_Constant:
+  case ParameterConvention::Indirect_In_Guaranteed:
+    addElementUses(BaseEltNo, PointeeType, AI, DIUseKind::IndirectIn);
+    return;
+
+  // If this is an @inout parameter, it is like both a load and store.
+  case ParameterConvention::Indirect_Inout:
+  case ParameterConvention::Indirect_InoutAliasable: {
+    // If we're in the initializer for a struct, and this is a call to a
+    // mutating method, we model that as an escape of self.  If an
+    // individual sub-member is passed as inout, then we model that as an
+    // inout use.
+    addElementUses(BaseEltNo, PointeeType, AI, DIUseKind::InOutUse);
+    return;
+  }
+  }
+  llvm_unreachable("bad parameter convention");
 }
 
 void ElementUseCollector::collectUses(SILValue Pointer, unsigned BaseEltNo) {
@@ -501,51 +549,10 @@ void ElementUseCollector::collectUses(SILValue Pointer, unsigned BaseEltNo) {
     //
     // Note that partial_apply instructions always close over their argument.
     //
-    if (auto *Apply = dyn_cast<ApplyInst>(User)) {
-      auto substConv = Apply->getSubstCalleeConv();
+    if (auto *AI = dyn_cast<ApplyInst>(User)) {
       unsigned ArgumentNumber = UI->getOperandNumber()-1;
-
-      // If this is an out-parameter, it is like a store.
-      unsigned NumIndirectResults = substConv.getNumIndirectSILResults();
-      if (ArgumentNumber < NumIndirectResults) {
-        assert(!InStructSubElement && "We're initializing sub-members?");
-        addElementUses(BaseEltNo, PointeeType, User,
-                       DIUseKind::Initialization);
-        continue;
-
-      // Otherwise, adjust the argument index.      
-      } else {
-        ArgumentNumber -= NumIndirectResults;
-      }
-
-      auto ParamConvention =
-          substConv.getParameters()[ArgumentNumber].getConvention();
-
-      switch (ParamConvention) {
-      case ParameterConvention::Direct_Owned:
-      case ParameterConvention::Direct_Unowned:
-      case ParameterConvention::Direct_Guaranteed:
-        llvm_unreachable("address value passed to indirect parameter");
-
-      // If this is an in-parameter, it is like a load.
-      case ParameterConvention::Indirect_In:
-      case ParameterConvention::Indirect_In_Constant:
-      case ParameterConvention::Indirect_In_Guaranteed:
-        addElementUses(BaseEltNo, PointeeType, User, DIUseKind::IndirectIn);
-        continue;
-
-      // If this is an @inout parameter, it is like both a load and store.
-      case ParameterConvention::Indirect_Inout:
-      case ParameterConvention::Indirect_InoutAliasable: {
-        // If we're in the initializer for a struct, and this is a call to a
-        // mutating method, we model that as an escape of self.  If an
-        // individual sub-member is passed as inout, then we model that as an
-        // inout use.
-        addElementUses(BaseEltNo, PointeeType, User, DIUseKind::InOutUse);
-        continue;
-      }
-      }
-      llvm_unreachable("bad parameter convention");
+      collectApplyUses(AI, BaseEltNo, PointeeType, ArgumentNumber);
+      continue;
     }
     
     // init_enum_data_addr is treated like a tuple_element_addr or other instruction

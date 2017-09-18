@@ -157,17 +157,14 @@ bool DIMemoryObjectInfo::isElementLetProperty(unsigned Element) const {
 bool DIMemoryUse::
 onlyTouchesTrivialElements(const DIMemoryObjectInfo &MI) const {
   auto &Module = Inst->getModule();
-  
-  for (unsigned i = FirstElement, e = i+NumElements; i != e; ++i) {
-    // Skip 'super.init' bit
-    if (i == MI.getNumMemoryElements())
-      return false;
 
-    auto EltTy = MI.getElementType(i);
-    if (!EltTy.isTrivial(Module))
-      return false;
-  }
-  return true;
+  return llvm::none_of(range(FirstElement, FirstElement + NumElements),
+                       [&](unsigned i) {
+                         // Return true if we are visiting the 'super.init' bit
+                         // or if we have a non-trivial element type.
+                         return i == MI.getNumMemoryElements() ||
+                                !MI.getElementType(i).isTrivial(Module);
+                       });
 }
 
 

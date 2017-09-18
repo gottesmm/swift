@@ -242,23 +242,7 @@ namespace {
 
     /// This is the main entry point for the use walker.  It collects uses from
     /// the address and the refcount result of the allocation.
-    void collectFrom() {
-      if (auto *ABI = TheMemory.getContainer())
-        collectContainerUses(ABI);
-      else
-        collectUses(TheMemory.getAddress(), 0);
-
-      // Collect information about the retain count result as well.
-      for (auto UI : TheMemory.MemoryInst->getUses()) {
-        auto *User = UI->getUser();
-
-        // If this is a release or dealloc_stack, then remember it as such.
-        if (isa<StrongReleaseInst>(User) || isa<DeallocStackInst>(User) ||
-            isa<DeallocBoxInst>(User)) {
-          Releases.push_back(User);
-        }
-      }
-    }
+    void collectFrom();
 
   private:
     void collectUses(SILValue Pointer, unsigned BaseEltNo);
@@ -273,6 +257,31 @@ namespace {
                                   unsigned BaseEltNo);
   };
 } // end anonymous namespace
+
+void ElementUseCollector::collectFrom() {
+  auto *ABI = TheMemory.getContainer();
+
+  // If we do not have a container, we must have a stack location. Process
+  // it quickly.
+  if (!ABI) {
+    collectUses(TheMemory.getAddress(), 0);
+    copy_if(TheMemory.MemoryInst->getUses(), std::back_inserter(Releases),
+            [](Operand *Op) -> bool {
+              return isa<DeallocStackInst>(Op->getUser());
+            });
+    return;
+  }
+
+  // Otherwise, we have an alloc_box. Collect the container uses and then
+  // the retain count info.
+  collectContainerUses(ABI);
+  copy_if(
+      ABI->getUses(), std::back_inserter(Releases), [](Operand *Op) -> bool {
+        auto *User = Op->getUser()
+            : return isa<StrongReleaseInst>(User) ||
+                     isa<DestroyValueInst>(User) || isa<DeallocBoxInst>(User);
+      });
+}
 
 /// addElementUses - An operation (e.g. load, store, inout use, etc) on a value
 /// acts on all of the aggregate elements in that value.  For example, a load
@@ -325,16 +334,23 @@ void ElementUseCollector::collectStructElementUses(StructElementAddrInst *SEAI,
 }
 
 void ElementUseCollector::collectContainerUses(AllocBoxInst *ABI) {
-  for (Operand *UI : ABI->getUses()) {
+  llvm::SmallVector<Operand *, 32> Worklist(ABI->use_begin(), ABI->use_end());
+
+  while (!Worklist.empty()) {
+    Operand *UI = Worklist.pop_back_val();
     auto *User = UI->getUser();
 
     // Deallocations and retain/release don't affect the value directly.
-    if (isa<DeallocBoxInst>(User))
+    if (isa<DeallocBoxInst>(User) || isa<StrongRetainInst>(User) ||
+        isa<StrongReleaseInst>(User) || isa<DestroyValueInst>(User))
       continue;
-    if (isa<StrongRetainInst>(User))
+
+    // copy_value of the box does not affect the value directly. But we need to
+    // look through it for more interesting uses.
+    if (isa<CopyValueInst>(User)) {
+      copy(User->getUses(), std::back_inserter(Worklist));
       continue;
-    if (isa<StrongReleaseInst>(User))
-      continue;
+    }
 
     if (auto *PBI = dyn_cast<ProjectBoxInst>(User)) {
       collectUses(User, PBI->getFieldIndex());

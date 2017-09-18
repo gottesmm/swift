@@ -212,21 +212,23 @@ namespace {
     
     SmallVectorImpl<DIMemoryUse> &Uses;
     SmallVectorImpl<SILInstruction*> &Releases;
-    
-    llvm::SmallPtrSet<SILBasicBlock*, 32> HasLocalDefinition;
-    
+
+    llvm::SmallPtrSet<SILBasicBlock *, 32> BlocksWithLocalDefinition;
+
     /// This is a map of uses that are not loads (i.e., they are Stores,
     /// InOutUses, and Escapes), to their entry in Uses.
-    llvm::SmallDenseMap<SILInstruction*, unsigned, 16> NonLoadUses;
-    
+    llvm::SmallDenseMap<SILInstruction *, unsigned, 16> NonLoadUses;
+
     /// Does this value escape anywhere in the function.
     bool HasAnyEscape = false;
     
   public:
-    AllocOptimize(AllocationInst *TheMemory,
-                  SmallVectorImpl<DIMemoryUse> &Uses,
-                  SmallVectorImpl<SILInstruction*> &Releases);
-    
+    AllocOptimize(AllocationInst *TheMemory, SmallVectorImpl<DIMemoryUse> &Uses,
+                  SmallVectorImpl<SILInstruction *> &Releases)
+        : Module(TheMemory->getModule()), TheMemory(TheMemory), Uses(Uses),
+          Releases(Releases) {}
+
+    void init();
     bool doIt();
     
   private:
@@ -256,13 +258,13 @@ namespace {
   };
 } // end anonymous namespace
 
-
 AllocOptimize::AllocOptimize(AllocationInst *TheMemory,
                              SmallVectorImpl<DIMemoryUse> &Uses,
-                             SmallVectorImpl<SILInstruction*> &Releases)
-: Module(TheMemory->getModule()), TheMemory(TheMemory), Uses(Uses),
-  Releases(Releases) {
-  
+                             SmallVectorImpl<SILInstruction *> &Releases)
+    : Module(TheMemory->getModule()), TheMemory(TheMemory), Uses(Uses),
+      Releases(Releases) {}
+
+void AllocOptimize::init() {
   // Compute the type of the memory object.
   if (auto *ABI = dyn_cast<AllocBoxInst>(TheMemory)) {
     assert(ABI->getBoxType()->getLayout()->getFields().size() == 1
@@ -280,26 +282,29 @@ AllocOptimize::AllocOptimize(AllocationInst *TheMemory,
   for (unsigned ui = 0, e = Uses.size(); ui != e; ++ui) {
     auto &Use = Uses[ui];
     assert(Use.Inst && "No instruction identified?");
-    
+
     // Keep track of all the uses that aren't loads.
     if (Use.Kind == DIUseKind::Load)
       continue;
-    
+
     NonLoadUses[Use.Inst] = ui;
-    
-    HasLocalDefinition.insert(Use.Inst->getParent());
-    
+    BlocksWithLocalDefinition.insert(Use.Inst->getParent());
+
     if (Use.Kind == DIUseKind::Escape) {
       // Determine which blocks the value can escape from.  We aren't allowed to
       // promote loads in blocks reachable from an escape point.
+      //
+      // *NOTE* We are currently very conservative and treat an escape anywhere
+      // in the function as an escape. In the future, we can stash this
+      // information per block.
       HasAnyEscape = true;
     }
   }
-  
-  // If isn't really a use, but we account for the alloc_box/mark_uninitialized
-  // as a use so we see it in our dataflow walks.
+
+  // If isn't really a use, but we account for the alloc_box/alloc_stack as a
+  // use so we see it in our dataflow walks.
   NonLoadUses[TheMemory] = ~0U;
-  HasLocalDefinition.insert(TheMemory->getParent());
+  BlocksWithLocalDefinition.insert(TheMemory->getParent());
 }
 
 
@@ -315,10 +320,12 @@ bool AllocOptimize::hasEscapedAt(SILInstruction *I) {
   return HasAnyEscape;
 }
 
-
-/// The specified instruction is a non-load access of the element being
-/// promoted.  See if it provides a value or refines the demanded element mask
-/// used for load promotion.
+// The specified instruction is a non-load access of the element being
+// promoted. See if it:
+//
+// 1. Provides a value.
+// 2. Refines the demanded element mask used for load promotion.
+// 3. Clobbers any values.
 void AllocOptimize::
 updateAvailableValues(SILInstruction *Inst, llvm::SmallBitVector &RequiredElts,
                       SmallVectorImpl<std::pair<SILValue, unsigned>> &Result,
@@ -331,17 +338,19 @@ updateAvailableValues(SILInstruction *Inst, llvm::SmallBitVector &RequiredElts,
     
     for (unsigned i = 0, e = getNumSubElements(ValTy, Module); i != e; ++i) {
       // If this element is not required, don't fill it in.
-      if (!RequiredElts[StartSubElt+i]) continue;
-      
+      if (!RequiredElts[StartSubElt + i])
+        continue;
+
       // If there is no result computed for this subelement, record it.  If
       // there already is a result, check it for conflict.  If there is no
       // conflict, then we're ok.
       auto &Entry = Result[StartSubElt+i];
-      if (Entry.first == SILValue())
+      if (Entry.first == SILValue()) {
         Entry = { Inst->getOperand(0), i };
-      else if (Entry.first != Inst->getOperand(0) || Entry.second != i)
+      } else if (Entry.first != Inst->getOperand(0) || Entry.second != i) {
         ConflictingValues[StartSubElt+i] = true;
-      
+      }
+
       // This element is now provided.
       RequiredElts[StartSubElt+i] = false;
     }
@@ -382,9 +391,7 @@ updateAvailableValues(SILInstruction *Inst, llvm::SmallBitVector &RequiredElts,
       return;
     }
   }
-  
-  
-  
+
   // TODO: inout apply's should only clobber pieces passed in.
   
   // Otherwise, this is some unknown instruction, conservatively assume that all
@@ -401,7 +408,6 @@ updateAvailableValues(SILInstruction *Inst, llvm::SmallBitVector &RequiredElts,
 /// The bitvector indicates which subelements we're interested in, and result
 /// captures the available value (plus an indicator of which subelement of that
 /// value is needed).
-///
 void AllocOptimize::
 computeAvailableValues(SILInstruction *StartingFrom,
                        llvm::SmallBitVector &RequiredElts,
@@ -433,9 +439,9 @@ computeAvailableValuesFrom(SILBasicBlock::iterator StartingFrom,
   assert(!RequiredElts.none() && "Scanning with a goal of finding nothing?");
   
   // If there is a potential modification in the current block, scan the block
-  // to see if the store or escape is before or after the load.  If it is
-  // before, check to see if it produces the value we are looking for.
-  if (HasLocalDefinition.count(BB)) {
+  // to see if the store or escape is before or after the load. If it is before,
+  // check to see if it produces the value we are looking for.
+  if (BlocksWithLocalDefinition.count(BB)) {
     for (SILBasicBlock::iterator BBI = StartingFrom; BBI != BB->begin();) {
       SILInstruction *TheInst = &*std::prev(BBI);
 
@@ -463,7 +469,7 @@ computeAvailableValuesFrom(SILBasicBlock::iterator StartingFrom,
   
   
   // Otherwise, we need to scan up the CFG looking for available values.
-  for (auto PI = BB->pred_begin(), E = BB->pred_end(); PI != E; ++PI) {
+  for (auto PI = BB->pred_begin(), PE = BB->pred_end(); PI != PE; ++PI) {
     SILBasicBlock *PredBB = *PI;
     
     // If the predecessor block has already been visited (potentially due to a
@@ -498,26 +504,21 @@ computeAvailableValuesFrom(SILBasicBlock::iterator StartingFrom,
   }
 }
 
-
-static bool anyMissing(unsigned StartSubElt, unsigned NumSubElts,
-                       ArrayRef<std::pair<SILValue, unsigned>> &Values) {
-  while (NumSubElts) {
-    if (!Values[StartSubElt].first) return true;
-    ++StartSubElt;
-    --NumSubElts;
-  }
-  return false;
+static bool anyMissingElts(unsigned StartSubElt, unsigned NumSubElts,
+                           ArrayRef<std::pair<SILValue, unsigned>> &Values) {
+  return llvm::any_of(
+      range(StartSubElt, StartSubElt + NumSubElts),
+      [&Values](unsigned Index) -> bool { return !Values[Index].first; });
 }
 
 
 /// AggregateAvailableValues - Given a bunch of primitive subelement values,
 /// build out the right aggregate type (LoadTy) by emitting tuple and struct
 /// instructions as necessary.
-static SILValue
-AggregateAvailableValues(SILInstruction *Inst, SILType LoadTy,
-                         SILValue Address,
-                         ArrayRef<std::pair<SILValue, unsigned>> AvailableValues,
-                         unsigned FirstElt) {
+static SILValue aggregateAvailableValues(
+    SILInstruction *Inst, SILType LoadTy, SILValue Address,
+    ArrayRef<std::pair<SILValue, unsigned>> AvailableValues,
+    unsigned FirstElt) {
   assert(LoadTy.isObject());
   SILModule &M = Inst->getModule();
   
@@ -530,15 +531,11 @@ AggregateAvailableValues(SILInstruction *Inst, SILType LoadTy,
         FirstVal->getType() == LoadTy) {
       // If the first element of this value is available, check any extra ones
       // before declaring success.
-      bool AllMatch = true;
-      for (unsigned i = 0, e = getNumSubElements(LoadTy, M); i != e; ++i)
-        if (AvailableValues[FirstElt+i].first != FirstVal ||
-            AvailableValues[FirstElt+i].second != i) {
-          AllMatch = false;
-          break;
-        }
-      
-      if (AllMatch)
+      if (llvm::all_of(
+              range(0, getNumSubElements(LoadTy, M)), [&](unsigned i) -> bool {
+                return AvailableValues[FirstElt + i].first == FirstVal &&
+                       AvailableValues[FirstElt + i].second == i;
+              }))
         return FirstVal;
     }
   }
@@ -552,15 +549,15 @@ AggregateAvailableValues(SILInstruction *Inst, SILType LoadTy,
     for (unsigned EltNo : indices(TT->getElements())) {
       SILType EltTy = LoadTy.getTupleElementType(EltNo);
       unsigned NumSubElt = getNumSubElements(EltTy, M);
-      
-      // If we are missing any of the available values in this struct element,
+
+      // If we are missing any of the available values in this tuple element,
       // compute an address to load from.
       SILValue EltAddr;
-      if (anyMissing(FirstElt, NumSubElt, AvailableValues))
+      if (anyMissingElts(FirstElt, NumSubElt, AvailableValues))
         EltAddr = B.createTupleElementAddr(Inst->getLoc(), Address, EltNo,
                                            EltTy.getAddressType());
-      
-      ResultElts.push_back(AggregateAvailableValues(Inst, EltTy, EltAddr,
+
+      ResultElts.push_back(aggregateAvailableValues(Inst, EltTy, EltAddr,
                                                     AvailableValues, FirstElt));
       FirstElt += NumSubElt;
     }
@@ -579,11 +576,11 @@ AggregateAvailableValues(SILInstruction *Inst, SILType LoadTy,
       // If we are missing any of the available values in this struct element,
       // compute an address to load from.
       SILValue EltAddr;
-      if (anyMissing(FirstElt, NumSubElt, AvailableValues))
+      if (anyMissingElts(FirstElt, NumSubElt, AvailableValues))
         EltAddr = B.createStructElementAddr(Inst->getLoc(), Address, FD,
                                             EltTy.getAddressType());
-      
-      ResultElts.push_back(AggregateAvailableValues(Inst, EltTy, EltAddr,
+
+      ResultElts.push_back(aggregateAvailableValues(Inst, EltTy, EltAddr,
                                                     AvailableValues, FirstElt));
       FirstElt += NumSubElt;
     }
@@ -751,8 +748,8 @@ bool AllocOptimize::promoteDestroyAddr(DestroyAddrInst *DAI) {
   // type as the load did, and emit smaller) loads for any subelements that were
   // not available.
   auto NewVal =
-  AggregateAvailableValues(DAI, LoadTy, Address, AvailableValues, FirstElt);
-  
+      aggregateAvailableValues(DAI, LoadTy, Address, AvailableValues, FirstElt);
+
   ++NumDestroyAddrPromoted;
   
   DEBUG(llvm::dbgs() << "  *** Promoting destroy_addr: " << *DAI << "\n");
@@ -962,20 +959,20 @@ bool AllocOptimize::doIt() {
 
   // destroy_addr(p) is strong_release(load(p)), try to promote it too.
   for (unsigned i = 0; i != Releases.size(); ++i) {
-    if (auto *DAI = dyn_cast_or_null<DestroyAddrInst>(Releases[i]))
+    if (auto *DAI = dyn_cast_or_null<DestroyAddrInst>(Releases[i])) {
       if (promoteDestroyAddr(DAI)) {
         // remove entry if destroy_addr got deleted.
         Releases[i] = nullptr;
         Changed = true;
       }
+    }
   }
 
   // If this is an allocation, try to remove it completely.
   Changed |= tryToRemoveDeadAllocation();
 
   return Changed;
- }
-
+}
 
 static bool optimizeMemoryAllocations(SILFunction &Fn) {
   bool Changed = false;
@@ -999,8 +996,10 @@ static bool optimizeMemoryAllocations(SILFunction &Fn) {
       // Walk the use list of the pointer, collecting them.
       collectDIElementUsesFrom(MemInfo, Uses, Releases);
 
-      Changed |= AllocOptimize(Alloc, Uses, Releases).doIt();
-      
+      AllocOptimize AO(Alloc, Uses, Releases);
+      AO.init();
+      Changed |= AO.doIt();
+
       // Carefully move iterator to avoid invalidation problems.
       ++I;
       if (Alloc->use_empty()) {

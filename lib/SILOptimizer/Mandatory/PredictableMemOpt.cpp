@@ -619,17 +619,12 @@ bool AllocOptimize::promoteLoad(SILInstruction *Inst) {
   // diagnostics pass this like one.
   
   // We only handle load and copy_addr right now.
-  SILValue src;
-  if (auto CAI = dyn_cast<CopyAddrInst>(Inst)) {
-    // If this is a CopyAddr, verify that the element type is loadable.  If not,
-    // we can't explode to a load.
-    src = CAI->getSrc();
-    if (!src->getType().isLoadable(Module))
+  if (!isa<LoadInst>(Inst)) {
+    // If this is not a copy_addr or our element type is not loadable, return
+    // false. If the copy_addr is not loadable, then we can not promote it.
+    auto *CAI = dyn_cast<CopyAddrInst>(Inst);
+    if (!CAI || !CAI->getSrc()->getType().isLoadable(Module))
       return false;
-  } else if (auto load = dyn_cast<LoadInst>(Inst)) {
-    src = load->getOperand();
-  } else {
-    return false;
   }
 
   // If the box has escaped at this instruction, we can't safely promote the

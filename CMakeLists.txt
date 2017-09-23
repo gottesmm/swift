@@ -883,7 +883,15 @@ if(SWIFT_BUILD_DYNAMIC_STDLIB AND SWIFT_INCLUDE_TESTS)
 endif()
 
 if(SWIFT_BUILD_PERF_TESTSUITE AND "${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
-  add_subdirectory(benchmark)
+  include(SwiftBenchmarkSuiteExternalProject)
+  translate_flag(SWIFT_BENCHMARK_EMIT_SIB "EMIT_SIB" EMIT_SUB)
+  message(STATUS "Emit sib: ${EMIT_SIB}")
+  add_benchmark_suite(
+    SWIFT_EXEC ""
+    SWIFT_LIBRARY_PATH ""
+    ONLY_PLATFORMS ""
+    OPTIMIZATION_LEVELS ""
+    ${EMIT_SIB})
 endif()
 if(SWIFT_INCLUDE_TESTS)
   add_subdirectory(test)

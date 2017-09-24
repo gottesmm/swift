@@ -9,46 +9,31 @@ function (add_benchmark_exec name)
     IMPORTED_LOCATION ${objdir}/bin/${name})
 endfunction()
 
+include(LLVMExternalProjectUtils)
+
 function (add_benchmark_suite)
   cmake_parse_arguments(BENCH
     "EMIT_SIB"
     "SWIFT_EXEC;SWIFT_LIBRARY_PATH"
     "OPTIMIZATION_LEVELS" ${ARGN})
-      
+  
   precondition(SWIFT_EXEC)
+  
+  set(name swift-benchmark)
+  set(src_dir ${SWIFT_SOURCE_DIR}/benchmark)
+  set(bin_dir ${SWIFT_BINARY_DIR}/benchmark/binary)
+  set(stamp_dir ${SWIFT_BINARY_DIR}/benchmark/stamps)
+  set(prefix_dir ${SWIFT_BINARY_DIR}/benchmark/prefix)
+  
+  set(extra_targets Benchmark_O Benchmark_Onone Benchmark_Ounchecked swift-benchmark-macosx-x86_64)
 
-  set(srcdir "${SWIFT_SOURCE_DIR}/benchmark")
-  set(objdir "${SWIFT_BINARY_DIR}/benchmark")
-  set(build_byproducts
-    ${objdir}/bin/Benchmark_Onone
-    ${objdir}/bin/Benchmark_O
-    ${objdir}/bin/Benchmark_Ounchecked)
-
-  include(ExternalProject)
-  ExternalProject_Add(swift_bench
-    SOURCE_DIR ${srcdir}
-    BINARY_DIR ${objdir}
+  llvm_ExternalProject_add(swift-bench ${src_dir}
+    SOURCE_DIR ${src_dir}
+    EXCLUDE_FROM_ALL
+    DEPENDS swift swift-stdlib-macosx
+    EXTRA_TARGETS ${extra_targets}
     CMAKE_ARGS
+    -DSWIFT_EXEC=${SWIFT_BINARY_DIR}/bin/swiftc
     -DCMAKE_C_COMPILER=${PATH_TO_CLANG_BUILD}/bin/clang
-    -DCMAKE_CXX_COMPILER=${PATH_TO_CLANG_BUILD}/bin/clang++
-    -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-    -DSWIFT_EXEC="${SWIFT_BINARY_DIR}/bin/swiftc"
-    -DSWIFT_OPTIMIZATION_LEVELS="${BENCH_OPTIMIZATION_LEVELS}"
-    BUILD_BYPRODUCTS ${build_byproducts})
-
-  #include_directories(AFTER
-  #  ${SWIFT_PATH_TO_LIBDISPATCH_SOURCE}/src/BlocksRuntime)
-  #link_directories(${SWIFT_PATH_TO_LIBDISPATCH_BUILD})
-
-  #include_directories(AFTER ${SWIFT_PATH_TO_LIBDISPATCH_SOURCE})
-
-  add_benchmark_exec(Benchmark_Onone)
-  add_benchmark_exec(Benchmark_O)
-  add_benchmark_exec(Benchmark_Ounchecked)
-
-  #add_library(swiftCore SHARED IMPORTED)
-  #set_target_properties(swiftCore PROPERTIES
-  #  IMPORTED_LOCATION ${SOURCEKIT_BINARY_DIR}/lib/swift/linux/libswiftCore.so)
-
-  #set(SOURCEKIT_NEED_EXPLICIT_LIBDISPATCH TRUE)
+    -DCMAKE_CXX_COMPILER=${PATH_TO_CLANG_BUILD}/bin/clang++)
 endfunction()

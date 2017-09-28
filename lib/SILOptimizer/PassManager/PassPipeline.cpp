@@ -564,10 +564,15 @@ SILPassPipelinePlan SILPassPipelinePlan::getInstCountPassPipeline() {
 
 void SILPassPipelinePlan::addPasses(ArrayRef<PassKind> PassKinds) {
   for (auto K : PassKinds) {
-    // We could add to the Kind list directly, but we want to allow for
-    // additional code to be added to add* without this code needing to be
-    // updated.
-    switch (K) {
+    addPass(K);
+  }
+}
+
+void SILPassPipelinePlan::addPass(PassKind Kind) {
+  // We could add to the Kind list directly, but we want to allow for
+  // additional code to be added to add* without this code needing to be
+  // updated.
+  switch (Kind) {
 // Each pass gets its own add-function.
 #define PASS(ID, TAG, NAME)                                                    \
   case PassKind::ID: {                                                         \
@@ -575,9 +580,8 @@ void SILPassPipelinePlan::addPasses(ArrayRef<PassKind> PassKinds) {
     break;                                                                     \
   }
 #include "swift/SILOptimizer/PassManager/Passes.def"
-    case PassKind::invalidPassKind:
-      llvm_unreachable("Unhandled pass kind?!");
-    }
+  case PassKind::invalidPassKind:
+    llvm_unreachable("Unhandled pass kind?!");
   }
 }
 
@@ -589,6 +593,15 @@ SILPassPipelinePlan::getPassPipelineForKinds(ArrayRef<PassKind> PassKinds) {
   return P;
 }
 
+void SILPassPipelinePlan::appendPipelinePlan(const SILPassPipelinePlan &other) {
+  for (auto &P : other.getPipelines()) {
+    startPipeline(P.Name);
+    for (auto Kind : other.getPipelinePasses(P)) {
+      addPasses(Kind);
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                Dumping And Loading Pass Pipelines from Yaml
 //===----------------------------------------------------------------------===//
@@ -598,27 +611,73 @@ void SILPassPipelinePlan::dump() {
   llvm::errs() << '\n';
 }
 
-void SILPassPipelinePlan::print(llvm::raw_ostream &os) {
-  // Our pipelines yaml representation is simple, we just output it ourselves
-  // rather than use the yaml writer interface. We want to use the yaml reader
-  // interface to be resilient against slightly different forms of yaml.
-  os << "[\n";
-  interleave(getPipelines(),
-             [&](const SILPassPipeline &Pipeline) {
-               os << "    [\n";
+namespace llvm {
+namespace yaml {
 
-               os << "        \"" << Pipeline.Name << "\"";
-               for (PassKind Kind : getPipelinePasses(Pipeline)) {
-                 os << ",\n        [\"" << PassKindID(Kind) << "\","
-                    << "\"" << PassKindTag(Kind) << "\"]";
-               }
-             },
-             [&] { os << "\n    ],\n"; });
-  os << "\n    ]\n";
-  os << ']';
+template <> struct ScalarEnumerationTraits<PassKind> {
+  static void enumeration(IO &io, PassKind &Kind) {
+#define PASS(ID, TAG, NAME) io.enumCase(Kind, #ID, PassKind::ID);
+#include "swift/SILOptimizer/PassManager/Passes.def"
+  }
+};
+
+} // end yaml namespace
+} // end llvm namespace
+
+LLVM_YAML_IS_SEQUENCE_VECTOR(PassKind)
+
+namespace {
+
+struct YAMLSILPassPipeline {
+  std::string Name;
+  std::vector<PassKind> Passes;
+
+  YAMLSILPassPipeline() = default;
+  YAMLSILPassPipeline(StringRef Name, ArrayRef<PassKind> Passes)
+      : Name(Name), Passes(Passes) {}
+  ~YAMLSILPassPipeline() = default;
+
+  // Move only type.
+  YAMLSILPassPipeline(const YAMLSILPassPipeline &) = delete;
+  YAMLSILPassPipeline &operator=(const YAMLSILPassPipeline &) = delete;
+
+  YAMLSILPassPipeline(YAMLSILPassPipeline &&) = default;
+  YAMLSILPassPipeline &operator=(YAMLSILPassPipeline &&) = default;
+};
+
+} // end anonymous namespace
+
+namespace llvm {
+namespace yaml {
+
+template <> struct MappingTraits<YAMLSILPassPipeline> {
+  static void mapping(IO &io, YAMLSILPassPipeline &Plan) {
+    io.mapRequired("name", Plan.Name);
+    io.mapRequired("passes", Plan.Passes);
+  }
+};
+
+} // yaml namespace
+} // llvm namespace
+
+LLVM_YAML_IS_SEQUENCE_VECTOR(YAMLSILPassPipeline)
+
+void SILPassPipelinePlan::print(llvm::raw_ostream &os) {
+  // Convert to our YAMLTraits repr.
+  std::vector<YAMLSILPassPipeline> Data;
+  for (auto &Pipeline : getPipelines()) {
+    // Just working around weird iteration issues. This is not hot code, this
+    // should be ok.
+    YAMLSILPassPipeline YamlPipeline{Pipeline.Name, {}};
+    copy(getPipelinePasses(Pipeline), std::back_inserter(YamlPipeline.Passes));
+    Data.emplace_back(std::move(YamlPipeline));
+  }
+
+  llvm::yaml::Output yout(os);
+  yout << Data;
 }
 
-SILPassPipelinePlan
+Optional<SILPassPipelinePlan>
 SILPassPipelinePlan::getPassPipelineFromFile(StringRef Filename) {
   namespace yaml = llvm::yaml;
   DEBUG(llvm::dbgs() << "Parsing Pass Pipeline from " << Filename << "\n");
@@ -630,43 +689,18 @@ SILPassPipelinePlan::getPassPipelineFromFile(StringRef Filename) {
     llvm_unreachable("Failed to read yaml file");
   }
 
-  StringRef Buffer = FileBufOrErr->get()->getBuffer();
-  llvm::SourceMgr SM;
-  yaml::Stream Stream(Buffer, SM);
-  yaml::document_iterator DI = Stream.begin();
-  assert(DI != Stream.end() && "Failed to read a document");
-  yaml::Node *N = DI->getRoot();
-  assert(N && "Failed to find a root");
+  std::vector<YAMLSILPassPipeline> Data;
+  llvm::yaml::Input yin(FileBufOrErr->get()->getBuffer());
+  yin >> Data;
+
+  if (yin.error())
+    return None;
 
   SILPassPipelinePlan P;
 
-  auto *RootList = cast<yaml::SequenceNode>(N);
-  llvm::SmallVector<PassKind, 32> Passes;
-  for (yaml::Node &PipelineNode :
-       make_range(RootList->begin(), RootList->end())) {
-    Passes.clear();
-    DEBUG(llvm::dbgs() << "New Pipeline:\n");
-
-    auto *Desc = cast<yaml::SequenceNode>(&PipelineNode);
-    yaml::SequenceNode::iterator DescIter = Desc->begin();
-    StringRef Name = cast<yaml::ScalarNode>(&*DescIter)->getRawValue();
-    DEBUG(llvm::dbgs() << "    Name: \"" << Name << "\"\n");
-    ++DescIter;
-
-    for (auto DescEnd = Desc->end(); DescIter != DescEnd; ++DescIter) {
-      auto *InnerPassList = cast<yaml::SequenceNode>(&*DescIter);
-      auto *FirstNode = &*InnerPassList->begin();
-      StringRef PassName = cast<yaml::ScalarNode>(FirstNode)->getRawValue();
-      unsigned Size = PassName.size() - 2;
-      PassName = PassName.substr(1, Size);
-      DEBUG(llvm::dbgs() << "    Pass: \"" << PassName << "\"\n");
-      auto Kind = PassKindFromString(PassName);
-      assert(Kind != PassKind::invalidPassKind && "Found invalid pass kind?!");
-      Passes.push_back(Kind);
-    }
-
-    P.startPipeline(Name);
-    P.addPasses(Passes);
+  for (auto &YAMLPipeline : Data) {
+    P.startPipeline(YAMLPipeline.Name);
+    P.addPasses(YAMLPipeline.Passes);
   }
 
   return P;

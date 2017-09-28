@@ -58,6 +58,7 @@ public:
 #include "swift/SILOptimizer/PassManager/Passes.def"
 
   void addPasses(ArrayRef<PassKind> PassKinds);
+  void addPass(PassKind PassKind);
 
 #define PASSPIPELINE(NAME, DESCRIPTION)                                        \
   static SILPassPipelinePlan get##NAME##PassPipeline();
@@ -66,18 +67,22 @@ public:
 #include "swift/SILOptimizer/PassManager/PassPipeline.def"
 
   static SILPassPipelinePlan getPassPipelineForKinds(ArrayRef<PassKind> Kinds);
-  static SILPassPipelinePlan getPassPipelineFromFile(StringRef Filename);
+  static Optional<SILPassPipelinePlan>
+  getPassPipelineFromFile(StringRef Filename);
 
   /// Our general format is as follows:
   ///
-  ///   [
-  ///     [
-  ///       "PASS_MANAGER_ID",
-  ///       "one_iteration"|"until_fix_point",
-  ///       "PASS1", "PASS2", ...
-  ///     ],
-  ///   ...
-  ///   ]
+  /// - name:            $PIPELINE1
+  ///   passes:
+  ///     - $PIPELINE1_PASS1
+  ///     - $PIPELINE1_PASS2
+  ///     ...
+  /// - name:            $PIPELINE2
+  ///   passes:
+  ///     - $PIPELINE2_PASS1
+  ///     - $PIPELINE2_PASS2
+  ///     ...
+  /// ...
   void dump();
 
   void print(llvm::raw_ostream &os);
@@ -93,6 +98,8 @@ public:
   PipelineRange getPipelines() const {
     return {PipelineStages.begin(), PipelineStages.end()};
   }
+
+  void appendPipelinePlan(const SILPassPipelinePlan &other);
 };
 
 struct SILPassPipeline final {

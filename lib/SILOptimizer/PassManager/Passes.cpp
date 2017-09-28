@@ -133,8 +133,11 @@ void swift::runSILPassesForOnone(SILModule &Module) {
 void swift::runSILOptimizationPassesWithFileSpecification(SILModule &M,
                                                           StringRef Filename) {
   SILPassManager PM(&M);
-  PM.executePassPipelinePlan(
-      SILPassPipelinePlan::getPassPipelineFromFile(Filename));
+  auto Opt = SILPassPipelinePlan::getPassPipelineFromFile(Filename);
+  if (!Opt.hasValue()) {
+    llvm_unreachable("Error! Unable to parse pass pipeline from file!\n");
+  }
+  PM.executePassPipelinePlan(Opt.getValue());
 }
 
 /// Get the Pass ID enum value from an ID string.

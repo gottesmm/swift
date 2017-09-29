@@ -1,0 +1,21 @@
+// RUN: %sil-passpipeline-dump |  %sil-passpipeline-dump -validate
+// RUN: %sil-passpipeline-dump | %FileCheck %s
+// REQUIRES: REMOVE-ME-STAGING
+
+// This test makes sure that we can always dump and validate our own predefined
+// pass pipelines and also that the format is working as expected.
+
+// CHECK: - name:            SIL Debug Info Generator
+// CHECK:   passes:          
+// CHECK:     - SILDebugInfoGenerator
+// CHECK: - name:            Prespecialization
+// CHECK:   passes:          
+// CHECK:     - UsePrespecialized
+// CHECK: - name:            Rest of Onone
+// CHECK:   passes:          
+// CHECK:     - ExternalDefsToDecls
+// CHECK:     - AssumeSingleThreaded
+// CHECK:     - SILDebugInfoGenerator
+// CHECK: - name:            Inst Count
+// CHECK:   passes:          
+// CHECK:     - InstCount

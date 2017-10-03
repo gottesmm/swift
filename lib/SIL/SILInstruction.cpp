@@ -172,19 +172,20 @@ void SILInstruction::dropAllReferences() {
   }
 }
 
-ArrayRef<ValueBase> SILInstruction::getResultsImpl() const {
+SILInstructionResultArray SILInstruction::getResultsImpl() const {
   switch (getKind()) {
 #define NON_VALUE_INST(ID, NAME, PARENT, MEMBEHAVIOR, MAYRELEASE) \
   case SILInstructionKind::ID:
 #include "swift/SIL/SILNodes.def"
-    return {};
+    return SILInstructionResultArray();
 
 #define SINGLE_VALUE_INST(ID, NAME, PARENT, MEMBEHAVIOR, MAYRELEASE) \
   case SILInstructionKind::ID:
 #include "swift/SIL/SILNodes.def"
-    return static_cast<const SingleValueInstruction *>(this)->getResultsImpl();
+    return SILInstructionResultArray(
+        static_cast<const SingleValueInstruction *>(this));
 
-  // add any multi-result instructions here...
+    // add any multi-result instructions here...
   }
   llvm_unreachable("bad kind");
 }

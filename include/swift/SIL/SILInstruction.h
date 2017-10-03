@@ -44,6 +44,7 @@ class DeclRefExpr;
 class FloatLiteralExpr;
 class FuncDecl;
 class IntegerLiteralExpr;
+class NonValueInstruction;
 class SILBasicBlock;
 class SILBuilder;
 class SILDebugLocation;
@@ -86,6 +87,109 @@ SILInstructionKind getSILInstructionKind(StringRef InstName);
 
 /// Map SILInstructionKind to a corresponding SILInstruction name.
 StringRef getSILInstructionName(SILInstructionKind Kind);
+
+/// A formal SIL reference to a list of values, suitable for use as the result
+/// of a SILInstruction.
+///
+/// *NOTE* Most multiple value instructions will not have many results, so if we
+/// want we can cache up to 3 bytes in the lower bits of the value.
+///
+/// *NOTE* Most of this defined out of line further down in the file to work
+/// around forward declaration issues.
+class SILInstructionResultArray {
+  const uint8_t *Pointer;
+  unsigned Size;
+  unsigned Stride;
+
+public:
+  SILInstructionResultArray();
+  SILInstructionResultArray(const SingleValueInstruction *SVI);
+
+  SILValue operator[](size_t Index) const {
+    assert(Index < Size && "Index out of bounds");
+    size_t Offset = Stride * Index;
+    return SILValue(reinterpret_cast<const ValueBase *>(&Pointer[Offset]));
+  }
+
+  bool empty() const { return Size == 0; }
+
+  size_t size() const { return Size; }
+
+  class iterator : public std::iterator<std::bidirectional_iterator_tag,
+                                        SILValue, ptrdiff_t> {
+    const SILInstructionResultArray &Parent;
+    Optional<unsigned> Index;
+
+  public:
+    iterator() = default;
+    iterator(const SILInstructionResultArray &Parent,
+             Optional<unsigned> Index = 0)
+        : Parent(Parent), Index(Index) {}
+
+    SILValue operator*() const { return Parent[Index.getValue()]; }
+
+    SILValue operator->() const { return operator*(); }
+
+    iterator &operator++() {
+      ++Index.getValue();
+      return *this;
+    }
+
+    iterator operator++(int) {
+      iterator copy = *this;
+      ++Index.getValue();
+      return copy;
+    }
+
+    friend bool operator==(iterator lhs, iterator rhs) {
+      assert(&lhs.Parent == &rhs.Parent);
+      return lhs.Index == rhs.Index;
+    }
+
+    friend bool operator!=(iterator lhs, iterator rhs) { return !(lhs == rhs); }
+  };
+
+  iterator begin() const { return iterator(*this, getStartOffset()); }
+  iterator end() const { return iterator(*this, getEndOffset()); }
+  using range = llvm::iterator_range<iterator>;
+
+  range getValues() const { return {begin(), end()}; }
+
+  using type_range = llvm::iterator_range<
+      llvm::mapped_iterator<iterator, std::function<SILType(SILValue)>>>;
+  type_range getTypes() const {
+    std::function<SILType(SILValue)> F = [](SILValue V) -> SILType {
+      return V->getType();
+    };
+    return {llvm::map_iterator(begin(), F), llvm::map_iterator(end(), F)};
+  }
+
+  friend bool operator==(const SILInstructionResultArray &lhs, const SILInstructionResultArray &rhs) {
+    if (lhs.size() != rhs.size())
+      return false;
+    for (auto i : indices(lhs))
+      if (lhs[i] != rhs[i])
+        return false;
+    return true;
+  }
+
+  friend bool operator!=(const SILInstructionResultArray &lhs, const SILInstructionResultArray &rhs) {
+    return !(lhs == rhs);
+  }
+
+private:
+  /// Return the offset 1 past the end of the array or None if we are not
+  /// actually storing anything.
+  Optional<unsigned> getStartOffset() const {
+    return empty() ? None : Optional<unsigned>(0);
+  }
+
+  /// Return the offset 1 past the end of the array or None if we are not
+  /// actually storing anything.
+  Optional<unsigned> getEndOffset() const {
+    return empty() ? None : Optional<unsigned>(size());
+  }
+};
 
 /// This is the root class for all instructions that can be used as the
 /// contents of a Swift SILBasicBlock.
@@ -143,7 +247,7 @@ class SILInstruction
 
   /// An internal method which retrieves the result values of the
   /// instruction as an array of ValueBase objects.
-  ArrayRef<ValueBase> getResultsImpl() const;
+  SILInstructionResultArray getResultsImpl() const;
 
 protected:
   SILInstruction(SILInstructionKind kind, SILDebugLocation DebugLoc)
@@ -318,18 +422,13 @@ public:
     getAllOperands()[Num1].swap(getAllOperands()[Num2]);
   }
 
-  using ResultArrayRef =
-    ArrayRefView<ValueBase,SILValue,projectValueBaseAsSILValue>;
-
   /// Return the list of results produced by this instruction.
-  ResultArrayRef getResults() const { return getResultsImpl(); }
-
-  using ResultTypeArrayRef =
-    ArrayRefView<ValueBase,SILType,projectValueBaseType>;
+  SILInstructionResultArray getResults() const { return getResultsImpl(); }
+  unsigned getNumResults() const { return getResults().size(); }
 
   /// Return the types of the results produced by this instruction.
-  ResultTypeArrayRef getResultTypes() const {
-    return getResultsImpl();
+  SILInstructionResultArray::type_range getResultTypes() const {
+    return getResultsImpl().getTypes();
   }
 
   MemoryBehavior getMemoryBehavior() const;
@@ -364,9 +463,20 @@ public:
       return false;
     }
 
-    if (getResultTypes() != RHS->getResultTypes())
+    if (getNumResults() != RHS->getNumResults())
       return false;
-    
+
+    auto lhsRange = getResultTypes();
+    auto rhsRange = RHS->getResultTypes();
+    llvm::SmallVector<SILType, 1> lhs(lhsRange.begin(),
+                                      lhsRange.end());
+    llvm::SmallVector<SILType, 1> rhs(rhsRange.begin(),
+                                      rhsRange.end());
+    for (unsigned i : range(getNumResults())) {
+      if (lhs[i] != rhs[i])
+        return false;
+    }
+
     // Check operands.
     for (unsigned i = 0, e = getNumOperands(); i != e; ++i)
       if (!opEqual(getOperand(i), RHS->getOperand(i)))
@@ -504,8 +614,8 @@ class SingleValueInstruction : public SILInstruction, public ValueBase {
   }
 
   friend class SILInstruction;
-  ArrayRef<ValueBase> getResultsImpl() const {
-    return ArrayRef<ValueBase>(this, 1);
+  SILInstructionResultArray getResultsImpl() const {
+    return SILInstructionResultArray(this);
   }
 public:
   SingleValueInstruction(SILInstructionKind kind, SILDebugLocation loc,
@@ -547,9 +657,7 @@ public:
   }
 
   /// Override this to reflect the more efficient access pattern.
-  ResultArrayRef getResults() const {
-    return getResultsImpl();
-  }
+  SILInstructionResultArray getResults() const { return getResultsImpl(); }
 
   static bool classof(const SILNode *node) {
     return isSingleValueInstKind(node->getKind());
@@ -599,7 +707,14 @@ public:
 
   /// Doesn't produce any results.
   SILType getType() const = delete;
-  ResultArrayRef getResults() const = delete;
+  SILInstructionResultArray getResults() const = delete;
+
+  static bool classof(const ValueBase *value) = delete;
+  static bool classof(const SILNode *N) {
+    return N->getKind() >= SILNodeKind::First_NonValueInstruction &&
+           N->getKind() <= SILNodeKind::Last_NonValueInstruction;
+  }
+  static bool classof(const NonValueInstruction *) { return true; }
 };
 #define DEFINE_ABSTRACT_NON_VALUE_INST_BOILERPLATE(ID)          \
   static bool classof(const ValueBase *value) = delete;         \
@@ -7025,5 +7140,33 @@ template<> struct DenseMapInfo< ::swift::FullApplySite> {
 };
 
 } // end llvm namespace
+
+//===----------------------------------------------------------------------===//
+// Out of line definitions for SILInstructionResultArray
+//===----------------------------------------------------------------------===//
+
+namespace swift {
+
+inline SILInstructionResultArray::SILInstructionResultArray()
+    : Pointer(nullptr), Size(0), Stride(-1) {
+}
+
+inline SILInstructionResultArray::SILInstructionResultArray(
+    const SingleValueInstruction *SVI)
+    : Pointer(), Size(1), Stride(1) {
+  // *PLEASE READ BEFORE CHANGING*
+  //
+  // Since SingleValueInstruction is both a ValueBase and a SILInstruction, but
+  // SILInstruction is the first parent, we need to ensure that our ValueBase *
+  // pointer is properly offset. by first static casting to ValueBase and then
+  // going back to a uint8_t *.
+  auto *Value = static_cast<const ValueBase *>(SVI);
+  assert(uintptr_t(Value) != uintptr_t(SVI) &&
+         "Expected value to be offset from SVI since it is not the first "
+         "multi-inheritence parent");
+  Pointer = reinterpret_cast<const uint8_t *>(Value);
+}
+
+} // end swift namespace
 
 #endif

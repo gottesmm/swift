@@ -1205,9 +1205,21 @@ SILInstructionResultArray::SILInstructionResultArray(
   assert(originalValue == (*this)[0] &&
          "Wrong value returned for single result");
   assert(originalType == (*this)[0]->getType());
+
+  auto ValueRange = getValues();
+  (void)ValueRange;
+  assert(1 == std::distance(ValueRange.begin(), ValueRange.end()));
+  assert(originalValue == *ValueRange.begin());
+
   auto TypedRange = getTypes();
+  (void)TypedRange;
   assert(1 == std::distance(TypedRange.begin(), TypedRange.end()));
   assert(originalType == *TypedRange.begin());
+
+  SILInstructionResultArray Copy = *this;
+  (void)Copy;
+  assert(Copy.hasSameTypes(*this));
+  assert(Copy == *this);
 }
 
 SILValue SILInstructionResultArray::operator[](size_t Index) const {
@@ -1216,18 +1228,27 @@ SILValue SILInstructionResultArray::operator[](size_t Index) const {
   return SILValue(reinterpret_cast<const ValueBase *>(&Pointer[Offset]));
 }
 
-bool SILInstructionResultArray::
-operator==(const SILInstructionResultArray &lhs,
-           const SILInstructionResultArray &rhs) {
+bool SILInstructionResultArray::hasSameTypes(const SILInstructionResultArray &rhs) {
+  auto &lhs = *this;
   if (lhs.size() != rhs.size())
     return false;
-  for (auto i : indices(lhs))
-    if (lhs[i] != rhs[i])
+  for (unsigned i : indices(lhs)) {
+    if (lhs[i]->getType() != rhs[i]->getType())
+      return false;
+  }
+  return true;
+}
+
+bool SILInstructionResultArray::operator==(const SILInstructionResultArray &other) {
+  if (size() != other.size())
+    return false;
+  for (auto i : indices(*this))
+    if ((*this)[i] != other[i])
       return false;
   return true;
 }
 
-type_range SILInstructionResultArray::getTypes() const {
+SILInstructionResultArray::type_range SILInstructionResultArray::getTypes() const {
   std::function<SILType(SILValue)> F = [](SILValue V) -> SILType {
     return V->getType();
   };

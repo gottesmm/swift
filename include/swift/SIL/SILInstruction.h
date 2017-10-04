@@ -105,7 +105,28 @@ public:
   SILInstructionResultArray() : Pointer(nullptr), Size(0), Stride(-1) {}
   SILInstructionResultArray(const SingleValueInstruction *SVI);
 
+  SILInstructionResultArray(const SILInstructionResultArray &Other)
+      : Pointer(Other.Pointer), Size(Other.Size), Stride(Other.Stride) {}
+
+  SILInstructionResultArray &operator=(const SILInstructionResultArray &Other) {
+    Pointer = Other.Pointer;
+    Size = Other.Size;
+    Stride = Other.Stride;
+    return *this;
+  }
+
+  SILInstructionResultArray(SILInstructionResultArray &&Other)
+    : Pointer(Other.Pointer), Size(Other.Size), Stride(Other.Stride) {}
+
+  SILInstructionResultArray &operator=(SILInstructionResultArray &&Other) {
+    Pointer = Other.Pointer;
+    Size = Other.Size;
+    Stride = Other.Stride;
+    return *this;
+  }
+
   SILValue operator[](size_t Index) const;
+
   bool empty() const { return Size == 0; }
 
   size_t size() const { return Size; }
@@ -154,12 +175,16 @@ public:
       llvm::mapped_iterator<iterator, std::function<SILType(SILValue)>>>;
   type_range getTypes() const;
 
-  friend bool operator==(const SILInstructionResultArray &lhs,
-                         const SILInstructionResultArray &rhs);
-
-  friend bool operator!=(const SILInstructionResultArray &lhs, const SILInstructionResultArray &rhs) {
-    return !(lhs == rhs);
+  bool operator==(const SILInstructionResultArray &rhs);
+  bool operator!=(const SILInstructionResultArray &other) {
+    return !(*this == other);
   }
+
+  /// Returns true if both this and \p rhs have the same result types.
+  ///
+  /// *NOTE* This does not imply that the actual return SILValues are the
+  /// same. Just that the types are the same.
+  bool hasSameTypes(const SILInstructionResultArray &rhs);
 
 private:
   /// Return the offset 1 past the end of the array or None if we are not
@@ -447,19 +472,8 @@ public:
       return false;
     }
 
-    if (getNumResults() != RHS->getNumResults())
+    if (!getResults().hasSameTypes(RHS->getResults()))
       return false;
-
-    auto lhsRange = getResultTypes();
-    auto rhsRange = RHS->getResultTypes();
-    llvm::SmallVector<SILType, 1> lhs(lhsRange.begin(),
-                                      lhsRange.end());
-    llvm::SmallVector<SILType, 1> rhs(rhsRange.begin(),
-                                      rhsRange.end());
-    for (unsigned i : range(getNumResults())) {
-      if (lhs[i] != rhs[i])
-        return false;
-    }
 
     // Check operands.
     for (unsigned i = 0, e = getNumOperands(); i != e; ++i)

@@ -1175,3 +1175,61 @@ llvm::raw_ostream &swift::operator<<(llvm::raw_ostream &OS,
 
   llvm_unreachable("Unhandled ReleasingBehavior in switch.");
 }
+
+//===----------------------------------------------------------------------===//
+//                         SILInstructionResultArray
+//===----------------------------------------------------------------------===//
+
+SILInstructionResultArray::SILInstructionResultArray(
+    const SingleValueInstruction *SVI)
+    : Pointer(), Size(1), Stride(1) {
+  // Make sure that even though we are munging things, we are able to get back
+  // the original value, types, and operands.
+  SILValue originalValue(SVI);
+  SILType originalType = SVI->getType();
+  (void)originalValue;
+  (void)originalType;
+
+  // *PLEASE READ BEFORE CHANGING*
+  //
+  // Since SingleValueInstruction is both a ValueBase and a SILInstruction, but
+  // SILInstruction is the first parent, we need to ensure that our ValueBase *
+  // pointer is properly offset. by first static casting to ValueBase and then
+  // going back to a uint8_t *.
+  auto *Value = static_cast<const ValueBase *>(SVI);
+  assert(uintptr_t(Value) != uintptr_t(SVI) &&
+         "Expected value to be offset from SVI since it is not the first "
+         "multi-inheritence parent");
+  Pointer = reinterpret_cast<const uint8_t *>(Value);
+
+  assert(originalValue == (*this)[0] &&
+         "Wrong value returned for single result");
+  assert(originalType == (*this)[0]->getType());
+  auto TypedRange = getTypes();
+  assert(1 == std::distance(TypedRange.begin(), TypedRange.end()));
+  assert(originalType == *TypedRange.begin());
+}
+
+SILValue SILInstructionResultArray::operator[](size_t Index) const {
+  assert(Index < Size && "Index out of bounds");
+  size_t Offset = Stride * Index;
+  return SILValue(reinterpret_cast<const ValueBase *>(&Pointer[Offset]));
+}
+
+bool SILInstructionResultArray::
+operator==(const SILInstructionResultArray &lhs,
+           const SILInstructionResultArray &rhs) {
+  if (lhs.size() != rhs.size())
+    return false;
+  for (auto i : indices(lhs))
+    if (lhs[i] != rhs[i])
+      return false;
+  return true;
+}
+
+type_range SILInstructionResultArray::getTypes() const {
+  std::function<SILType(SILValue)> F = [](SILValue V) -> SILType {
+    return V->getType();
+  };
+  return {llvm::map_iterator(begin(), F), llvm::map_iterator(end(), F)};
+}

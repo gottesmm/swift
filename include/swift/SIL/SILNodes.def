@@ -627,8 +627,12 @@ NON_VALUE_INST(CondFailInst, cond_fail,
 
 NODE_RANGE(NonValueInstruction, UnreachableInst, CondFailInst)
 
-NODE_RANGE(SILInstruction, AllocStackInst, CondFailInst)
-NODE_RANGE(SILNode, SILPHIArgument, CondFailInst)
+MULTIPLE_VALUE_INST(DestructureValueInst, destructure_value,
+                    SILInstruction, None, DoesNotRelease)
+INST_RANGE(MultipleValueInstruction, DestructureValueInst, DestructureValueInst)
+
+NODE_RANGE(SILInstruction, AllocStackInst, DestructureValueInst)
+NODE_RANGE(SILNode, SILPHIArgument, DestructureValueInst)
 
 #undef SINGLE_VALUE_INST_RANGE
 #undef INST_RANGE

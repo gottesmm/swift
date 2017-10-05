@@ -44,6 +44,7 @@ class DeclRefExpr;
 class FloatLiteralExpr;
 class FuncDecl;
 class IntegerLiteralExpr;
+class Projection;
 class SingleValueInstruction;
 class MultipleValueInstruction;
 class NonValueInstruction;
@@ -747,9 +748,10 @@ public:
 
 /// An instruction which always produces a fixed list of values.
 class MultipleValueInstruction : public SILInstruction {
-  // *NOTE* THis is just a stub since we do not currently have any multiple
-  // value instructions.
-  static bool isMultipleValueInstKind(SILNodeKind kind) { return false; }
+  static bool isMultipleValueInstKind(SILNodeKind kind) {
+    return kind >= SILNodeKind::First_MultipleValueInstruction &&
+           kind <= SILNodeKind::Last_MultipleValueInstruction;
+  }
 
   friend class SILInstruction;
   friend class SILInstructionResultArray;
@@ -7178,6 +7180,21 @@ SILFunction *ApplyInstBase<Impl, Base, false>::getCalleeFunction() const {
     return nullptr;
   }
 }
+
+class DestructureValueInst final
+    : public UnaryInstructionBase<SILInstructionKind::DestructureValueInst,
+                                  MultipleValueInstruction>,
+      private llvm::TrailingObjects<DestructureValueInst,
+                                    MultipleValueInstructionResult> {
+  friend TrailingObjects;
+
+  DestructureValueInst(SILDebugLocation Loc, SILValue Operand)
+      : UnaryInstructionBase(Loc, Operand) {}
+
+public:
+  static DestructureValueInst *create(SILDebugLocation Loc, SILFunction &F,
+                                      SILValue Operand);
+};
 
 inline SILNode *MultipleValueInstructionResult::getCanonicalSILNodeInObject() {
   return Parent->getCanonicalSILNodeInObject();

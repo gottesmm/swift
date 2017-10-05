@@ -884,6 +884,9 @@ public:
   void visitValueMetatypeInst(ValueMetatypeInst *i);
   void visitExistentialMetatypeInst(ExistentialMetatypeInst *i);
   void visitTupleExtractInst(TupleExtractInst *i);
+  void visitDestructureValueInst(DestructureValueInst *i) {
+    llvm_unreachable("unimplemented");
+  }
   void visitTupleElementAddrInst(TupleElementAddrInst *i);
   void visitStructExtractInst(StructExtractInst *i);
   void visitStructElementAddrInst(StructElementAddrInst *i);

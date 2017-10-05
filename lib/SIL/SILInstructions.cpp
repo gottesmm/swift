@@ -14,15 +14,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "swift/SIL/SILInstruction.h"
 #include "swift/AST/Expr.h"
 #include "swift/AST/ProtocolConformance.h"
-#include "swift/Basic/type_traits.h"
-#include "swift/Basic/Unicode.h"
 #include "swift/Basic/AssertImplements.h"
+#include "swift/Basic/Unicode.h"
+#include "swift/Basic/type_traits.h"
 #include "swift/SIL/FormalLinkage.h"
+#include "swift/SIL/Projection.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILCloner.h"
+#include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILModule.h"
 #include "swift/SIL/SILVisitor.h"
 #include "llvm/ADT/APInt.h"
@@ -2325,4 +2326,42 @@ GenericSpecializationInformation::create(SILInstruction *Inst, SILBuilder &B) {
     return F->getSpecializationInfo();
 
   return nullptr;
+}
+
+DestructureValueInst *DestructureValueInst::create(SILDebugLocation Loc,
+                                                   SILFunction &F,
+                                                   SILValue Operand) {
+  SILModule &M = F.getModule();
+  SILType OpType = Operand->getType();
+  assert((OpType.getStructOrBoundGenericStruct() ||
+          OpType.getSwiftRValueType()->is<TupleType>()) &&
+         "Expected a struct or tuple typed operand?!");
+
+  llvm::SmallVector<Projection, 8> Projections;
+  Projection::getFirstLevelProjections(OpType, M, Projections);
+  assert(Projections.size() && "Can not destructure an operand without fields");
+
+  unsigned Size =
+      totalSizeToAlloc<MultipleValueInstructionResult>(Projections.size());
+  void *Buffer =
+      F.getModule().allocateInst(Size, alignof(DestructureValueInst));
+
+  auto *NewI = ::new (Buffer) DestructureValueInst(Loc, Operand);
+  MutableArrayRef<MultipleValueInstructionResult> Elts(
+      NewI->getTrailingObjects<MultipleValueInstructionResult>(),
+      Projections.size());
+
+  auto OpOwnershipKind = Operand.getOwnershipKind();
+  for (unsigned i : indices(Projections)) {
+    const auto &P = Projections[i];
+    SILType ProjType = P.getType(OpType, M);
+    auto ProjOwnershipKind =
+        OpOwnershipKind.getProjectedOwnershipKind(M, ProjType);
+
+    ::new (&Elts[i])
+        MultipleValueInstructionResult(NewI, ProjType, ProjOwnershipKind);
+  }
+  NewI->setResults(Elts);
+
+  return NewI;
 }

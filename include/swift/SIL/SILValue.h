@@ -128,6 +128,12 @@ struct ValueOwnershipKind {
   bool isTrivialOr(ValueOwnershipKind Kind) const {
     return Value == Trivial || Value == Kind;
   }
+
+  /// Given that this is a ValueOwnershipKind of a parent type of \p Proj,
+  /// return either trivial if the Proj is a trivial subtype or the parent value
+  /// ownership kind otherwise.
+  ValueOwnershipKind getProjectedOwnershipKind(SILModule &M,
+                                               SILType Proj) const;
 };
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ValueOwnershipKind Kind);

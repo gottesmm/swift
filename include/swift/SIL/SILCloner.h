@@ -1527,9 +1527,18 @@ SILCloner<ImplClass>::visitRefTailAddrInst(RefTailAddrInst *Inst) {
                                    getOpType(Inst->getType())));
 }
 
-template<typename ImplClass>
-void
-SILCloner<ImplClass>::visitClassMethodInst(ClassMethodInst *Inst) {
+template <typename ImplClass>
+void SILCloner<ImplClass>::visitDestructureValueInst(
+    DestructureValueInst *Inst) {
+  getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
+  doPostProcess(
+      Inst,
+      getBuilder().createDestructureValue(getOpLocation(Inst->getLoc()),
+                                          getOpValue(Inst->getOperand())));
+}
+
+template <typename ImplClass>
+void SILCloner<ImplClass>::visitClassMethodInst(ClassMethodInst *Inst) {
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   doPostProcess(Inst,
     getBuilder().createClassMethod(getOpLocation(Inst->getLoc()),

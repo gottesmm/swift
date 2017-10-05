@@ -133,7 +133,8 @@ struct ValueOwnershipKind {
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ValueOwnershipKind Kind);
 
 /// This is the base class of the SIL value hierarchy, which represents a
-/// runtime computed value. Things like SILInstruction derive from this.
+/// runtime computed value. Some examples of ValueBase are SILArgument and
+/// SingleValueInstruction.
 class ValueBase : public SILNode, public SILAllocated<ValueBase> {
   SILType Type;
   Operand *FirstUse = nullptr;

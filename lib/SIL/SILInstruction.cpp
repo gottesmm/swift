@@ -185,9 +185,13 @@ SILInstructionResultArray SILInstruction::getResultsImpl() const {
     return SILInstructionResultArray(
         static_cast<const SingleValueInstruction *>(this));
 
-    // add any multi-result instructions here...
+#define MULTIPLE_VALUE_INST(ID, NAME, PARENT, MEMBEHAVIOR, MAYRELEASE)         \
+  case SILInstructionKind::ID:
+#include "swift/SIL/SILNodes.def"
+    return SILInstructionResultArray(
+        static_cast<const MultipleValueInstruction *>(this));
   }
-  llvm_unreachable("bad kind");
+  llvm_unreachable("unhandled kind");
 }
 
 // Initialize the static members of SILInstruction.
@@ -1202,33 +1206,70 @@ SILInstructionResultArray::SILInstructionResultArray(
          "multi-inheritence parent");
   Pointer = reinterpret_cast<const uint8_t *>(Value);
 
+#ifndef NDEBUG
   assert(originalValue == (*this)[0] &&
          "Wrong value returned for single result");
   assert(originalType == (*this)[0]->getType());
 
   auto ValueRange = getValues();
-  (void)ValueRange;
   assert(1 == std::distance(ValueRange.begin(), ValueRange.end()));
   assert(originalValue == *ValueRange.begin());
 
   auto TypedRange = getTypes();
-  (void)TypedRange;
   assert(1 == std::distance(TypedRange.begin(), TypedRange.end()));
   assert(originalType == *TypedRange.begin());
 
   SILInstructionResultArray Copy = *this;
-  (void)Copy;
   assert(Copy.hasSameTypes(*this));
   assert(Copy == *this);
+#endif
+}
+
+SILInstructionResultArray::SILInstructionResultArray(
+    const MultipleValueInstruction *MVI)
+    : Pointer(), Size(MVI->Results.size()) {
+  // We are assuming here that MultipleValueInstructionResult when static_cast
+  // is not offset.
+  Pointer = reinterpret_cast<const uint8_t *>(&MVI->Results[0]);
+
+#ifndef NDEBUG
+  // Verify our invariants.
+  assert(size() == MVI->Results.size());
+  auto ValueRange = getValues();
+  auto VRangeBegin = ValueRange.begin();
+  auto VRangeIter = VRangeBegin;
+  auto VRangeEnd = ValueRange.end();
+  assert(MVI->Results.size() ==
+         unsigned(std::distance(VRangeBegin, VRangeEnd)));
+
+  auto TypedRange = getTypes();
+  auto TRangeBegin = TypedRange.begin();
+  auto TRangeIter = TRangeBegin;
+  auto TRangeEnd = TypedRange.end();
+  assert(MVI->Results.size() ==
+         unsigned(std::distance(VRangeBegin, VRangeEnd)));
+  for (unsigned i : indices(MVI->Results)) {
+    assert(SILValue(&MVI->Results[i]) == (*this)[i]);
+    assert(SILValue(&MVI->Results[i])->getType() == (*this)[i]->getType());
+    assert(SILValue(&MVI->Results[i]) == (*VRangeIter));
+    assert(SILValue(&MVI->Results[i])->getType() == (*VRangeIter)->getType());
+    assert(SILValue(&MVI->Results[i])->getType() == *TRangeIter);
+    ++VRangeIter;
+    ++TRangeIter;
+  }
+
+  SILInstructionResultArray Copy = *this;
+  assert(Copy.hasSameTypes(*this));
+  assert(Copy == *this);
+#endif
 }
 
 SILValue SILInstructionResultArray::operator[](size_t Index) const {
   assert(Index < Size && "Index out of bounds");
-  // Today we only have single instruction results so offset will always be
-  // zero. Once we have multiple instruction results, this will be equal to
-  // sizeof(MultipleValueInstructionResult)*Index. This is safe even to do with
-  // SingleValueInstruction since index will always be zero for the offset.
-  size_t Offset = 0;
+  // *NOTE* In the case where we have a single instruction, Index will always
+  // necessarily be 0 implying that it is safe for us to just multiple Index by
+  // sizeof(MultipleValueInstructionResult).
+  size_t Offset = sizeof(MultipleValueInstructionResult) * Index;
   return SILValue(reinterpret_cast<const ValueBase *>(&Pointer[Offset]));
 }
 

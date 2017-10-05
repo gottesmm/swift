@@ -44,6 +44,8 @@ class DeclRefExpr;
 class FloatLiteralExpr;
 class FuncDecl;
 class IntegerLiteralExpr;
+class SingleValueInstruction;
+class MultipleValueInstruction;
 class NonValueInstruction;
 class SILBasicBlock;
 class SILBuilder;
@@ -51,9 +53,11 @@ class SILDebugLocation;
 class SILDebugScope;
 class SILFunction;
 class SILGlobalVariable;
+class SILInstructionResultArray;
 class SILOpenedArchetypesState;
 class SILType;
 class SILArgument;
+class SILUndef;
 class Stmt;
 class StringLiteralExpr;
 class Substitution;
@@ -103,6 +107,7 @@ class SILInstructionResultArray {
 public:
   SILInstructionResultArray() : Pointer(nullptr), Size(0) {}
   SILInstructionResultArray(const SingleValueInstruction *SVI);
+  SILInstructionResultArray(const MultipleValueInstruction *MVI);
 
   SILInstructionResultArray(const SILInstructionResultArray &Other)
       : Pointer(Other.Pointer), Size(Other.Size) {}
@@ -703,6 +708,122 @@ inline SingleValueInstruction *SILNode::castToSingleValueInstruction() {
     return inst->getKind() >= SILInstructionKind::First_##ID && \
            inst->getKind() <= SILInstructionKind::Last_##ID;    \
   }
+
+/// A value base result of a multiple value instruction.
+class MultipleValueInstructionResult : public ValueBase {
+  /// The parent instruction that this MultipleValueInstructionResult is
+  /// contained within.
+  MultipleValueInstruction *Parent;
+
+  /// The ownership kind assigned to this result by its parent.
+  ///
+  /// We store this rather than delegating to our parent since there is not a
+  /// natural clear way to derive the ValueOwnershipKind for all potential
+  /// multiple value instructions. This contrasts with the index of our result
+  /// in the parent array.
+  ValueOwnershipKind Kind;
+
+public:
+  MultipleValueInstructionResult(MultipleValueInstruction *parent, SILType type,
+                                 ValueOwnershipKind kind)
+      : ValueBase(ValueKind::MultipleValueInstructionResult, type),
+        Parent(parent), Kind(kind) {}
+
+  MultipleValueInstruction *getParent() const { return Parent; }
+
+  unsigned getIndex() const;
+
+  ValueOwnershipKind getOwnershipKind() const { return Kind; }
+
+  SILNode *getCanonicalSILNodeInObject();
+  const SILNode *getCanonicalSILNodeInObject() const;
+
+  static bool classof(const SILInstruction *) = delete;
+  static bool classof(const SILUndef *) = delete;
+  static bool classof(const SILNode *node) {
+    return node->getKind() == SILNodeKind::MultipleValueInstructionResult;
+  }
+};
+
+/// An instruction which always produces a fixed list of values.
+class MultipleValueInstruction : public SILInstruction {
+  // *NOTE* THis is just a stub since we do not currently have any multiple
+  // value instructions.
+  static bool isMultipleValueInstKind(SILNodeKind kind) { return false; }
+
+  friend class SILInstruction;
+  friend class SILInstructionResultArray;
+
+  /// An ArrayRef of Result objects. We assume that our child classes's will
+  /// allocate this for us on memory that will be placement newed.
+  ArrayRef<MultipleValueInstructionResult> Results;
+
+  SILInstructionResultArray getResultsImpl() const {
+    return SILInstructionResultArray(this);
+  }
+
+protected:
+  MultipleValueInstruction(
+      SILInstructionKind kind, SILDebugLocation loc,
+      ArrayRef<MultipleValueInstructionResult> results = {})
+      : SILInstruction(kind, loc), Results(results) {}
+
+  // Sometimes our subclasses need to set the new results /after/ we construct
+  // the MultipleValueInstruction.
+  void setResults(ArrayRef<MultipleValueInstructionResult> NewResults) {
+    Results = NewResults;
+  }
+
+public:
+  // Redeclare because lldb currently doesn't know about using-declarations
+  void dump() const;
+
+  void operator delete(void *Ptr, size_t)SWIFT_DELETE_OPERATOR_DELETED;
+
+  SILInstructionResultArray getValueKinds() const { return getResultsImpl(); }
+
+  SILNode *getCanonicalSILNodeInObject() {
+    assert(SILInstruction::isCanonicalSILNodeInObject() &&
+           "the SILInstruction subobject is always canonical");
+    return static_cast<SILInstruction *>(this);
+  }
+  const SILNode *getCanonicalSILNodeInObject() const {
+    assert(SILInstruction::isCanonicalSILNodeInObject() &&
+           "the SILInstruction subobject is always canonical");
+    return static_cast<const SILInstruction *>(this);
+  }
+
+  MultipleValueInstruction *clone(SILInstruction *insertPt = nullptr) {
+    return cast<MultipleValueInstruction>(SILInstruction::clone(insertPt));
+  }
+
+  /// Override this to reflect the more efficient access pattern.
+  SILInstructionResultArray getResults() const {
+    return SILInstructionResultArray(this);
+  }
+
+  SILValue getResult(unsigned Index) const { return getResults()[Index]; }
+
+  unsigned getIndexOfResult(const MultipleValueInstructionResult *R) const {
+    assert(((&Results.front() <= R) && (&Results.back() >= R)) &&
+           "Passed in result is not a result of this MultipleValueInstruction");
+    uintptr_t bytes = uintptr_t(R) - uintptr_t(&Results.front());
+    return unsigned(bytes) / sizeof(MultipleValueInstructionResult);
+  }
+
+  unsigned getNumResults() const { return getResults().size(); }
+
+  static bool classof(const SILNode *node) {
+    return isMultipleValueInstKind(node->getKind());
+  }
+};
+
+// Resolve ambiguities.
+inline llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+                                     const MultipleValueInstruction &I) {
+  I.print(OS);
+  return OS;
+}
 
 /// A subclass of SILInstruction which does not produce any values.
 class NonValueInstruction : public SILInstruction {
@@ -7056,6 +7177,19 @@ SILFunction *ApplyInstBase<Impl, Base, false>::getCalleeFunction() const {
 
     return nullptr;
   }
+}
+
+inline SILNode *MultipleValueInstructionResult::getCanonicalSILNodeInObject() {
+  return Parent->getCanonicalSILNodeInObject();
+}
+
+inline const SILNode *
+MultipleValueInstructionResult::getCanonicalSILNodeInObject() const {
+  return Parent->getCanonicalSILNodeInObject();
+}
+
+inline unsigned MultipleValueInstructionResult::getIndex() const {
+  return Parent->getIndexOfResult(this);
 }
 
 } // end swift namespace

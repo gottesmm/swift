@@ -58,22 +58,25 @@ void ValueBase::replaceAllUsesWithUndef() {
 }
 
 SILInstruction *ValueBase::getDefiningInstruction() {
-  if (auto inst = dyn_cast<SingleValueInstruction>(this))
+  if (auto *inst = dyn_cast<SingleValueInstruction>(this))
     return inst;
-  // TODO: MultiValueInstruction
+  if (auto *result = dyn_cast<MultipleValueInstructionResult>(this))
+    return result->getParent();
   return nullptr;
 }
 
 Optional<ValueBase::DefiningInstructionResult>
 ValueBase::getDefiningInstructionResult() {
-  if (auto inst = dyn_cast<SingleValueInstruction>(this))
+  if (auto *inst = dyn_cast<SingleValueInstruction>(this))
     return DefiningInstructionResult{ inst, 0 };
-  // TODO: MultiValueInstruction
+  if (auto *result = dyn_cast<MultipleValueInstructionResult>(this))
+    return DefiningInstructionResult{result->getParent(), result->getIndex()};
   return None;
 }
 
 SILBasicBlock *SILNode::getParentBlock() const {
-  auto *NonConstThis = const_cast<SILNode *>(this);
+  auto *NonConstThis =
+      const_cast<SILNode *>(this)->getCanonicalSILNodeInObject();
   if (auto *Inst = dyn_cast<SILInstruction>(NonConstThis))
     return Inst->getParent();
   // TODO: MultiValueInstruction
@@ -103,11 +106,20 @@ SILModule *SILNode::getModule() const {
 }
 
 const SILNode *SILNode::getCanonicalSILNodeSlowPath() const {
-  assert(getStorageLoc() != SILNodeStorageLocation::Instruction &&
-         hasMultipleSILNodes(getKind()));
-  return &static_cast<const SILInstruction &>(
-            static_cast<const SingleValueInstruction &>(
-              static_cast<const ValueBase &>(*this)));
+  assert(getStorageLoc() != SILNodeStorageLocation::Instruction);
+
+  if (isa<SingleValueInstruction>(this)) {
+    assert(hasMultipleSILNodeBaseClasses(getKind()));
+    return &static_cast<const SILInstruction &>(
+        static_cast<const SingleValueInstruction &>(
+            static_cast<const ValueBase &>(*this)));
+  }
+
+  if (auto *MVIR = dyn_cast<MultipleValueInstructionResult>(this)) {
+    return MVIR->getCanonicalSILNodeInObject();
+  }
+
+  llvm_unreachable("Invalid value for slow path");
 }
 
 //===----------------------------------------------------------------------===//

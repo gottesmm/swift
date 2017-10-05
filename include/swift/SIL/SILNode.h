@@ -32,7 +32,7 @@ class SingleValueInstruction;
 class ValueBase;
 
 /// An enumeration which contains values for all the nodes in SILNodes.def.
-/// Other enumerators, like ValueKind and SILInstructionind, ultimately
+/// Other enumerators, like ValueKind and SILInstructionKind, ultimately
 /// take their values from this enumerator.
 enum class SILNodeKind {
 #define NODE(ID, PARENT) \
@@ -113,15 +113,20 @@ private:
 
 protected:
   SILNode(SILNodeKind kind, SILNodeStorageLocation storageLoc)
-    : Kind(unsigned(kind)),
-      StorageLoc(unsigned(storageLoc)),
-      IsCanonical(storageLoc == SILNodeStorageLocation::Instruction ||
-                  !hasMultipleSILNodes(kind)) {}
+      : Kind(unsigned(kind)), StorageLoc(unsigned(storageLoc)),
+        IsCanonical(storageLoc == SILNodeStorageLocation::Instruction ||
+                    // TODO: Ask John about why he is using
+                    // hasMultipleSILNodeBaseClasses. Seems weird.
+                    (!hasMultipleSILNodeBaseClasses(kind) &&
+                     kind != SILNodeKind::MultipleValueInstructionResult)) {}
 
 public:
-
-  /// Does the given kind of node have multiple SILNode bases?
-  static bool hasMultipleSILNodes(SILNodeKind kind) {
+  /// Does the given kind of node inherit from multiple multiple SILNode base
+  /// classes.
+  ///
+  /// This enables one to know if their is a diamond in the inheritence
+  /// hierarchy for this SILNode.
+  static bool hasMultipleSILNodeBaseClasses(SILNodeKind kind) {
     // Currently only SingleValueInstructions.  Note that multi-result
     // instructions shouldn't return true for this.
     return kind >= SILNodeKind::First_SingleValueInstruction &&
@@ -246,7 +251,7 @@ struct cast_sil_node<To, /*single value*/ false, /*unambiguous*/ false> {
   static To *doit(SILNode *node) {
     // If the node isn't dynamically a SingleValueInstruction, then this
     // is indeed the SILNode subobject that's statically observable in To.
-    if (!SILNode::hasMultipleSILNodes(node->getKind())) {
+    if (!SILNode::hasMultipleSILNodeBaseClasses(node->getKind())) {
       return &static_cast<To&>(*node);
     }
 

@@ -661,11 +661,14 @@ public:
   /// either an id or a use list. Return false otherwise.
   bool printUsersOfSILNode(const SILNode *node, bool printedSlashes) {
     TinyPtrVector<SILValue> values;
-    if (auto value = dyn_cast<ValueBase>(node)) {
+    if (auto *value = dyn_cast<ValueBase>(node)) {
       // The base pointer of the ultimate ArrayRef here is just the
       // ValueBase; we aren't forming a reference to a temporary array.
       values.push_back(value);
     } else if (auto *inst = dyn_cast<SILInstruction>(node)) {
+      assert(!isa<SingleValueInstruction>(inst) && "SingleValueInstruction was "
+                                                   "handled by the previous "
+                                                   "value base check.");
       copy(inst->getResults(), std::back_inserter(values));
     }
 
@@ -921,6 +924,11 @@ public:
 
     case SILNodeKind::SILUndef:
       printSILUndef(cast<SILUndef>(node));
+      return;
+
+    case SILNodeKind::MultipleValueInstructionResult:
+      // We do not print anything for multiple value instruction result since we
+      // print out the result when we print out various instructions.
       return;
     }
     llvm_unreachable("bad kind");

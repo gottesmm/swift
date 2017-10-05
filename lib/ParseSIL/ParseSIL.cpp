@@ -4781,14 +4781,17 @@ bool SILParser::parseSILFunctionRef(SILLocation InstLoc,
 }
 
 /// True if the current token sequence looks like the start of a SIL
-/// instruction, either:
-///   %name
-/// or:
-///   identifier | keyword
+/// instruction. This can be one of:
+///
+/// 1. %name
+/// 2. (%name1
+/// 3. identifier | keyword
 /// where identifier is not followed by a '(' or ':', which would indicate
 /// a basic block.
 bool SILParser::isStartOfSILInstruction() {
   if (P.Tok.is(tok::sil_local_name))
+    return true;
+  if (P.Tok.is(tok::l_paren) && P.peekToken().is(tok::sil_local_name))
     return true;
   if (P.Tok.is(tok::identifier) || P.Tok.isKeyword()) {
     auto &peek = P.peekToken();

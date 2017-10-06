@@ -1,5 +1,5 @@
 ; REQUIRES: CPU=x86_64
-; RUN: llvm-as %s -o %t.bc
+; RUN: %llvm-as %s -o %t.bc
 ; RUN: %swift -target x86_64-apple-darwin10 -c -module-name someModule -embed-bitcode -disable-llvm-optzns -o %t2.o %t.bc -dump-clang-diagnostics 2> %t.diags.txt
 ; RUN: llvm-objdump -macho -section="__LLVM,__bitcode" %t2.o | %FileCheck %s
 ; RUN: llvm-objdump -macho -section="__LLVM,__swift_cmdline" %t2.o | %FileCheck -check-prefix=CHECK-CMD %s

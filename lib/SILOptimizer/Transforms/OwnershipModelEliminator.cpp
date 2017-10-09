@@ -24,6 +24,7 @@
 
 #define DEBUG_TYPE "sil-ownership-model-eliminator"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
+#include "swift/SIL/Projection.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILVisitor.h"
@@ -83,6 +84,7 @@ struct OwnershipModelEliminatorVisitor
   bool visitUnmanagedAutoreleaseValueInst(UnmanagedAutoreleaseValueInst *UAVI);
   bool visitCheckedCastBranchInst(CheckedCastBranchInst *CBI);
   bool visitSwitchEnumInst(SwitchEnumInst *SWI);
+  bool visitDestructureValueInst(DestructureValueInst *DVI);
 };
 
 } // end anonymous namespace
@@ -246,6 +248,44 @@ bool OwnershipModelEliminatorVisitor::visitSwitchEnumInst(
     return false;
   DefaultBlock->getArgument(0)->replaceAllUsesWith(SWEI->getOperand());
   DefaultBlock->eraseArgument(0);
+  return true;
+}
+
+// Even though destructure_value is not technically an ownership instruction, it
+// is a new instruction that the optimizer will need to be updated for at the
+// same time as for ownership. So it makes sense to eliminate them in favor of
+// representations already known to the optimizer to prevent unnecessary
+// regressions.
+bool OwnershipModelEliminatorVisitor::visitDestructureValueInst(
+    DestructureValueInst *DVI) {
+  SILModule &Mod = DVI->getModule();
+  SILValue Base = DVI->getOperand();
+  SILType BaseType = Base->getType();
+  // We should only have structs and tuples.
+  assert((BaseType.getStructOrBoundGenericStruct() ||
+          BaseType.getSwiftRValueType()->is<TupleType>()) &&
+         "Expected only a struct or a tuple type");
+
+  llvm::SmallVector<Projection, 8> Projections;
+  Projection::getFirstLevelProjections(BaseType, Mod, Projections);
+
+  auto DestructureValues = DVI->getResults();
+
+  // We assume that the projections are returned in the same order as the types
+  // in the destructure instruction.
+  //
+  // TODO: Add this as an invariant in the SILVerifier.cpp.
+  for (unsigned Index : indices(Projections)) {
+    const auto &Proj = Projections[Index];
+    SILType ProjType = Proj.getType(BaseType, Mod);
+    (void)ProjType;
+    assert(ProjType == DestructureValues[Index]->getType() &&
+           "Projection types do not match destructure_value types?!");
+    DestructureValues[Index]->replaceAllUsesWith(
+        Proj.createObjectProjection(B, DVI->getLoc(), Base).get());
+  }
+  DVI->eraseFromParent();
+
   return true;
 }
 

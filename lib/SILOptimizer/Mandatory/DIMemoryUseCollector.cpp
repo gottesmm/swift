@@ -188,12 +188,9 @@ static void getScalarizedElementAddresses(SILValue Pointer, SILBuilder &B,
 static void getScalarizedElements(SILValue V,
                                   SmallVectorImpl<SILValue> &ElementVals,
                                   SILLocation Loc, SILBuilder &B) {
-  TupleType *TT = V->getType().castTo<TupleType>();
-  for (auto Index : indices(TT->getElements())) {
-    ElementVals.push_back(B.emitTupleExtract(Loc, V, Index));
-  }
+  auto *DVI = B.createDestructureValue(Loc, V);
+  copy(DVI->getResults(), std::back_inserter(ElementVals));
 }
-
 
 /// Scalarize a load down to its subelements.  If NewLoads is specified, this
 /// can return the newly generated sub-element loads.
@@ -201,10 +198,10 @@ static SILValue scalarizeLoad(LoadInst *LI,
                               SmallVectorImpl<SILValue> &ElementAddrs) {
   SILBuilderWithScope B(LI);
   SmallVector<SILValue, 4> ElementTmps;
-  
+
   for (unsigned i = 0, e = ElementAddrs.size(); i != e; ++i) {
-    auto *SubLI = B.createLoad(LI->getLoc(), ElementAddrs[i],
-                               LoadOwnershipQualifier::Unqualified);
+    auto *SubLI = B.createTrivialLoadOr(LI->getLoc(), ElementAddrs[i],
+                                        LI->getOwnershipQualifier());
     ElementTmps.push_back(SubLI);
   }
   
@@ -222,7 +219,7 @@ namespace {
     SILModule &Module;
     const DIMemoryObjectInfo &TheMemory;
     SmallVectorImpl<DIMemoryUse> &Uses;
-    SmallVectorImpl<SILInstruction*> &Releases;
+    SmallVectorImpl<SILInstruction *> &Releases;
 
     /// When walking the use list, if we index into a struct element, keep track
     /// of this, so that any indexes into tuple subelements don't affect the
@@ -266,7 +263,7 @@ void ElementUseCollector::collectFrom() {
   if (!ABI) {
     collectUses(TheMemory.getAddress(), 0);
     copy_if(TheMemory.MemoryInst->getUses(), std::back_inserter(Releases),
-            [](Operand *Op) -> bool {
+            [](const Operand *Op) -> bool {
               return isa<DeallocStackInst>(Op->getUser());
             });
     return;
@@ -276,10 +273,12 @@ void ElementUseCollector::collectFrom() {
   // the retain count info.
   collectContainerUses(ABI);
   copy_if(
-      ABI->getUses(), std::back_inserter(Releases), [](Operand *Op) -> bool {
-        auto *User = Op->getUser()
-            : return isa<StrongReleaseInst>(User) ||
-                     isa<DestroyValueInst>(User) || isa<DeallocBoxInst>(User);
+      ABI->getUses(), std::back_inserter(Releases),
+      [](Operand *Op) -> bool {
+        auto *User = Op->getUser();
+        return isa<StrongReleaseInst>(User)
+          || isa<DestroyValueInst>(User)
+          || isa<DeallocBoxInst>(User);
       });
 }
 
@@ -347,13 +346,13 @@ void ElementUseCollector::collectContainerUses(AllocBoxInst *ABI) {
 
     // copy_value of the box does not affect the value directly. But we need to
     // look through it for more interesting uses.
-    if (isa<CopyValueInst>(User)) {
-      copy(User->getUses(), std::back_inserter(Worklist));
+    if (auto *CVI = dyn_cast<CopyValueInst>(User)) {
+      copy(CVI->getUses(), std::back_inserter(Worklist));
       continue;
     }
 
     if (auto *PBI = dyn_cast<ProjectBoxInst>(User)) {
-      collectUses(User, PBI->getFieldIndex());
+      collectUses(PBI, PBI->getFieldIndex());
       continue;
     }
 
@@ -435,7 +434,7 @@ void ElementUseCollector::collectUses(SILValue Pointer, unsigned BaseEltNo) {
   /// elements and should be scalarized.  This is done as a second phase to
   /// avoid invalidating the use iterator.
   ///
-  SmallVector<SILInstruction*, 4> UsesToScalarize;
+  SmallVector<SILInstruction *, 4> UsesToScalarize;
 
   for (auto *UI : Pointer->getUses()) {
     auto *User = UI->getUser();
@@ -610,8 +609,8 @@ void ElementUseCollector::collectUses(SILValue Pointer, unsigned BaseEltNo) {
     }
 
     // We model destroy_addr as a release of the entire value.
-    if (isa<DestroyAddrInst>(User)) {
-      Releases.push_back(User);
+    if (auto *DAI = dyn_cast<DestroyAddrInst>(User)) {
+      Releases.push_back(DAI);
       continue;
     }
 

@@ -147,6 +147,9 @@ static unsigned computeSubelement(SILValue Pointer,
 
 /// Given an aggregate value and an access path, extract the value indicated by
 /// the path.
+///
+/// If we are going to extract a sub-element, we need to explode the parent
+/// object using a destructure.
 static SILValue ExtractSubElement(SILValue Val, unsigned SubElementNumber,
                                   SILBuilder &B, SILLocation Loc) {
   SILType ValTy = Val->getType();
@@ -257,12 +260,6 @@ namespace {
     bool tryToRemoveDeadAllocation();
   };
 } // end anonymous namespace
-
-AllocOptimize::AllocOptimize(AllocationInst *TheMemory,
-                             SmallVectorImpl<DIMemoryUse> &Uses,
-                             SmallVectorImpl<SILInstruction *> &Releases)
-    : Module(TheMemory->getModule()), TheMemory(TheMemory), Uses(Uses),
-      Releases(Releases) {}
 
 void AllocOptimize::init() {
   // Compute the type of the memory object.
@@ -616,19 +613,25 @@ bool AllocOptimize::promoteLoad(SILInstruction *Inst) {
   // diagnostics pass this like one.
   
   // We only handle load and copy_addr right now.
+  SILValue src;
   if (!isa<LoadInst>(Inst)) {
     // If this is not a copy_addr or our element type is not loadable, return
     // false. If the copy_addr is not loadable, then we can not promote it.
     auto *CAI = dyn_cast<CopyAddrInst>(Inst);
-    if (!CAI || !CAI->getSrc()->getType().isLoadable(Module))
+    if (!CAI)
       return false;
+    src = CAI->getSrc();
+    if (!src->getType().isLoadable(Module))
+      return false;
+  } else {
+    src = cast<LoadInst>(Inst)->getOperand();
   }
 
   // If the box has escaped at this instruction, we can't safely promote the
   // load.
   if (hasEscapedAt(Inst))
     return false;
-  
+
   SILType LoadTy = src->getType().getObjectType();
   
   // If this is a load/copy_addr from a struct field that we want to promote,
@@ -682,8 +685,8 @@ bool AllocOptimize::promoteLoad(SILInstruction *Inst) {
   // Aggregate together all of the subelements into something that has the same
   // type as the load did, and emit smaller) loads for any subelements that were
   // not available.
-  auto Load = cast<LoadInst>(Inst);
-  auto NewVal = AggregateAvailableValues(Load, LoadTy, Load->getOperand(),
+  auto *Load = cast<LoadInst>(Inst);
+  auto NewVal = aggregateAvailableValues(Load, LoadTy, Load->getOperand(),
                                          AvailableValues, FirstElt);
   
   ++NumLoadPromoted;
@@ -984,14 +987,14 @@ static bool optimizeMemoryAllocations(SILFunction &Fn) {
         ++I;
         continue;
       }
-      auto Alloc = cast<AllocationInst>(Inst);
+      auto *Alloc = cast<AllocationInst>(Inst);
 
       DEBUG(llvm::dbgs() << "*** DI Optimize looking at: " << *Alloc << "\n");
       DIMemoryObjectInfo MemInfo(Alloc);
 
       // Set up the datastructure used to collect the uses of the allocation.
       SmallVector<DIMemoryUse, 16> Uses;
-      SmallVector<SILInstruction*, 4> Releases;
+      SmallVector<SILInstruction *, 4> Releases;
       
       // Walk the use list of the pointer, collecting them.
       collectDIElementUsesFrom(MemInfo, Uses, Releases);

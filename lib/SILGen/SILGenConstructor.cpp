@@ -763,14 +763,19 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
   // Unpop our selfArg cleanup, so we can forward.
   std::move(SelfCleanupSave).pop();
 
+  // We need to be sure that our selfArg is returned at plus one. So ensure
+  // that it is at plus one.
+  selfArg = selfArg.ensurePlusOne(SGF, returnLoc);
+
   // Finish off the epilog by returning.  If this is a failable ctor, then we
   // actually jump to the failure epilog to keep the invariant that there is
   // only one SIL return instruction per SIL function.
   if (B.hasValidInsertionPoint()) {
-    if (failureExitBB)
-      B.createBranch(returnLoc, failureExitBB, selfArg.forward(*this));
-    else
-      B.createReturn(returnLoc, selfArg.forward(*this));
+    if (failureExitBB) {
+      B.createBranch(returnLoc, failureExitBB, selfArg);
+    } else {
+      B.createReturn(returnLoc, selfArg);
+    }
   }
 }
 

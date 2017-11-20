@@ -329,11 +329,11 @@ public:
                                        SILType destType);
 
   using SILBuilder::createBranch;
-  BranchInst *createBranch(SILLocation Loc, SILBasicBlock *TargetBlock,
-                           ArrayRef<ManagedValue> Args);
+  BranchInst *createBranch(SILLocation loc, SILBasicBlock *block,
+                           ArrayRef<ManagedValue> args);
 
   using SILBuilder::createReturn;
-  ReturnInst *createReturn(SILLocation Loc, ManagedValue ReturnValue);
+  ReturnInst *createReturn(SILLocation loc, ManagedValue returnValue);
 };
 
 class SwitchCaseFullExpr;

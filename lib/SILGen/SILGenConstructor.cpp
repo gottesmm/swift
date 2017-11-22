@@ -765,7 +765,7 @@ void SILGenFunction::emitClassConstructorInitializer(ConstructorDecl *ctor) {
 
   // We need to be sure that our selfArg is returned at plus one. So ensure
   // that it is at plus one.
-  selfArg = selfArg.ensurePlusOne(SGF, returnLoc);
+  selfArg = selfArg.ensurePlusOne(*this, returnLoc);
 
   // Finish off the epilog by returning.  If this is a failable ctor, then we
   // actually jump to the failure epilog to keep the invariant that there is

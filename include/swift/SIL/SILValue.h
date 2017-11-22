@@ -18,6 +18,7 @@
 #define SWIFT_SIL_SILVALUE_H
 
 #include "swift/Basic/Range.h"
+#include "swift/Basic/OptionSet.h"
 #include "swift/SIL/SILNode.h"
 #include "swift/SIL/SILType.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -121,6 +122,8 @@ struct ValueOwnershipKind {
                 "LastValueOwnershipKind is larger than max representable "
                 "ownership value?!");
 
+  using Set = OptionSet<innerty>;
+
   ValueOwnershipKind(innerty NewValue) : Value(NewValue) {}
   ValueOwnershipKind(unsigned NewValue) : Value(innerty(NewValue)) {}
   ValueOwnershipKind(SILModule &M, SILType Type,
@@ -145,6 +148,17 @@ struct ValueOwnershipKind {
   /// ownership kind otherwise.
   ValueOwnershipKind getProjectedOwnershipKind(SILModule &M,
                                                SILType Proj) const;
+};
+
+/// A set of value ownership kind
+class OperandValueOwnershipKindSet {
+  ValueOwnershipKind::Set InnerSet;
+  llvm::SmallBitVector IsLifetimeEnding;
+
+public:
+  OperandValueOwnershipKindSet() {}
+
+  void addOwnershipKind(ValueOwnershipKind Kind, UseLifetimeConstraint constraint);
 };
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ValueOwnershipKind Kind);
@@ -391,9 +405,13 @@ public:
   SILInstruction *getUser() { return Owner; }
   const SILInstruction *getUser() const { return Owner; }
 
-  /// getOperandNumber - Return which operand this is in the operand list of the
-  /// using instruction.
+  /// Return which operand this is in the operand list of the using instruction.
   unsigned getOperandNumber() const;
+
+  /// Return the set of ValueOwnershipKinds that this operand can be paired.
+  ///
+  /// *NOTE* This is implemented in OperandValueOwnershipKindSetClassifier.cpp.
+  OperandValueOwnershipKindSet getValueOwnershipKindSet() const;
 
 private:
   void removeFromCurrent() {

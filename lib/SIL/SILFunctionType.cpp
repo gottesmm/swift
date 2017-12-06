@@ -339,20 +339,20 @@ public:
          && !origType.requiresClass())
         || substTL.isAddressOnly()) {
       return true;
+    }
 
     // If the substitution didn't change the type, then a negative
     // response to the above is determinative as well.
-    } else if (origType.getType() == substType &&
-               !origType.getType()->hasTypeParameter()) {
+    if (origType.getType() == substType &&
+        !origType.getType()->hasTypeParameter()) {
       return false;
+    }
 
     // Otherwise, query specifically for the original type.
-    } else {
-      // FIXME: Get expansion from SILDeclRef
-      return SILType::isFormallyReturnedIndirectly(
-          origType.getType(), M, origType.getGenericSignature(),
-          ResilienceExpansion::Minimal);
-    }
+    // FIXME: Get expansion from SILDeclRef
+    return SILType::isFormallyReturnedIndirectly(origType.getType(), M,
+                                                 origType.getGenericSignature(),
+                                                 ResilienceExpansion::Minimal);
   }
 };
 

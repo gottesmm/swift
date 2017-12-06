@@ -274,18 +274,19 @@ public:
 /// matching the abstraction patterns of the original type.
 class DestructureResults {
   SILModule &M;
-  const Conventions &Convs;
-  SmallVectorImpl<SILResultInfo> &Results;
+  const Conventions &convs;
+  SmallVectorImpl<SILResultInfo> &results;
+
 public:
   DestructureResults(SILModule &M, const Conventions &conventions,
                      SmallVectorImpl<SILResultInfo> &results)
-    : M(M), Convs(conventions), Results(results) {}
+      : M(M), convs(conventions), results(results) {}
 
   void destructure(AbstractionPattern origType, CanType substType) {
     // Recurse into tuples.
     if (origType.isTuple()) {
       auto substTupleType = cast<TupleType>(substType);
-      for (auto eltIndex : indices(substTupleType.getElementTypes())) {
+      for (unsigned eltIndex : indices(substTupleType.getElementTypes())) {
         AbstractionPattern origEltType =
           origType.getTupleElementType(eltIndex);
         CanType substEltType = substTupleType.getElementType(eltIndex);
@@ -301,7 +302,7 @@ public:
     if (isFormallyReturnedIndirectly(origType, substType, substResultTL)) {
       convention = ResultConvention::Indirect;
     } else {
-      convention = Convs.getResult(substResultTL);
+      convention = convs.getResult(substResultTL);
 
       // Reduce conventions for trivial types to an unowned convention.
       if (substResultTL.isTrivial()) {
@@ -323,7 +324,7 @@ public:
 
     SILResultInfo result(substResultTL.getLoweredType().getSwiftRValueType(),
                          convention);
-    Results.push_back(result);
+    results.push_back(result);
   }
 
   /// Query whether the original type is returned indirectly for the purpose

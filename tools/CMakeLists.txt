@@ -29,7 +29,7 @@ if(SWIFT_HOST_VARIANT STREQUAL "macosx")
   # Swift module), and the SDK overlays (because it depends on Foundation).
   # Ensure we only build SwiftSyntax when we're building both.
   if(SWIFT_BUILD_STDLIB AND SWIFT_BUILD_SDK_OVERLAY)
-    add_subdirectory(SwiftSyntax)
+          #add_subdirectory(SwiftSyntax)
   endif()
 endif()
 

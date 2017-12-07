@@ -13,7 +13,9 @@
 // benchmark to test the performance of bridging an NSDictionary to a
 // Swift.Dictionary.
 
-import Foundation
+
+#if false
+//import Foundation
 import TestsUtils
 
 public let DictionaryBridge = BenchmarkInfo(
@@ -68,3 +70,5 @@ public func run_DictionaryBridge(_ N: Int) {
     }
 #endif
 }
+
+#endif

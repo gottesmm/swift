@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if false
+
 // Performance benchmark for casting NSDictionary to Swift Dictionary
 // rdar://problem/18539730
 //
@@ -37,3 +39,5 @@ public func run_NSDictionaryCastToSwift(_ N: Int) {
     CheckResults(swiftDict.isEmpty)
 #endif
 }
+
+#endif

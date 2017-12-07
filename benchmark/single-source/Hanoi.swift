@@ -12,7 +12,7 @@
 
 // This test checks performance of Swift hanoi tower.
 // <rdar://problem/22151932>
-import Foundation
+//import Foundation
 import TestsUtils
 
 public let Hanoi = BenchmarkInfo(

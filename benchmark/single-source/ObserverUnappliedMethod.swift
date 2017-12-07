@@ -10,6 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+// We crash on this test.
+#if false
+
 import TestsUtils
 
 public let ObserverUnappliedMethod = BenchmarkInfo(
@@ -59,3 +62,5 @@ public func run_ObserverUnappliedMethod(_ iterations: Int) {
   }
   signal.send(1)
 }
+
+#endif

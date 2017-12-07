@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if false
+
 import TestsUtils
 import Foundation
 
@@ -609,3 +611,4 @@ public func run_ObjectiveCBridgeFromNSSetAnyObjectToStringForced(_ N: Int) {
   }
 #endif
 }
+#endif

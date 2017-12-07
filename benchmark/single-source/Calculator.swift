@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import TestsUtils
-import Foundation
+//import Foundation
 
 public let Calculator = BenchmarkInfo(
   name: "Calculator",

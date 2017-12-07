@@ -208,6 +208,7 @@ function (swift_benchmark_compile_archopts)
       "-target" "${target}"
       "-F" "${sdk}/../../../Developer/Library/Frameworks"
       "-${BENCH_COMPILE_ARCHOPTS_OPT}"
+      "-Xfrontend" "-enable-guaranteed-normal-arguments"
       "-no-link-objc-runtime"
       "-I" "${srcdir}/utils/ObjectiveCTests")
 
@@ -233,6 +234,7 @@ function (swift_benchmark_compile_archopts)
       "-target" "${target}"
       "-F" "${sdk}/../../../Developer/Library/Frameworks"
       "-${driver_opt}"
+      "-Xfrontend" "-enable-guaranteed-normal-arguments"
       "-no-link-objc-runtime")
 
   set(bench_library_objects)
@@ -449,28 +451,29 @@ function (swift_benchmark_compile_archopts)
     set(OUTPUT_EXEC "${benchmark-bin-dir}/Benchmark_${BENCH_COMPILE_ARCHOPTS_OPT}-${target}")
   endif()
 
-  set(objcfile "${objdir}/ObjectiveCTests.o")
-  add_custom_command(
-      OUTPUT "${objcfile}"
-      DEPENDS "${srcdir}/utils/ObjectiveCTests/ObjectiveCTests.m"
-        "${srcdir}/utils/ObjectiveCTests/ObjectiveCTests.h"
-      COMMAND
-        "${CLANG_EXEC}"
-        "-fno-stack-protector"
-        "-fPIC"
-        "-Werror=date-time"
-        "-fcolor-diagnostics"
-        "-O3"
-        "-target" "${target}"
-        "-isysroot" "${sdk}"
-        "-fobjc-arc"
-        "-arch" "${BENCH_COMPILE_ARCHOPTS_ARCH}"
-        "-F" "${sdk}/../../../Developer/Library/Frameworks"
-        "-m${triple_platform}-version-min=${ver}"
-        "-I" "${srcdir}/utils/ObjectiveCTests"
-        "${srcdir}/utils/ObjectiveCTests/ObjectiveCTests.m"
-        "-c"
-        "-o" "${objcfile}")
+  set(objcfile)
+#  set(objcfile "${objdir}/ObjectiveCTests.o")
+#  add_custom_command(
+#      OUTPUT "${objcfile}"
+#      DEPENDS "${srcdir}/utils/ObjectiveCTests/ObjectiveCTests.m"
+#        "${srcdir}/utils/ObjectiveCTests/ObjectiveCTests.h"
+#      COMMAND
+#        "${CLANG_EXEC}"
+#        "-fno-stack-protector"
+#        "-fPIC"
+#        "-Werror=date-time"
+#        "-fcolor-diagnostics"
+#        "-O3"
+#        "-target" "${target}"
+#        "-isysroot" "${sdk}"
+#        "-fobjc-arc"
+#        "-arch" "${BENCH_COMPILE_ARCHOPTS_ARCH}"
+#        "-F" "${sdk}/../../../Developer/Library/Frameworks"
+#        "-m${triple_platform}-version-min=${ver}"
+#        "-I" "${srcdir}/utils/ObjectiveCTests"
+#        "${srcdir}/utils/ObjectiveCTests/ObjectiveCTests.m"
+#        "-c"
+#        "-o" "${objcfile}")
 
   add_custom_command(
       OUTPUT "${OUTPUT_EXEC}"

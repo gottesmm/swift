@@ -15,7 +15,7 @@
 
 
 import TestsUtils
-import Foundation
+//import Foundation
 
 public let ProtocolDispatch2 = BenchmarkInfo(
   name: "ProtocolDispatch2",

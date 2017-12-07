@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if false
+
 import TestsUtils
 import Foundation
 
@@ -51,3 +53,4 @@ public func run_NSError(_ N: Int) {
       }
   }
 }
+#endif

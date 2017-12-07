@@ -13,7 +13,7 @@
 // This test checks performance of Swift bit count.
 // and mask operator.
 // rdar://problem/22151678
-import Foundation
+//import Foundation
 import TestsUtils
 
 public let BitCount = BenchmarkInfo(

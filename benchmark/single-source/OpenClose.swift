@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import TestsUtils
-import Foundation
+//import Foundation
 
 
 // A micro benchmark for checking the speed of string-based enums.

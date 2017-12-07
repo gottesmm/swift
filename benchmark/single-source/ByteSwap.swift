@@ -13,7 +13,7 @@
 // This test checks performance of Swift byte swap.
 // rdar://problem/22151907
 
-import Foundation
+//import Foundation
 import TestsUtils
 
 public let ByteSwap = BenchmarkInfo(

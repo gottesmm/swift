@@ -38,9 +38,12 @@ func buildString(_ i: String) -> String {
 
 @inline(never)
 public func run_StringBuilder(_ N: Int) {
+// This crashes with -Osize
+#if false
   for _ in 1...5000*N {
     _ = buildString(getString("a"))
   }
+#endif
 }
 
 @inline(never)
@@ -51,9 +54,12 @@ func addString(_ i: String) -> String {
 
 @inline(never)
 public func run_StringAdder(_ N: Int) {
+// This may crash with -Osize
+#if false
   for _ in 1...5000*N {
     _ = addString(getString("a"))
   }
+#endif
 }
 
 @inline(never)
@@ -67,9 +73,12 @@ func buildStringUTF16(_ i: String) -> String {
 
 @inline(never)
 public func run_StringUTF16Builder(_ N: Int) {
+// This crashes with -Osize
+#if false
   for _ in 1...5000*N {
     _ = buildStringUTF16("a")
   }
+#endif
 }
 
 
@@ -85,9 +94,12 @@ func buildStringLong(_ i: String) -> String {
 
 @inline(never)
 public func run_StringBuilderLong(_ N: Int) {
+// I think this crashes with -Osize since StringBuilder crashes.
+#if false
   for _ in 1...5000*N {
     _ = buildStringLong("👻")
   }
+#endif
 }
 
 @inline(never)

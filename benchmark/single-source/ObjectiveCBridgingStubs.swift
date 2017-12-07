@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if false
+
 import TestsUtils
 import Foundation
 #if _runtime(_ObjC)
@@ -258,3 +260,4 @@ public func run_ObjectiveCBridgeStubDataAppend(N: Int) {
   }
 #endif
 }
+#endif

@@ -10,8 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if false
+
 import TestsUtils
-import Foundation
+//import Foundation
 
 // 15% _swift_allocObject (String.bridgeToObjectiveC)
 // 14% [NSError dealloc]
@@ -48,4 +50,6 @@ public func run_SevenBoom(_ N: Int) {
   }
   CheckResults(c == 1)
 }
+
+#endif
 

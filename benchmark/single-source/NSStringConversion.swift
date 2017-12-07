@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if false
+
 // <rdar://problem/19003201>
 import TestsUtils
 import Foundation
@@ -27,3 +29,5 @@ let test:NSString = NSString(cString: "test", encoding: String.Encoding.ascii.ra
   }
 #endif
 }
+
+#endif

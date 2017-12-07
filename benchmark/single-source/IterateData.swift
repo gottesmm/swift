@@ -10,8 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if false
+
 import TestsUtils
-import Foundation
+//import Foundation
 
 public let IterateData = BenchmarkInfo(
   name: "IterateData",
@@ -37,3 +39,4 @@ public func run_IterateData(_ N: Int) {
     _ = data.reduce(0, &+)
   }
 }
+#endif

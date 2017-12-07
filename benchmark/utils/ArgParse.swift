@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
+//import Foundation
 
 public struct Arguments {
   public var progName: String

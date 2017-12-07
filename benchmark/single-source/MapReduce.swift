@@ -11,14 +11,14 @@
 //===----------------------------------------------------------------------===//
 
 import TestsUtils
-import Foundation
+//import Foundation
 
 public let MapReduce = [
   BenchmarkInfo(name: "MapReduce", runFunction: run_MapReduce, tags: [.validation, .algorithm]),
   BenchmarkInfo(name: "MapReduceAnyCollection", runFunction: run_MapReduceAnyCollection, tags: [.validation, .algorithm]),
   BenchmarkInfo(name: "MapReduceAnyCollectionShort", runFunction: run_MapReduceAnyCollectionShort, tags: [.validation, .algorithm]),
-  BenchmarkInfo(name: "MapReduceClass", runFunction: run_MapReduceClass, tags: [.validation, .algorithm]),
-  BenchmarkInfo(name: "MapReduceClassShort", runFunction: run_MapReduceClassShort, tags: [.validation, .algorithm]),
+//  BenchmarkInfo(name: "MapReduceClass", runFunction: run_MapReduceClass, tags: [.validation, .algorithm]),
+//  BenchmarkInfo(name: "MapReduceClassShort", runFunction: run_MapReduceClassShort, tags: [.validation, .algorithm]),
   BenchmarkInfo(name: "MapReduceLazyCollection", runFunction: run_MapReduceLazyCollection, tags: [.validation, .algorithm]),
   BenchmarkInfo(name: "MapReduceLazyCollectionShort", runFunction: run_MapReduceLazyCollectionShort, tags: [.validation, .algorithm]),
   BenchmarkInfo(name: "MapReduceLazySequence", runFunction: run_MapReduceLazySequence, tags: [.validation, .algorithm]),
@@ -146,6 +146,8 @@ public func run_MapReduceShortString(_ N: Int) {
   CheckResults(c != 0)
 }
 
+#if false
+
 @inline(never)
 public func run_MapReduceClass(_ N: Int) {
 #if _runtime(_ObjC)
@@ -174,3 +176,4 @@ public func run_MapReduceClassShort(_ N: Int) {
 #endif
 }
 
+#endif

@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import TestsUtils
-import Foundation
+//import Foundation
 
 public let ReduceInto = [
   BenchmarkInfo(name: "FilterEvenUsingReduce", runFunction: run_FilterEvenUsingReduce, tags: [.validation, .api]),

@@ -2363,3 +2363,18 @@ DestructureTupleInst *DestructureTupleInst::create(SILModule &M,
   return ::new (Buffer)
       DestructureTupleInst(M, Loc, Operand, Types, OwnershipKinds);
 }
+
+ClassMethodInst::ClassMethodInst(SILModule &Mod, SILDebugLocation DebugLoc,
+                                 SILValue Operand, SILDeclRef Member,
+                                 SILType Ty)
+    : UnaryInstructionBase(DebugLoc, Operand, Ty, Member) {
+#ifndef NDEBUG
+  auto member = getMember();
+  auto overrideTy = Mod.Types.getConstantOverrideType(member);
+  if (Mod.getStage() != SILStage::Lowered) {
+    auto overrideSILTy = SILType::getPrimitiveObjectType(overrideTy);
+    assert(getType() == overrideSILTy &&
+           "result type of class_method must match abstracted type of method");
+  }
+#endif
+}

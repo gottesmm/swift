@@ -5420,9 +5420,8 @@ class ClassMethodInst
 {
   friend SILBuilder;
 
-  ClassMethodInst(SILDebugLocation DebugLoc, SILValue Operand,
-                  SILDeclRef Member, SILType Ty)
-      : UnaryInstructionBase(DebugLoc, Operand, Ty, Member) {}
+  ClassMethodInst(SILModule &Mod, SILDebugLocation DebugLoc, SILValue Operand,
+                  SILDeclRef Member, SILType Ty);
 };
 
 /// SuperMethodInst - Given the address of a value of class type and a method

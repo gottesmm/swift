@@ -1258,7 +1258,7 @@ public:
   ClassMethodInst *createClassMethod(SILLocation Loc, SILValue Operand,
                                      SILDeclRef Member, SILType MethodTy) {
     return insert(new (getModule()) ClassMethodInst(
-        getSILDebugLocation(Loc), Operand, Member, MethodTy));
+        getModule(), getSILDebugLocation(Loc), Operand, Member, MethodTy));
   }
 
   SuperMethodInst *createSuperMethod(SILLocation Loc, SILValue Operand,

@@ -533,8 +533,10 @@ bool swift::canDevirtualizeClassMethod(FullApplySite AI,
   if (AI.getFunction()->isSerialized()) {
     // function_ref inside fragile function cannot reference a private or
     // hidden symbol.
-    if (!F->hasValidLinkageForFragileRef())
+    if (!F->hasValidLinkageForFragileRef()) {
+      DEBUG(llvm::dbgs() << "        FAIL: Could not optimize function because the apply's function is serialized, but the function itself does not have valid linkage for a fragile ref.\n");
       return false;
+    }
   }
 
   return true;

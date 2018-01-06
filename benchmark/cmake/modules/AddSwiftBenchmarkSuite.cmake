@@ -208,7 +208,7 @@ function (swift_benchmark_compile_archopts)
       "-target" "${target}"
       "-F" "${sdk}/../../../Developer/Library/Frameworks"
       "-${BENCH_COMPILE_ARCHOPTS_OPT}"
-      "-Xfrontend" "-enable-guaranteed-normal-arguments"
+#      "-Xfrontend" "-enable-guaranteed-normal-arguments"
       "-no-link-objc-runtime"
       "-I" "${srcdir}/utils/ObjectiveCTests")
 
@@ -234,7 +234,7 @@ function (swift_benchmark_compile_archopts)
       "-target" "${target}"
       "-F" "${sdk}/../../../Developer/Library/Frameworks"
       "-${driver_opt}"
-      "-Xfrontend" "-enable-guaranteed-normal-arguments"
+#      "-Xfrontend" "-enable-guaranteed-normal-arguments"
       "-no-link-objc-runtime")
 
   set(bench_library_objects)

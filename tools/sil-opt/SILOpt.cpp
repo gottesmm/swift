@@ -21,6 +21,7 @@
 #include "swift/AST/SILOptions.h"
 #include "swift/Basic/LLVMInitialize.h"
 #include "swift/Basic/LLVMContext.h"
+#include "swift/Basic/Version.h"
 #include "swift/Frontend/DiagnosticVerifier.h"
 #include "swift/Frontend/Frontend.h"
 #include "swift/Frontend/PrintingDiagnosticConsumer.h"
@@ -83,6 +84,26 @@ EnableSILOwnershipOpt("enable-sil-ownership",
 static llvm::cl::opt<bool>
 EnableSILOpaqueValues("enable-sil-opaque-values",
                       llvm::cl::desc("Compile the module with sil-opaque-values enabled."));
+
+/// TODO: Change this to use a custom parser.
+static llvm::cl::opt<std::string> AssumedSwiftVersion(
+    "swift-version",
+    llvm::cl::desc("What swift version should we assume when importing other modules. Must be in MAJOR.MINOR form"));
+
+static Optional<std::pair<unsigned, unsigned>> getEffectiveLanguageVersion() {
+  if (AssumedSwiftVersion.empty())
+    return None;
+  StringRef Str(AssumedSwiftVersion), LHS, RHS;
+  std::tie(LHS, RHS) = Str.split('.');
+  assert(LHS != Str && !RHS.empty() && "Invalid effective language version");
+  assert(!RHS.contains('.') && "Invalid effective language version");
+  APInt LHSInt, RHSInt;
+  LHS.getAsInteger(10, LHSInt);
+  RHS.getAsInteger(10, RHSInt);
+  std::pair<unsigned, unsigned> Result =
+    {unsigned(LHSInt.getLimitedValue()), unsigned(RHSInt.getLimitedValue())};
+  return Result;
+}
 
 namespace {
 enum EnforceExclusivityMode {
@@ -309,6 +330,11 @@ int main(int argc, char **argv) {
       createOptRemarkRegex(PassRemarksPassed);
   Invocation.getLangOptions().OptimizationRemarkMissedPattern =
       createOptRemarkRegex(PassRemarksMissed);
+  auto EffectiveVersion = getEffectiveLanguageVersion();
+  if (EffectiveVersion.hasValue()) {
+    Invocation.getLangOptions().EffectiveLanguageVersion =
+      version::Version{EffectiveVersion->first, EffectiveVersion->second};
+  }
 
   // Setup the SIL Options.
   SILOptions &SILOpts = Invocation.getSILOptions();

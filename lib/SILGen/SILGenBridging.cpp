@@ -1093,12 +1093,21 @@ ManagedValue SILGenFunction::emitBridgedToNativeError(SILLocation loc,
   assert(bridgeFnType->getResults()[0].getConvention()
          == ResultConvention::Owned);
   auto nativeErrorType = bridgeFnConv.getSILType(bridgeFnType->getResults()[0]);
-  assert(bridgeFnType->getParameters()[0].getConvention()
+
+  SILValue arg;
+  if (SGM.M.getOptions().EnableGuaranteedNormalArguments) {
+    assert(bridgeFnType->getParameters()[0].getConvention()
+           == ParameterConvention::Direct_Guaranteed);
+    arg = bridgedError.getValue();
+  } else {
+    assert(bridgeFnType->getParameters()[0].getConvention()
            == ParameterConvention::Direct_Owned);
+    arg = bridgedError.forward(*this);
+  }
 
   SILValue nativeError = B.createApply(loc, bridgeFn, bridgeFn->getType(),
                                        nativeErrorType, {},
-                                       bridgedError.forward(*this));
+                                       arg);
   return emitManagedRValueWithCleanup(nativeError);
 }
 
@@ -1141,12 +1150,21 @@ ManagedValue SILGenFunction::emitNativeToBridgedError(SILLocation loc,
          == ResultConvention::Owned);
   auto loweredBridgedErrorType =
     bridgeFnConv.getSILType(bridgeFnType->getResults()[0]);
-  assert(bridgeFnType->getParameters()[0].getConvention()
+
+  SILValue arg;
+  if (SGM.M.getOptions().EnableGuaranteedNormalArguments) {
+    assert(bridgeFnType->getParameters()[0].getConvention()
+           == ParameterConvention::Direct_Guaranteed);
+    arg = nativeError.getValue();
+  } else {
+    assert(bridgeFnType->getParameters()[0].getConvention()
            == ParameterConvention::Direct_Owned);
+    arg = nativeError.forward(*this);
+  }
 
   SILValue bridgedError = B.createApply(loc, bridgeFn, bridgeFn->getType(),
                                         loweredBridgedErrorType, {},
-                                        nativeError.forward(*this));
+                                        arg);
   return emitManagedRValueWithCleanup(bridgedError);
 }
 

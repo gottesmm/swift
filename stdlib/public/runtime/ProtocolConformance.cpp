@@ -344,6 +344,12 @@ _registerProtocolConformances(ConformanceState &C,
                               const ProtocolConformanceRecord *end) {
   ScopedLock guard(C.SectionsToScanLock);
   C.SectionsToScan.push_back(ConformanceSection{begin, end});
+#ifndef NDEBUG
+  while (begin != end) {
+    begin->get()->verify();
+    ++begin;
+  }
+#endif
 }
 
 void swift::addImageProtocolConformanceBlockCallback(const void *conformances,

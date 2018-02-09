@@ -57,10 +57,10 @@ func get(holder holder: inout Holder) -> C {
 func project(fn fn: () -> Holder) -> C {
   return fn().value
 }
-// CHECK-LABEL: sil hidden @$Ss7project2fns1CCs6HolderVyXE_tF : $@convention(thin) (@owned @noescape @callee_guaranteed () -> Holder) -> @owned C {
-// CHECK: bb0([[FN:%.*]] : @owned $@noescape @callee_guaranteed () -> Holder):
-// CHECK:      [[BORROWED_FN:%.*]] = begin_borrow [[FN]]
-// CHECK-NEXT: [[BORROWED_FN_COPY:%.*]] = copy_value [[BORROWED_FN]]
+// CHECK-LABEL: sil hidden @$Ss7project2fns1CCs6HolderVyXE_tF : $@convention(thin) (@guaranteed @noescape @callee_guaranteed () -> Holder) -> @owned C {
+// CHECK: bb0([[FN:%.*]] : @guaranteed $@noescape @callee_guaranteed () -> Holder):
+// CHECK-NEXT: debug_value
+// CHECK-NEXT: [[BORROWED_FN_COPY:%.*]] = copy_value [[FN]]
 // CHECK-NEXT: [[BORROW:%.*]] = begin_borrow [[BORROWED_FN_COPY]]
 // CHECK-NEXT: [[T0:%.*]] = apply [[BORROW]]()
 // CHECK-NEXT: end_borrow [[BORROW]]
@@ -68,6 +68,4 @@ func project(fn fn: () -> Holder) -> C {
 // CHECK-NEXT: [[T2:%.*]] = unmanaged_to_ref [[T1]]
 // CHECK-NEXT: [[COPIED_T2:%.*]] = copy_value [[T2]]
 // CHECK-NEXT: destroy_value [[BORROWED_FN_COPY]]
-// CHECK-NEXT: end_borrow [[BORROWED_FN]] from [[FN]]
-// CHECK-NEXT: destroy_value [[FN]]
 // CHECK-NEXT: return [[COPIED_T2]]

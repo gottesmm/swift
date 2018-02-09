@@ -73,8 +73,7 @@ func test3() {
   
   // CHECK-NOT: destroy_value
 
-  // CHECK: [[BORROWED_STR:%.*]] = begin_borrow [[STR]]
-  // CHECK-NEXT: [[STR_COPY:%.*]] = copy_value [[BORROWED_STR]]
+  // CHECK-NEXT: [[STR_COPY:%.*]] = copy_value [[STR]]
   // CHECK: [[USEFN:%[0-9]+]] = function_ref{{.*}}useAString
   // CHECK-NEXT: [[USE:%[0-9]+]] = apply [[USEFN]]([[STR_COPY]])
   // CHECK-NEXT: end_borrow [[BORROWED_STR]] from [[STR]]

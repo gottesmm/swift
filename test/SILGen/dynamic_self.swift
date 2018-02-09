@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -emit-silgen %s -disable-objc-attr-requires-foundation-module | %FileCheck %s
+// RUN: %target-swift-frontend -emit-silgen -enable-sil-ownership %s -disable-objc-attr-requires-foundation-module | %FileCheck %s
 // RUN: %target-swift-frontend -emit-sil -O %s -disable-objc-attr-requires-foundation-module
 // RUN: %target-swift-frontend -emit-ir %s -disable-objc-attr-requires-foundation-module
 
@@ -37,35 +37,29 @@ class GX<T> {
 
 class GY<T> : GX<[T]> { }
 
-// CHECK-LABEL: sil hidden @$S12dynamic_self23testDynamicSelfDispatch{{[_0-9a-zA-Z]*}}F : $@convention(thin) (@owned Y) -> ()
+// CHECK-LABEL: sil hidden @$S12dynamic_self23testDynamicSelfDispatch{{[_0-9a-zA-Z]*}}F : $@convention(thin) (@guaranteed Y) -> ()
 // CHECK: bb0([[Y:%[0-9]+]] : $Y):
-// CHECK:   [[BORROWED_Y:%.*]] = begin_borrow [[Y]]
-// CHECK:   [[BORROWED_Y_AS_X:%[0-9]+]] = upcast [[BORROWED_Y]] : $Y to $X
-// CHECK:   [[X_F:%[0-9]+]] = class_method [[BORROWED_Y_AS_X]] : $X, #X.f!1 : (X) -> () -> @dynamic_self X, $@convention(method) (@guaranteed X) -> @owned X
-// CHECK:   [[X_RESULT:%[0-9]+]] = apply [[X_F]]([[BORROWED_Y_AS_X]]) : $@convention(method) (@guaranteed X) -> @owned X
-// CHECK:   end_borrow [[BORROWED_Y]] from [[Y]]
+// CHECK:   [[Y_AS_X:%[0-9]+]] = upcast [[Y]] : $Y to $X
+// CHECK:   [[X_F:%[0-9]+]] = class_method [[Y_AS_X]] : $X, #X.f!1 : (X) -> () -> @dynamic_self X, $@convention(method) (@guaranteed X) -> @owned X
+// CHECK:   [[X_RESULT:%[0-9]+]] = apply [[X_F]]([[Y_AS_X]]) : $@convention(method) (@guaranteed X) -> @owned X
 // CHECK:   [[Y_RESULT:%[0-9]+]] = unchecked_ref_cast [[X_RESULT]] : $X to $Y
 // CHECK:   destroy_value [[Y_RESULT]] : $Y
-// CHECK:   destroy_value [[Y]] : $Y
 func testDynamicSelfDispatch(y: Y) {
   _ = y.f()
 }
 
-// CHECK-LABEL: sil hidden @$S12dynamic_self30testDynamicSelfDispatchGeneric{{[_0-9a-zA-Z]*}}F : $@convention(thin) (@owned GY<Int>) -> ()
+// CHECK-LABEL: sil hidden @$S12dynamic_self30testDynamicSelfDispatchGeneric{{[_0-9a-zA-Z]*}}F : $@convention(thin) (@guaranteed GY<Int>) -> ()
 func testDynamicSelfDispatchGeneric(gy: GY<Int>) {
   // CHECK: bb0([[GY:%[0-9]+]] : $GY<Int>):
-  // CHECK:   [[BORROWED_GY:%.*]] = begin_borrow [[GY]]
-  // CHECK:   [[BORROWED_GY_AS_GX:%[0-9]+]] = upcast [[BORROWED_GY]] : $GY<Int> to $GX<Array<Int>>
-  // CHECK:   [[GX_F:%[0-9]+]] = class_method [[BORROWED_GY_AS_GX]] : $GX<Array<Int>>, #GX.f!1 : <T> (GX<T>) -> () -> @dynamic_self GX<T>, $@convention(method) <τ_0_0> (@guaranteed GX<τ_0_0>) -> @owned GX<τ_0_0>
-  // CHECK:   [[GX_RESULT:%[0-9]+]] = apply [[GX_F]]<[Int]>([[BORROWED_GY_AS_GX]]) : $@convention(method) <τ_0_0> (@guaranteed GX<τ_0_0>) -> @owned GX<τ_0_0>
-  // CHECK:   end_borrow [[BORROWED_GY]] from [[GY]]
+  // CHECK:   [[GY_AS_GX:%[0-9]+]] = upcast [[GY]] : $GY<Int> to $GX<Array<Int>>
+  // CHECK:   [[GX_F:%[0-9]+]] = class_method [[GY_AS_GX]] : $GX<Array<Int>>, #GX.f!1 : <T> (GX<T>) -> () -> @dynamic_self GX<T>, $@convention(method) <τ_0_0> (@guaranteed GX<τ_0_0>) -> @owned GX<τ_0_0>
+  // CHECK:   [[GX_RESULT:%[0-9]+]] = apply [[GX_F]]<[Int]>([[GY_AS_GX]]) : $@convention(method) <τ_0_0> (@guaranteed GX<τ_0_0>) -> @owned GX<τ_0_0>
   // CHECK:   [[GY_RESULT:%[0-9]+]] = unchecked_ref_cast [[GX_RESULT]] : $GX<Array<Int>> to $GY<Int>
   // CHECK:   destroy_value [[GY_RESULT]] : $GY<Int>
-  // CHECK:   destroy_value [[GY]]
   _ = gy.f()
 }
 
-// CHECK-LABEL: sil hidden @$S12dynamic_self21testArchetypeDispatch{{[_0-9a-zA-Z]*}}F : $@convention(thin) <T where T : P> (@in T) -> ()
+// CHECK-LABEL: sil hidden @$S12dynamic_self21testArchetypeDispatch{{[_0-9a-zA-Z]*}}F : $@convention(thin) <T where T : P> (@in_guaranteed T) -> ()
 func testArchetypeDispatch<T: P>(t: T) {
   // CHECK: bb0([[T:%[0-9]+]] : $*T):
   // CHECK:   [[T_RESULT:%[0-9]+]] = alloc_stack $T
@@ -84,20 +78,16 @@ func testExistentialDispatch(p: P) {
 // CHECK:   apply [[P_F_METHOD]]<@opened([[N]]) P>([[P_RESULT_ADDR]], [[PCOPY_ADDR]]) : $@convention(witness_method: P) <τ_0_0 where τ_0_0 : P> (@in_guaranteed τ_0_0) -> @out τ_0_0
 // CHECK:   destroy_addr [[P_RESULT]] : $*P
 // CHECK:   dealloc_stack [[P_RESULT]] : $*P
-// CHECK:   destroy_addr [[P]] : $*P
   _ = p.f()
 }
 
-// CHECK-LABEL: sil hidden @$S12dynamic_self28testExistentialDispatchClass{{[_0-9a-zA-Z]*}}F : $@convention(thin) (@owned CP) -> ()
+// CHECK-LABEL: sil hidden @$S12dynamic_self28testExistentialDispatchClass{{[_0-9a-zA-Z]*}}F : $@convention(thin) (@guaranteed CP) -> ()
 // CHECK: bb0([[CP:%[0-9]+]] : $CP):
-// CHECK:   [[BORROWED_CP:%.*]] = begin_borrow [[CP]]
-// CHECK:   [[CP_ADDR:%[0-9]+]] = open_existential_ref [[BORROWED_CP]] : $CP to $@opened([[N:".*"]]) CP
+// CHECK:   [[CP_ADDR:%[0-9]+]] = open_existential_ref [[CP]] : $CP to $@opened([[N:".*"]]) CP
 // CHECK:   [[CP_F:%[0-9]+]] = witness_method $@opened([[N]]) CP, #CP.f!1 : {{.*}}, [[CP_ADDR]]{{.*}} : $@convention(witness_method: CP) <τ_0_0 where τ_0_0 : CP> (@guaranteed τ_0_0) -> @owned τ_0_0
 // CHECK:   [[CP_F_RESULT:%[0-9]+]] = apply [[CP_F]]<@opened([[N]]) CP>([[CP_ADDR]]) : $@convention(witness_method: CP) <τ_0_0 where τ_0_0 : CP> (@guaranteed τ_0_0) -> @owned τ_0_0
 // CHECK:   [[RESULT_EXISTENTIAL:%[0-9]+]] = init_existential_ref [[CP_F_RESULT]] : $@opened([[N]]) CP : $@opened([[N]]) CP, $CP
 // CHECK:   destroy_value [[RESULT_EXISTENTIAL]]
-// CHECK:   end_borrow [[BORROWED_CP]] from [[CP]]
-// CHECK:   destroy_value [[CP]]
 func testExistentialDispatchClass(cp: CP) {
   _ = cp.f()
 }
@@ -106,7 +96,7 @@ func testExistentialDispatchClass(cp: CP) {
   @objc func method() -> Self { return self }
 }
 
-// CHECK-LABEL: sil hidden @$S12dynamic_self21testAnyObjectDispatch1oyyXl_tF : $@convention(thin) (@owned AnyObject) -> () {
+// CHECK-LABEL: sil hidden @$S12dynamic_self21testAnyObjectDispatch1oyyXl_tF : $@convention(thin) (@guaranteed AnyObject) -> () {
 func testAnyObjectDispatch(o: AnyObject) {
   // CHECK: dynamic_method_br [[O_OBJ:%[0-9]+]] : $@opened({{.*}}) AnyObject, #ObjC.method!1.foreign, bb1, bb2
 
@@ -155,13 +145,11 @@ func testOptionalResult(v : OptionalResultInheritor) {
   v.foo()?.bar()
 }
 
-// CHECK-LABEL: sil hidden @$S12dynamic_self18testOptionalResult1vyAA0dE9InheritorC_tF : $@convention(thin) (@owned OptionalResultInheritor) -> () {
+// CHECK-LABEL: sil hidden @$S12dynamic_self18testOptionalResult1vyAA0dE9InheritorC_tF : $@convention(thin) (@guaranteed OptionalResultInheritor) -> () {
 // CHECK: bb0([[ARG:%.*]] : $OptionalResultInheritor):
-// CHECK:      [[BORROWED_ARG:%.*]] = begin_borrow [[ARG]]
-// CHECK:      [[CAST_BORROWED_ARG:%.*]] = upcast [[BORROWED_ARG]]
-// CHECK:      [[T0:%.*]] = class_method [[CAST_BORROWED_ARG]] : $OptionalResult, #OptionalResult.foo!1 : (OptionalResult) -> () -> @dynamic_self OptionalResult?, $@convention(method) (@guaranteed OptionalResult) -> @owned Optional<OptionalResult>
-// CHECK-NEXT: [[RES:%.*]] = apply [[T0]]([[CAST_BORROWED_ARG]])
-// CHECK-NEXT: end_borrow [[BORROWED_ARG]]
+// CHECK:      [[CAST_ARG:%.*]] = upcast [[ARG]]
+// CHECK:      [[T0:%.*]] = class_method [[CAST_ARG]] : $OptionalResult, #OptionalResult.foo!1 : (OptionalResult) -> () -> @dynamic_self OptionalResult?, $@convention(method) (@guaranteed OptionalResult) -> @owned Optional<OptionalResult>
+// CHECK-NEXT: [[RES:%.*]] = apply [[T0]]([[CAST_ARG]])
 // CHECK-NEXT: [[T4:%.*]] = unchecked_ref_cast [[RES]] : $Optional<OptionalResult> to $Optional<OptionalResultInheritor>
 
 func id<T>(_ t: T) -> T { return t }
@@ -259,13 +247,13 @@ class Factory {
   static func staticNewInstance() -> Self { return self.init() }
 }
 
-// CHECK-LABEL: sil hidden @$S12dynamic_self22partialApplySelfReturn1c1tyAA7FactoryC_AFmtF : $@convention(thin) (@owned Factory, @thick Factory.Type) -> ()
+// CHECK-LABEL: sil hidden @$S12dynamic_self22partialApplySelfReturn1c1tyAA7FactoryC_AFmtF : $@convention(thin) (@guaranteed Factory, @thick Factory.Type) -> ()
 func partialApplySelfReturn(c: Factory, t: Factory.Type) {
-  // CHECK: function_ref @$S12dynamic_self7FactoryC11newInstanceACXDyFTc : $@convention(thin) (@owned Factory) -> @owned @callee_guaranteed () -> @owned Factory
+  // CHECK: function_ref @$S12dynamic_self7FactoryC11newInstanceACXDyFTc : $@convention(thin) (@guaranteed Factory) -> @owned @callee_guaranteed () -> @owned Factory
   _ = c.newInstance
-  // CHECK: function_ref @$S12dynamic_self7FactoryC11newInstanceACXDyFTc : $@convention(thin) (@owned Factory) -> @owned @callee_guaranteed () -> @owned Factory
+  // CHECK: function_ref @$S12dynamic_self7FactoryC11newInstanceACXDyFTc : $@convention(thin) (@guaranteed Factory) -> @owned @callee_guaranteed () -> @owned Factory
   _ = Factory.newInstance
-  // CHECK: function_ref @$S12dynamic_self7FactoryC11newInstanceACXDyFTc : $@convention(thin) (@owned Factory) -> @owned @callee_guaranteed () -> @owned Factory
+  // CHECK: function_ref @$S12dynamic_self7FactoryC11newInstanceACXDyFTc : $@convention(thin) (@guaranteed Factory) -> @owned @callee_guaranteed () -> @owned Factory
   _ = t.newInstance
   _ = type(of: c).newInstance
 

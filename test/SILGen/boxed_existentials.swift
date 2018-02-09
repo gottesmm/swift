@@ -122,8 +122,8 @@ func plusOneError() -> Error { }
 
 // CHECK-LABEL: sil hidden @$S18boxed_existentials31test_open_existential_semanticsyys5Error_p_sAC_ptF
 // GUARANTEED-LABEL: sil hidden @$S18boxed_existentials31test_open_existential_semanticsyys5Error_p_sAC_ptF
-// CHECK: bb0([[ARG0:%.*]]: @owned $Error,
-// GUARANTEED: bb0([[ARG0:%.*]]: @owned $Error,
+// CHECK: bb0([[ARG0:%.*]]: @guaranteed $Error,
+// GUARANTEED: bb0([[ARG0:%.*]]: @guaranteed $Error,
 func test_open_existential_semantics(_ guaranteed: Error,
                                      _ immediate: Error) {
   var immediate = immediate
@@ -142,11 +142,9 @@ func test_open_existential_semantics(_ guaranteed: Error,
   // CHECK-NOT: destroy_value [[ARG0]]
 
   // GUARANTEED-NOT: copy_value [[ARG0]]
-  // GUARANTEED: [[BORROWED_ARG0:%.*]] = begin_borrow [[ARG0]]
-  // GUARANTEED: [[VALUE:%.*]] = open_existential_box [[BORROWED_ARG0]]
+  // GUARANTEED: [[VALUE:%.*]] = open_existential_box [[ARG0]]
   // GUARANTEED: [[METHOD:%.*]] = function_ref
   // GUARANTEED: apply [[METHOD]]<{{.*}}>([[VALUE]])
-  // GUARANTEED: end_borrow [[BORROWED_ARG0]] from [[ARG0]]
   // GUARANTEED-NOT: destroy_addr [[VALUE]]
   // GUARANTEED-NOT: destroy_value [[ARG0]]
   guaranteed.extensionMethod()

@@ -255,7 +255,7 @@ public:
   ManagedValue createLoadCopy(SILLocation loc, ManagedValue addr,
                               const TypeLowering &lowering);
 
-  ManagedValue createFunctionArgument(SILType type, ValueDecl *decl);
+  ManagedValue createFunctionArgument(SILType type, ValueDecl *decl=nullptr);
 
   using SILBuilder::createEnum;
   ManagedValue createEnum(SILLocation loc, ManagedValue payload,

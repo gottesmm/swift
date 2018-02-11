@@ -788,15 +788,13 @@ void RValue::verify(SILGenFunction &SGF) const & {
 }
 
 bool RValue::isPlusOne(SILGenFunction &SGF) const & {
-  return llvm::all_of(values, [&SGF](ManagedValue mv) -> bool {
-      return mv.isPlusOne(SGF);
-  });
+  return llvm::all_of(
+      values, [&SGF](ManagedValue mv) -> bool { return mv.isPlusOne(SGF); });
 }
 
 bool RValue::isPlusZero(SILGenFunction &SGF) const & {
-  return llvm::none_of(values, [](ManagedValue mv) -> bool {
-    return mv.isPlusZero();
-  });
+  return llvm::none_of(values,
+                       [](ManagedValue mv) -> bool { return mv.isPlusZero(); });
 }
 
 const TypeLowering &RValue::getTypeLowering(SILGenFunction &SGF) const & {

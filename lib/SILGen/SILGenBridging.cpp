@@ -305,6 +305,10 @@ static ManagedValue emitManagedParameter(SILGenFunction &SGF, SILLocation loc,
     return SGF.emitManagedRValueWithCleanup(value, valueTL);
 
   case ParameterConvention::Direct_Guaranteed:
+    // If we have a guaranteed parameter, the object should not need to be
+    // retained or have a cleanup.
+    return ManagedValue::forUnmanaged(value);
+
   case ParameterConvention::Direct_Unowned:
     // We need to independently retain the value.
     return SGF.emitManagedRetain(loc, value, valueTL);
@@ -314,9 +318,9 @@ static ManagedValue emitManagedParameter(SILGenFunction &SGF, SILLocation loc,
 
   case ParameterConvention::Indirect_In_Guaranteed:
     if (valueTL.isLoadable()) {
-      return SGF.emitLoad(loc, value, valueTL, SGFContext(), IsNotTake);
+      return SGF.B.createLoadBorrow(loc, ManagedValue::forUnmanaged(value));
     } else {
-      return SGF.emitManagedRetain(loc, value, valueTL);
+      return ManagedValue::forUnmanaged(value);
     }
 
   case ParameterConvention::Indirect_In:
@@ -1078,10 +1082,8 @@ ManagedValue SILGenFunction::emitBridgedToNativeError(SILLocation loc,
     };
     auto conformances = getASTContext().AllocateCopy(conformanceArray);
 
-    SILValue nativeError =
-      B.createInitExistentialRef(loc, nativeErrorTy, bridgedErrorTy,
-                                 bridgedError.forward(*this), conformances);
-    return emitManagedRValueWithCleanup(nativeError);
+    return B.createInitExistentialRef(loc, nativeErrorTy, bridgedErrorTy,
+                                      bridgedError, conformances);
   }
 
   // Otherwise, we need to call a runtime function to potential substitute

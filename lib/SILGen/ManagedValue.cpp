@@ -112,7 +112,7 @@ void ManagedValue::forwardInto(SILGenFunction &SGF, SILLocation loc,
                                SILValue address) {
   assert(isPlusOne(SGF));
   auto &addrTL = SGF.getTypeLowering(address->getType());
-  SGF.emitSemanticStore(loc, getValue(), address,
+  SGF.emitSemanticStore(loc, forward(SGF), address,
                         addrTL, IsInitialization);
 }
 
@@ -120,7 +120,7 @@ void ManagedValue::assignInto(SILGenFunction &SGF, SILLocation loc,
                               SILValue address) {
   assert(isPlusOne(SGF));
   auto &addrTL = SGF.getTypeLowering(address->getType());
-  SGF.emitSemanticStore(loc, getValue(), address, addrTL,
+  SGF.emitSemanticStore(loc, forward(SGF), address, addrTL,
                         IsNotInitialization);
 }
 

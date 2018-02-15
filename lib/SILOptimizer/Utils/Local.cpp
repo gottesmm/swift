@@ -677,7 +677,10 @@ bool StringConcatenationOptimizer::extractStringConcatOperands() {
   if (AI->getNumArguments() != 3 || !Fn->hasSemanticsAttr("string.concat"))
     return false;
 
-  assert(Fn->getRepresentation() == SILFunctionTypeRepresentation::Method);
+  // We should only get methods here. Bail otherwise.
+  if (Fn->getRepresentation() != SILFunctionTypeRepresentation::Method) {
+    return false;
+  }
 
   // Left and right operands of a string concatenation operation.
   AILeft = dyn_cast<ApplyInst>(AI->getOperand(1));

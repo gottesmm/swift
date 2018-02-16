@@ -67,10 +67,10 @@ static RValue emitImplicitValueConstructorArg(SILGenFunction &SGF,
                                  AC.getIdentifier("$implicit_value"), Type(),
                                  DC);
     VD->setInterfaceType(interfaceType);
-    SILValue arg =
+    SILFunctionArgument *arg =
         SGF.F.begin()->createFunctionArgument(SGF.getLoweredType(type), VD);
     ManagedValue mvArg;
-    if (arg.getOwnershipKind() == ValueOwnershipKind::Owned) {
+    if (arg->getArgumentConvention().isOwnedConvention()) {
       mvArg = SGF.emitManagedRValueWithCleanup(arg);
     } else {
       mvArg = ManagedValue::forUnmanaged(arg);

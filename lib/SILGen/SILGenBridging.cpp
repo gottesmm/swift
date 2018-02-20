@@ -805,6 +805,7 @@ static void buildBlockToFuncThunkBody(SILGenFunction &SGF,
   assert(formalBlockParams.size() == blockTy->getNumParameters());
   assert(formalFuncParams.size() == funcTy->getNumParameters());
 
+  // Create the arguments for the call.
   for (unsigned i : indices(funcTy->getParameters())) {
     auto &param = funcTy->getParameters()[i];
     CanType formalBlockParamTy = formalBlockParams[i];
@@ -812,12 +813,24 @@ static void buildBlockToFuncThunkBody(SILGenFunction &SGF,
 
     auto paramTy = fnConv.getSILType(param);
     SILValue v = entry->createFunctionArgument(paramTy);
+
+    // First get the managed parameter for this function.
     auto mv = emitManagedParameter(SGF, loc, param, v);
 
     SILType loweredBlockArgTy = blockTy->getParameters()[i].getSILStorageType();
-    args.push_back(SGF.emitNativeToBridgedValue(loc, mv, formalFuncParamTy,
-                                                formalBlockParamTy,
-                                                loweredBlockArgTy));
+
+    // Then bridge the native value to its bridged variant.
+    mv = SGF.emitNativeToBridgedValue(loc, mv, formalFuncParamTy,
+                                      formalBlockParamTy,
+                                      loweredBlockArgTy);
+
+    // Finally change ownership if we need to. We do not need to care about the
+    // generic case since +1 parameters can be "instantaneously" borrowed at the
+    // call site.
+    if (blockTy->getParameters()[i].isConsumed()) {
+      mv = mv.ensurePlusOne(SGF, loc);
+    }
+    args.push_back(mv);
   }
 
   // Add the block argument.

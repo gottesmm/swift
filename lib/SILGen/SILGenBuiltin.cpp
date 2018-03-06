@@ -141,7 +141,7 @@ static ManagedValue emitBuiltinUnpin(SILGenFunction &SGF,
 
   if (requireIsOptionalNativeObject(SGF, loc, subs[0].getReplacement())) {
     // Unpinning takes responsibility for the +1 handle.
-    SGF.B.createStrongUnpin(loc, args[0].forward(SGF), SGF.B.getDefaultAtomicity());
+    SGF.B.createStrongUnpin(loc, args[0].ensurePlusOne(SGF, loc).forward(SGF), SGF.B.getDefaultAtomicity());
   }
 
   return ManagedValue::forUnmanaged(SGF.emitEmptyTuple(loc));

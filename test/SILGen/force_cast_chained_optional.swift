@@ -1,4 +1,4 @@
-// REQUIRES: plus_one_runtime
+// REQUIRES: plus_zero_runtime
 
 // RUN: %target-swift-frontend -module-name force_cast_chained_optional -emit-silgen -enable-sil-ownership %s | %FileCheck %s
 
@@ -14,9 +14,8 @@ class C {}
 class D: C {}
 
 // CHECK-LABEL: sil hidden @$S27force_cast_chained_optional4testyAA1DCAA3FooCF
-// CHECK: bb0([[ARG:%.*]] : @owned $Foo):
-// CHECK:   [[BORROWED_ARG:%.*]] = begin_borrow [[ARG]]
-// CHECK:   class_method [[BORROWED_ARG]] : $Foo, #Foo.bar!getter.1 : (Foo) -> () -> Bar?, $@convention(method) (@guaranteed Foo) ->
+// CHECK: bb0([[ARG:%.*]] : @guaranteed $Foo):
+// CHECK:   class_method [[ARG]] : $Foo, #Foo.bar!getter.1 : (Foo) -> () -> Bar?, $@convention(method) (@guaranteed Foo) ->
 // CHECK:   switch_enum {{%.*}}, case #Optional.some!enumelt.1: [[SOME_BAR:bb[0-9]+]], case #Optional.none!enumelt: [[NO_BAR:bb[0-9]+]]
 //
 // CHECK: [[NO_BAR]]:
@@ -30,7 +29,6 @@ class D: C {}
 // CHECK:   apply [[METHOD]]([[BORROWED_BAR]])
 // CHECK:   end_borrow [[BORROWED_BAR]] from [[BAR]]
 // CHECK:   unconditional_checked_cast {{%.*}} : $C to $D
-// CHECK:   end_borrow [[BORROWED_ARG]] from [[ARG]]
 //
 // CHECK: [[TRAP]]:
 // CHECK:   unreachable

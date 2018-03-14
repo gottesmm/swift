@@ -444,8 +444,7 @@ func optOptStringToOptOptPointer(string: String??) {
   // CHECK:   [[TAKES:%.*]] = function_ref @$S18pointer_conversion08takesOptD15ConstRawPointer_3andySVSgSg_SitF
   // CHECK:   apply [[TAKES]]([[OPTOPTDEP]], [[RESULT1]])
   // CHECK:   destroy_value [[OWNER]]
-  // CHECK:   end_borrow [[BORROW]]
-  // CHECK:   destroy_value %0
+  // CHECK-NOT:   destroy_value %0
   // CHECK: [[SOME_NONE_BB2]]:
   // CHECK:   [[NO_VALUE:%.*]] = enum $Optional<UnsafeRawPointer>, #Optional.none
   // CHECK:   [[NO_OWNER:%.*]] = enum $Optional<AnyObject>, #Optional.none

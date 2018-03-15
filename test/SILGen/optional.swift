@@ -8,7 +8,6 @@ func testCall(_ f: (() -> ())?) {
 // CHECK:    sil hidden @{{.*}}testCall{{.*}}
 // CHECK:    bb0([[T0:%.*]] : @guaranteed $Optional<@callee_guaranteed () -> ()>):
 // CHECK:      [[T0_COPY:%.*]] = copy_value [[T0]]
-// CHECK:      [[T0_COPY:%.*]] = copy_value [[BORROWED_T0]]
 // CHECK:      [[T0_COPY_COPY:%.*]] = copy_value [[T0_COPY]]
 // CHECK-NEXT: switch_enum [[T0_COPY_COPY]] : $Optional<@callee_guaranteed () -> ()>, case #Optional.some!enumelt.1: [[SOME:bb[0-9]+]], case #Optional.none!enumelt: [[NONE:bb[0-9]+]]
 //

@@ -191,8 +191,11 @@ SILGenFunction::emitPreconditionOptionalHasValue(SILLocation loc,
   bool hadCleanup = optional.hasCleanup();
   bool hadLValue = optional.isLValue();
 
-  auto noneDecl = getASTContext().getOptionalNoneDecl();
   auto someDecl = getASTContext().getOptionalSomeDecl();
+  auto noneDecl = getASTContext().getOptionalNoneDecl();
+
+  // If we have an object, make sure the object is at +1. All switch_enum of
+  // objects is done at +1.
   if (optional.getType().isAddress()) {
     // We forward in the creation routine for
     // unchecked_take_enum_data_addr. switch_enum_addr is a +0 operation.
@@ -200,6 +203,9 @@ SILGenFunction::emitPreconditionOptionalHasValue(SILLocation loc,
                            /*defaultDest*/ nullptr,
                            {{someDecl, contBB}, {noneDecl, failBB}});
   } else {
+    optional = optional.ensurePlusOne(*this, loc);
+    hadCleanup = true;
+    hadLValue = false;
     B.createSwitchEnum(loc, optional.forward(*this),
                        /*defaultDest*/ nullptr,
                        {{someDecl, contBB}, {noneDecl, failBB}});

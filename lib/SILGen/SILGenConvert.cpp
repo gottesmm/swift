@@ -66,7 +66,8 @@ SILGenFunction::emitInjectOptional(SILLocation loc,
         TemporaryInitialization init(objectBuf, CleanupHandle::invalid());
         ManagedValue objectResult = generator(SGFContext(&init));
         if (!objectResult.isInContext()) {
-          objectResult.forwardInto(*this, loc, objectBuf);
+          objectResult.ensurePlusOne(*this, loc)
+                      .forwardInto(*this, loc, objectBuf);
         }
 
         // Finalize the outer optional buffer.

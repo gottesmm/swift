@@ -766,7 +766,8 @@ ManagedValue SILGenFunction::emitExistentialErasure(
                                             *this));
           ManagedValue mv = F(SGFContext(init.get()));
           if (!mv.isInContext()) {
-            init->copyOrInitValueInto(*this, loc, mv, /*init*/ true);
+            init->copyOrInitValueInto(*this, loc, mv.ensurePlusOne(*this, loc),
+                                      /*init*/ true);
             init->finishInitialization(*this);
           }
         });

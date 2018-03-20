@@ -329,7 +329,7 @@ func convUpcastMetatype(_ c4: @escaping (Parent.Type, Trivial?) -> Child.Type,
 // CHECK-LABEL: sil hidden @$S19function_conversion19convFuncExistentialyyS2icypcF : $@convention(thin) (@guaranteed @callee_guaranteed (@in_guaranteed Any) -> @owned @callee_guaranteed (Int) -> Int) -> ()
 // CHECK: bb0([[ARG:%.*]] :
 // CHECK:   [[ARG_COPY:%.*]] = copy_value [[ARG]]
-// CHECK:   [[REABSTRACT_THUNK:%.*]] = function_ref @$SypS2iIegyd_Iegno_S2iIgyd_ypIegyr_TR
+// CHECK:   [[REABSTRACT_THUNK:%.*]] = function_ref @$SypS2iIegyd_Iegno_S2iIegyd_ypIeggr_TR :
 // CHECK:   [[PA:%.*]] = partial_apply [callee_guaranteed] [[REABSTRACT_THUNK]]([[ARG_COPY]])
 // CHECK:   destroy_value [[PA]]
 // CHECK: } // end sil function '$S19function_conversion19convFuncExistentialyyS2icypcF'
@@ -337,10 +337,11 @@ func convFuncExistential(_ f1: @escaping (Any) -> (Int) -> Int) {
   let _: (@escaping (Int) -> Int) -> Any = f1
 }
 
-// CHECK-LABEL: sil shared [transparent] [serializable] [reabstraction_thunk] @$SypS2iIegyd_Iegno_S2iIgyd_ypIegyr_TR : $@convention(thin) (@noescape @callee_guaranteed (Int) -> Int, @guaranteed @callee_guaranteed (@in_guaranteed Any) -> @owned @callee_guaranteed (Int) -> Int) -> @out Any
+// CHECK-LABEL: sil shared [transparent] [serializable] [reabstraction_thunk] @$SypS2iIegyd_Iegno_S2iIegyd_ypIeggr_TR : $@convention(thin) (@guaranteed @callee_guaranteed (Int) -> Int, @guaranteed @callee_guaranteed (@in_guaranteed Any) -> @owned @callee_guaranteed (Int) -> Int) -> @out Any {
 // CHECK:         alloc_stack $Any
-// CHECK:         function_ref @$SS2iIgyd_S2iIegnr_TR
-// CHECK-NEXT:    partial_apply
+// CHECK:         function_ref @$SS2iIegyd_S2iIegnr_TR
+// CHECK-NEXT:    [[COPIED_VAL:%.*]] = copy_value
+// CHECK-NEXT:    partial_apply [callee_guaranteed] {{%.*}}([[COPIED_VAL]])
 // CHECK-NEXT:    init_existential_addr %3 : $*Any, $(Int) -> Int
 // CHECK-NEXT:    store
 // CHECK-NEXT:    apply

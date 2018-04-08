@@ -1,8 +1,8 @@
-//===--- FunctionSignatureOptUtils.h ----------------------------*- C++ -*-===//
+//===--- FunctionSignatureOpts.h --------------------------------*- C++ -*-===//
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2017 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2018 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See https://swift.org/LICENSE.txt for license information
@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_SIL_FUNCTIONSIGOPTUTILS_H
-#define SWIFT_SIL_FUNCTIONSIGOPTUTILS_H
+#ifndef SWIFT_SILOPTIMIZER_TRANSFORMS_FUNCTIONSIGNATUREOPTS_H
+#define SWIFT_SILOPTIMIZER_TRANSFORMS_FUNCTIONSIGNATUREOPTS_H
 
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILValue.h"
@@ -194,12 +194,6 @@ struct ResultDescriptor {
   }
 };
 
-/// Returns true if F is a function which the pass know show to specialize
-/// function signatures for.
-bool canSpecializeFunction(SILFunction *F,
-                           const CallerAnalysis::FunctionInfo *FuncInfo,
-                           bool OptForPartialApply);
-
-} // end namespace swift
+} // end swift namespace
 
 #endif

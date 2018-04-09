@@ -30,22 +30,22 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "sil-function-signature-opt"
-#include "swift/SILOptimizer/PassManager/Transforms.h"
 #include "FunctionSignatureOpts.h"
+#include "swift/SIL/DebugUtils.h"
+#include "swift/SIL/SILCloner.h"
+#include "swift/SIL/SILFunction.h"
+#include "swift/SIL/SILValue.h"
 #include "swift/SILOptimizer/Analysis/ARCAnalysis.h"
 #include "swift/SILOptimizer/Analysis/CallerAnalysis.h"
 #include "swift/SILOptimizer/Analysis/EpilogueARCAnalysis.h"
 #include "swift/SILOptimizer/Analysis/RCIdentityAnalysis.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
-#include "swift/SILOptimizer/Utils/FunctionSignatureOptUtils.h"
+#include "swift/SILOptimizer/PassManager/Transforms.h"
 #include "swift/SILOptimizer/Utils/Local.h"
 #include "swift/SILOptimizer/Utils/SILInliner.h"
 #include "swift/SILOptimizer/Utils/SpecializationMangler.h"
-#include "swift/SIL/DebugUtils.h"
-#include "swift/SIL/SILFunction.h"
-#include "swift/SIL/SILCloner.h"
-#include "swift/SIL/SILValue.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
 using namespace swift;
@@ -554,6 +554,63 @@ void FunctionSignatureTransformDescriptor::computeOptimizedArgInterface(
 }
 
 //===----------------------------------------------------------------------===//
+//                      New Function Signature Transform
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+class DeadArgumentTransform;
+class OwnedToGuaranteedTransform;
+class ArgumentExplosionTransform;
+
+class NewFunctionSignatureTransform {
+protected:
+  /// The transform descriptor that we are using.
+  FunctionSignatureTransformDescriptor &TransformDescriptor;
+
+public:
+  NewFunctionSignatureTransform(
+      FunctionSignatureTransformDescriptor &TransformDescriptor)
+      : TransformDescriptor(TransformDescriptor) {}
+
+  virtual ~NewFunctionSignatureTransform() {}
+
+  /// Analyze this function's signature and determine if we want to perform some
+  /// form of transformation upon it.
+  virtual bool analyze() { return false; }
+
+  /// Transform the function signature of the passed in function.
+  virtual void transform() {}
+
+  /// Optionally perform any final changes to the new optimized function.
+  virtual void finalizeOptimizedFunction() {}
+
+  /// Optionally perform any final changes to the old function that is now a
+  /// thunk.
+  virtual void finalizeThunkFunction(SILBuilder &B, SILFunction *ThunkFn) {}
+
+  //===--------------------------------------------------------------------===//
+  // Temporary way to create passes.
+  //===--------------------------------------------------------------------===//
+
+  static std::unique_ptr<NewFunctionSignatureTransform>
+  getDeadArgumentTransform(
+      FunctionSignatureTransformDescriptor &TransformDescriptor);
+  static std::unique_ptr<NewFunctionSignatureTransform>
+  getOwnedToGuaranteedTransform(
+      FunctionSignatureTransformDescriptor &TransformDescriptor,
+      RCIdentityAnalysis *RCIA, EpilogueARCAnalysis *EA);
+  static std::unique_ptr<NewFunctionSignatureTransform>
+  getArgumentExplosionTransform(
+      FunctionSignatureTransformDescriptor &TransformDescriptor,
+      RCIdentityAnalysis *RCIA);
+};
+
+using NewFunctionSignatureTransformPtr =
+    std::unique_ptr<NewFunctionSignatureTransform>;
+} // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
 //                        Function Signature Transform
 //===----------------------------------------------------------------------===//
 
@@ -571,59 +628,11 @@ class FunctionSignatureTransform {
   /// Post order analysis we are using.
   EpilogueARCAnalysis *EA;
 
-private:
-  /// ----------------------------------------------------------///
-  /// Dead argument transformation.                             ///
-  /// ----------------------------------------------------------///
-  /// Find any dead argument opportunities.
-  bool DeadArgumentAnalyzeParameters();
-  /// Modify the current function so that later function signature analysis
-  /// are more effective.
-  void DeadArgumentTransformFunction();
-  /// Remove the dead argument once the new function is created.
-  void DeadArgumentFinalizeOptimizedFunction();
-
-  /// ----------------------------------------------------------///
-  /// Owned to guaranteed transformation.                       ///
-  /// ----------------------------------------------------------///
-  bool OwnedToGuaranteedAnalyzeResults();
-  bool OwnedToGuaranteedAnalyzeParameters();
-
-  /// Modify the current function so that later function signature analysis
-  /// are more effective.
-  void OwnedToGuaranteedTransformFunctionResults();
-  void OwnedToGuaranteedTransformFunctionParameters();
-
-  /// Find any owned to guaranteed opportunities.
-  bool OwnedToGuaranteedAnalyze();
-
-  /// Do the actual owned to guaranteed transformations.
-  void OwnedToGuaranteedTransform();
-
-  /// Set up epilogue work for the thunk result based in the given argument.
-  void OwnedToGuaranteedAddResultRelease(ResultDescriptor &RD,
-                                         SILBuilder &Builder, SILFunction *F);
-
-  /// Set up epilogue work for the thunk argument based in the given argument.
-  void OwnedToGuaranteedAddArgumentRelease(ArgumentDescriptor &AD,
-                                           SILBuilder &Builder, SILFunction *F);
-
-  /// Add the release for converted arguments and result.
-  void OwnedToGuaranteedFinalizeThunkFunction(SILBuilder &B, SILFunction *F);
-
-  /// ----------------------------------------------------------///
-  /// Argument explosion transformation.                        ///
-  /// ----------------------------------------------------------///
-  /// Find any argument explosion opportunities.
-  bool ArgumentExplosionAnalyzeParameters();
-  /// Explode the argument in the optimized function and replace the uses of
-  /// the original argument.
-  void ArgumentExplosionFinalizeOptimizedFunction();
-
   /// Take ArgumentDescList and ResultDescList and create an optimized function
   /// based on the current function we are analyzing. This also has the side
   /// effect of turning the current function into a thunk.
-  void createFunctionSignatureOptimizedFunction();
+  void createFunctionSignatureOptimizedFunction(
+      ArrayRef<NewFunctionSignatureTransformPtr> Transforms);
 
 public:
   /// Constructor.
@@ -652,7 +661,8 @@ public:
 
 } // end anonymous namespace
 
-void FunctionSignatureTransform::createFunctionSignatureOptimizedFunction() {
+void FunctionSignatureTransform::createFunctionSignatureOptimizedFunction(
+    ArrayRef<NewFunctionSignatureTransformPtr> Transforms) {
   // Create the optimized function!
   SILFunction *F = TransformDescriptor.OriginalFunction;
   SILModule &M = F->getModule();
@@ -690,8 +700,9 @@ void FunctionSignatureTransform::createFunctionSignatureOptimizedFunction() {
   }
 
   // Do the last bit of work to the newly created optimized function.
-  ArgumentExplosionFinalizeOptimizedFunction();
-  DeadArgumentFinalizeOptimizedFunction();
+  for (auto &T : Transforms) {
+    T->finalizeOptimizedFunction();
+  }
 
   // Update the ownership kinds of function entry BB arguments.
   for (auto Arg : NewF->begin()->getFunctionArguments()) {
@@ -772,7 +783,9 @@ void FunctionSignatureTransform::createFunctionSignatureOptimizedFunction() {
   }
 
   // Do the last bit work to finalize the thunk.
-  OwnedToGuaranteedFinalizeThunkFunction(Builder, F);
+  for (auto &T : Transforms) {
+    T->finalizeThunkFunction(Builder, F);
+  }
 
   assert(F->getDebugScope()->Parent != NewF->getDebugScope()->Parent);
 }
@@ -787,20 +800,31 @@ bool FunctionSignatureTransform::run(bool hasCaller) {
     return false;
   }
 
-  // Run OwnedToGuaranteed optimization.
-  if (OwnedToGuaranteedAnalyze()) {
-    Changed = true;
-    DEBUG(llvm::dbgs() << "  transform owned-to-guaranteed\n");
-    OwnedToGuaranteedTransform();
+  llvm::SmallVector<NewFunctionSignatureTransformPtr, 3> Transforms;
+
+  {
+    auto T = NewFunctionSignatureTransform::getOwnedToGuaranteedTransform(
+        TransformDescriptor, RCIA, EA);
+    // Run OwnedToGuaranteed optimization.
+    if (T->analyze()) {
+      Changed = true;
+      DEBUG(llvm::dbgs() << "  transform owned-to-guaranteed\n");
+      T->transform();
+    }
+    Transforms.emplace_back(std::move(T));
   }
 
   // Run DeadArgument elimination transformation. We only specialize
   // if this function has a caller inside the current module or we have
   // already created a thunk.
-  if ((hasCaller || Changed) && DeadArgumentAnalyzeParameters()) {
-    Changed = true;
-    DEBUG(llvm::dbgs() << "  remove dead arguments\n");
-    DeadArgumentTransformFunction();
+  {
+    auto T = NewFunctionSignatureTransform::getDeadArgumentTransform(
+        TransformDescriptor);
+    if ((hasCaller || Changed) && T->analyze()) {
+      Changed = true;
+      DEBUG(llvm::dbgs() << "  analyzed dead arguments dead arguments\n");
+    }
+    Transforms.push_back(std::move(T));
   }
 
   // Run ArgumentExplosion transformation. We only specialize
@@ -815,23 +839,31 @@ bool FunctionSignatureTransform::run(bool hasCaller) {
   // In order to not miss any opportunity, we send the optimized function
   // to the passmanager to optimize any opportunities exposed by argument
   // explosion.
-  if ((hasCaller || Changed) && ArgumentExplosionAnalyzeParameters()) {
-    Changed = true;
-  }
+  {
+    auto T = NewFunctionSignatureTransform::getArgumentExplosionTransform(
+        TransformDescriptor, RCIA);
+    if ((hasCaller || Changed) && T->analyze()) {
+      Changed = true;
+    }
 
-  // Check if generic signature of the function could be changed by
-  // removed some unused generic arguments.
-  if (F->getLoweredFunctionType()->isPolymorphic() &&
-      TransformDescriptor.createOptimizedSILFunctionType() !=
-          F->getLoweredFunctionType()) {
-    Changed = true;
+    // Check if generic signature of the function could be changed by
+    // removed some unused generic arguments.
+    if (F->getLoweredFunctionType()->isPolymorphic() &&
+        TransformDescriptor.createOptimizedSILFunctionType() !=
+            F->getLoweredFunctionType()) {
+      Changed = true;
+    }
+
+    Transforms.emplace_back(std::move(T));
   }
 
   // Create the specialized function and invalidate the old function.
-  if (Changed) {
-    createFunctionSignatureOptimizedFunction();
+  if (!Changed) {
+    return false;
   }
-  return Changed;
+
+  createFunctionSignatureOptimizedFunction(Transforms);
+  return true;
 }
 
 // Run dead argument elimination of partially applied functions.
@@ -842,7 +874,9 @@ bool FunctionSignatureTransform::removeDeadArgs(int minPartialAppliedArgs) {
   if (minPartialAppliedArgs < 1)
     return false;
 
-  if (!DeadArgumentAnalyzeParameters())
+  auto T = NewFunctionSignatureTransform::getDeadArgumentTransform(
+      TransformDescriptor);
+  if (!T->analyze())
     return false;
 
   SILFunction *F = TransformDescriptor.OriginalFunction;
@@ -874,8 +908,12 @@ bool FunctionSignatureTransform::removeDeadArgs(int minPartialAppliedArgs) {
   }
 
   DEBUG(llvm::dbgs() << "  remove dead arguments for partial_apply\n");
-  DeadArgumentTransformFunction();
-  createFunctionSignatureOptimizedFunction();
+  T->transform();
+
+  // TODO: Can we use a TinyVector here? Or an ArrayRef?
+  llvm::SmallVector<NewFunctionSignatureTransformPtr, 1> Transform;
+  Transform.emplace_back(std::move(T));
+  createFunctionSignatureOptimizedFunction(Transform);
   return true;
 }
 
@@ -883,7 +921,19 @@ bool FunctionSignatureTransform::removeDeadArgs(int minPartialAppliedArgs) {
 //                         Dead Argument Elimination
 //===----------------------------------------------------------------------===//
 
-bool FunctionSignatureTransform::DeadArgumentAnalyzeParameters() {
+namespace {
+
+class DeadArgumentTransform final : public NewFunctionSignatureTransform {
+public:
+  DeadArgumentTransform(FunctionSignatureTransformDescriptor &Descriptor)
+      : NewFunctionSignatureTransform(Descriptor) {}
+  bool analyze() override;
+  void transform() override;
+  void finalizeOptimizedFunction() override;
+};
+} // end anonymous namespace
+
+bool DeadArgumentTransform::analyze() {
   // Did we decide we should optimize any parameter?
   SILFunction *F = TransformDescriptor.OriginalFunction;
   bool SignatureOptimize = false;
@@ -940,32 +990,85 @@ bool FunctionSignatureTransform::DeadArgumentAnalyzeParameters() {
   return SignatureOptimize;
 }
 
-void FunctionSignatureTransform::DeadArgumentTransformFunction() {
+void DeadArgumentTransform::transform() {
   SILFunction *F = TransformDescriptor.OriginalFunction;
   SILBasicBlock *BB = &*F->begin();
   for (const ArgumentDescriptor &AD : TransformDescriptor.ArgumentDescList) {
     if (!AD.IsEntirelyDead)
       continue;
-    eraseUsesOfValue(BB->getArgument(AD.Index));
+    unsigned originalIndex = AD.Index;
+    unsigned mappedIndex = TransformDescriptor.AIM[originalIndex];
+    eraseUsesOfValue(BB->getArgument(mappedIndex));
   }
 }
 
-void FunctionSignatureTransform::DeadArgumentFinalizeOptimizedFunction() {
+void DeadArgumentTransform::finalizeOptimizedFunction() {
   auto *BB = &*TransformDescriptor.OptimizedFunction.get()->begin();
   // Remove any dead argument starting from the last argument to the first.
   for (const ArgumentDescriptor &AD :
        reverse(TransformDescriptor.ArgumentDescList)) {
     if (!AD.IsEntirelyDead)
       continue;
-    BB->eraseArgument(AD.Arg->getIndex());
+
+    // Make sure to look up the new index in case we exploded any parameters
+    // before we ran dead argument transform.
+    unsigned originalIndex = AD.Arg->getIndex();
+    unsigned newIndex = TransformDescriptor.AIM[originalIndex];
+    BB->eraseArgument(newIndex);
   }
+}
+
+NewFunctionSignatureTransformPtr
+NewFunctionSignatureTransform::getDeadArgumentTransform(
+    FunctionSignatureTransformDescriptor &TransformDescriptor) {
+  return NewFunctionSignatureTransformPtr(
+      new DeadArgumentTransform(TransformDescriptor));
 }
 
 //===----------------------------------------------------------------------===//
 //                     Owned to Guaranteed Transformation
 //===----------------------------------------------------------------------===//
 
-bool FunctionSignatureTransform::OwnedToGuaranteedAnalyzeParameters() {
+namespace {
+
+class OwnedToGuaranteedTransform final : public NewFunctionSignatureTransform {
+  /// The RC identity analysis we are using.
+  RCIdentityAnalysis *RCIA;
+
+  /// Post order analysis we are using.
+  EpilogueARCAnalysis *EA;
+
+public:
+  OwnedToGuaranteedTransform(FunctionSignatureTransformDescriptor &Descriptor,
+                             RCIdentityAnalysis *RCIA, EpilogueARCAnalysis *EA)
+      : NewFunctionSignatureTransform(Descriptor), RCIA(RCIA), EA(EA) {}
+
+  ~OwnedToGuaranteedTransform() override {}
+
+  /// Analyze this function's signature and determine if we want to perform some
+  /// form of transformation upon it.
+  bool analyze() override;
+
+  /// Transform the function signature of the passed in function.
+  void transform() override;
+
+  /// Optionally perform any final changes to the old function that is now a
+  /// thunk.
+  void finalizeThunkFunction(SILBuilder &B, SILFunction *F) override;
+
+private:
+  bool analyzeParameters();
+  bool analyzeResults();
+  void transformParameters();
+  void transformResults();
+  void addArgumentRelease(ArgumentDescriptor &AD, SILBuilder &Builder,
+                          SILFunction *F);
+  void addResultRelease(ResultDescriptor &RD, SILBuilder &Builder,
+                        SILFunction *F);
+};
+} // end anonymous namespace
+
+bool OwnedToGuaranteedTransform::analyzeParameters() {
   SILFunction *F = TransformDescriptor.OriginalFunction;
   auto Args = F->begin()->getFunctionArguments();
   // A map from consumed SILArguments to the release associated with an
@@ -1019,7 +1122,7 @@ bool FunctionSignatureTransform::OwnedToGuaranteedAnalyzeParameters() {
   return SignatureOptimize;
 }
 
-bool FunctionSignatureTransform::OwnedToGuaranteedAnalyzeResults() {
+bool OwnedToGuaranteedTransform::analyzeResults() {
   SILFunction *F = TransformDescriptor.OriginalFunction;
   auto ResultDescList = TransformDescriptor.ResultDescList;
 
@@ -1051,7 +1154,7 @@ bool FunctionSignatureTransform::OwnedToGuaranteedAnalyzeResults() {
   return SignatureOptimize;
 }
 
-void FunctionSignatureTransform::OwnedToGuaranteedTransformFunctionParameters() {
+void OwnedToGuaranteedTransform::transformParameters() {
   // And remove all Callee releases that we found and made redundant via owned
   // to guaranteed conversion.
   for (const ArgumentDescriptor &AD : TransformDescriptor.ArgumentDescList) {
@@ -1070,7 +1173,7 @@ void FunctionSignatureTransform::OwnedToGuaranteedTransformFunctionParameters() 
   }
 }
 
-void FunctionSignatureTransform::OwnedToGuaranteedTransformFunctionResults() {
+void OwnedToGuaranteedTransform::transformResults() {
   // And remove all callee retains that we found and made redundant via owned
   // to unowned conversion.
   for (const ResultDescriptor &RD : TransformDescriptor.ResultDescList) {
@@ -1088,14 +1191,14 @@ void FunctionSignatureTransform::OwnedToGuaranteedTransformFunctionResults() {
   }
 }
 
-void FunctionSignatureTransform::
-OwnedToGuaranteedFinalizeThunkFunction(SILBuilder &Builder, SILFunction *F) {
+void OwnedToGuaranteedTransform::finalizeThunkFunction(SILBuilder &Builder,
+                                                       SILFunction *F) {
   // Finish the epilogue work for the argument as well as result.
   for (auto &ArgDesc : TransformDescriptor.ArgumentDescList) {
-    OwnedToGuaranteedAddArgumentRelease(ArgDesc, Builder, F);
+    addArgumentRelease(ArgDesc, Builder, F);
   }
   for (auto &ResDesc : TransformDescriptor.ResultDescList) {
-    OwnedToGuaranteedAddResultRelease(ResDesc, Builder, F);
+    addResultRelease(ResDesc, Builder, F);
   }
 }
 
@@ -1116,10 +1219,9 @@ static void createArgumentRelease(SILBuilder &Builder, ArgumentDescriptor &AD) {
 
 /// Set up epilogue work for the thunk arguments based in the given argument.
 /// Default implementation simply passes it through.
-void
-FunctionSignatureTransform::
-OwnedToGuaranteedAddArgumentRelease(ArgumentDescriptor &AD, SILBuilder &Builder,
-                                    SILFunction *F) {
+void OwnedToGuaranteedTransform::addArgumentRelease(ArgumentDescriptor &AD,
+                                                    SILBuilder &Builder,
+                                                    SILFunction *F) {
   // If we have any arguments that were consumed but are now guaranteed,
   // insert a releasing RC instruction.
   if (!AD.OwnedToGuaranteed) {
@@ -1141,10 +1243,9 @@ OwnedToGuaranteedAddArgumentRelease(ArgumentDescriptor &AD, SILBuilder &Builder,
   }
 }
 
-void
-FunctionSignatureTransform::
-OwnedToGuaranteedAddResultRelease(ResultDescriptor &RD, SILBuilder &Builder,
-                                  SILFunction *F) {
+void OwnedToGuaranteedTransform::addResultRelease(ResultDescriptor &RD,
+                                                  SILBuilder &Builder,
+                                                  SILFunction *F) {
   // If we have any result that were consumed but are now guaranteed,
   // insert a releasing RC instruction.
   if (!RD.OwnedToGuaranteed) {
@@ -1165,22 +1266,49 @@ OwnedToGuaranteedAddResultRelease(ResultDescriptor &RD, SILBuilder &Builder,
   }
 }
 
-bool FunctionSignatureTransform::OwnedToGuaranteedAnalyze() {
-  bool Result = OwnedToGuaranteedAnalyzeResults();
-  bool Params = OwnedToGuaranteedAnalyzeParameters();
+bool OwnedToGuaranteedTransform::analyze() {
+  bool Result = analyzeResults();
+  bool Params = analyzeParameters();
   return Params || Result;
 }
 
-void FunctionSignatureTransform::OwnedToGuaranteedTransform() {
-  OwnedToGuaranteedTransformFunctionResults();
-  OwnedToGuaranteedTransformFunctionParameters();
+void OwnedToGuaranteedTransform::transform() {
+  transformResults();
+  transformParameters();
+}
+
+NewFunctionSignatureTransformPtr
+NewFunctionSignatureTransform::getOwnedToGuaranteedTransform(
+    FunctionSignatureTransformDescriptor &TransformDescriptor,
+    RCIdentityAnalysis *RCIA, EpilogueARCAnalysis *EA) {
+  return NewFunctionSignatureTransformPtr(
+      new OwnedToGuaranteedTransform(TransformDescriptor, RCIA, EA));
 }
 
 //===----------------------------------------------------------------------===//
 //                     Argument Explosion Transformation
 //===----------------------------------------------------------------------===//
 
-bool FunctionSignatureTransform::ArgumentExplosionAnalyzeParameters() {
+namespace {
+
+class ArgumentExplosionTransform final : public NewFunctionSignatureTransform {
+  RCIdentityAnalysis *RCIA;
+
+public:
+  ArgumentExplosionTransform(FunctionSignatureTransformDescriptor &Descriptor,
+                             RCIdentityAnalysis *RCIA)
+      : NewFunctionSignatureTransform(Descriptor), RCIA(RCIA) {}
+
+  bool analyze() override { return analyzeParameters(); }
+
+  void finalizeOptimizedFunction() override;
+
+private:
+  bool analyzeParameters();
+};
+} // end anonymous namespace
+
+bool ArgumentExplosionTransform::analyzeParameters() {
   SILFunction *F = TransformDescriptor.OriginalFunction;
   // Did we decide we should optimize any parameter?
   bool SignatureOptimize = false;
@@ -1191,6 +1319,10 @@ bool FunctionSignatureTransform::ArgumentExplosionAnalyzeParameters() {
   // Analyze the argument information.
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
     ArgumentDescriptor &A = TransformDescriptor.ArgumentDescList[i];
+
+    // If the parameter is completely dead, do not even try to analyze it. We
+    // are going to run the much simpler dead argument transform.
+
     // Do not optimize argument.
     if (!A.canOptimizeLiveArg()) {
       continue;
@@ -1213,17 +1345,22 @@ bool FunctionSignatureTransform::ArgumentExplosionAnalyzeParameters() {
   return SignatureOptimize;
 }
 
-void FunctionSignatureTransform::ArgumentExplosionFinalizeOptimizedFunction() {
+void ArgumentExplosionTransform::finalizeOptimizedFunction() {
   SILFunction *NewF = TransformDescriptor.OptimizedFunction.get();
   SILBasicBlock *BB = &*NewF->begin();
   SILBuilder Builder(BB->begin());
   Builder.setCurrentDebugScope(BB->getParent()->getDebugScope());
   unsigned TotalArgIndex = 0;
   for (ArgumentDescriptor &AD : TransformDescriptor.ArgumentDescList) {
-    // Simply continue if do not explode.
-    if (!AD.Explode) {
+    // If we are not supposed to explode this value or if the value is
+    // completely dead, skip it.
+    //
+    // The reason why we do not eliminate this is so that if we have an entirely
+    // dead argument descriptor, we just use the simpler dead argument
+    // elimination which is faster/simpler.
+    if (AD.IsEntirelyDead || !AD.Explode) {
       TransformDescriptor.AIM[TotalArgIndex] = AD.Index;
-      TotalArgIndex ++;
+      ++TotalArgIndex;
       continue;
     }
 
@@ -1243,7 +1380,7 @@ void FunctionSignatureTransform::ArgumentExplosionFinalizeOptimizedFunction() {
           ArgOffset++, Node->getType(), OwnershipKind,
           BB->getArgument(OldArgIndex)->getDecl()));
       TransformDescriptor.AIM[TotalArgIndex - 1] = AD.Index;
-      TotalArgIndex ++;
+      ++TotalArgIndex;
     }
 
     // Then go through the projection tree constructing aggregates and replacing
@@ -1265,8 +1402,16 @@ void FunctionSignatureTransform::ArgumentExplosionFinalizeOptimizedFunction() {
     // Now erase the old argument since it does not have any uses. We also
     // decrement ArgOffset since we have one less argument now.
     BB->eraseArgument(OldArgIndex);
-    TotalArgIndex --;
+    --TotalArgIndex;
   }
+}
+
+NewFunctionSignatureTransformPtr
+NewFunctionSignatureTransform::getArgumentExplosionTransform(
+    FunctionSignatureTransformDescriptor &TransformDescriptor,
+    RCIdentityAnalysis *RCIA) {
+  return NewFunctionSignatureTransformPtr(
+      new ArgumentExplosionTransform(TransformDescriptor, RCIA));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1352,7 +1497,6 @@ public:
       ResultDescList.emplace_back(IR);
     }
 
-    // Owned to guaranteed optimization.
     FunctionSignatureTransform FST(F, RCIA, EA, Mangler, AIM,
                                    ArgumentDescList, ResultDescList);
 

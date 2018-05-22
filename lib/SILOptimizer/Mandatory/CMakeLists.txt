@@ -18,4 +18,5 @@ silopt_register_sources(
   ClosureLifetimeFixup.cpp
   RawSILInstLowering.cpp
   MandatoryOptUtils.cpp
+  MandatoryTupleScalarizer.cpp
 )

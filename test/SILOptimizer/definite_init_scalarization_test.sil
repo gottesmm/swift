@@ -1,4 +1,4 @@
-// RUN: %target-sil-opt -enable-sil-ownership -enable-sil-verify-all %s -definite-init -raw-sil-inst-lowering | %FileCheck %s
+// RUN: %target-sil-opt -enable-sil-ownership -enable-sil-verify-all %s -mandatory-tuple-scalarizer -definite-init -raw-sil-inst-lowering | %FileCheck %s
 //
 // Make sure that we properly scalarize tuples.
 //
@@ -27,14 +27,14 @@ struct ObjectValue {
 // CHECK: bb0([[ARG0:%.*]] : $TripleInt, [[ARG1:%.*]] : $TripleInt, [[ARG2:%.*]] : $TripleInt):
 // CHECK:   [[BOX:%.*]] = alloc_box
 // CHECK:   [[PB_BOX:%.*]] = project_box [[BOX]]
-// CHECK:   [[ELT0:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 0
-// CHECK:   [[ELT1:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 1
-// CHECK:   [[ELT10:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 0
-// CHECK:   [[ELT11:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 1
 // CHECK:   [[RHS_TUP:%.*]] = tuple ([[ARG0]] : ${{.*}}, [[ARG1:%.*]] : ${{.*}})
 // CHECK:   [[TUP:%.*]] = tuple ([[ARG2:%.*]] : ${{.*}}, [[RHS_TUP]] : ${{.*}})
+// CHECK:   [[ELT0:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 0
+// CHECK:   [[ELT1:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 1
 // CHECK:   ([[DESTRUCTURE_TUP_LHS:%.*]], [[DESTRUCTURE_TUP_RHS:%.*]]) = destructure_tuple [[TUP]] : $(TripleInt, (TripleInt, TripleInt))
 // CHECK:   store [[DESTRUCTURE_TUP_LHS]] to [trivial] [[ELT0]]
+// CHECK:   [[ELT10:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 0
+// CHECK:   [[ELT11:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 1
 // CHECK:   ([[DESTRUCTURE_TUP_RHS_LHS:%.*]], [[DESTRUCTURE_TUP_RHS_RHS:%.*]]) = destructure_tuple [[DESTRUCTURE_TUP_RHS]] : $(TripleInt, TripleInt)
 // CHECK:   store [[DESTRUCTURE_TUP_RHS_LHS]] to [trivial] [[ELT10]]
 // CHECK:   store [[DESTRUCTURE_TUP_RHS_RHS]] to [trivial] [[ELT11]]
@@ -57,14 +57,14 @@ bb0(%0 : $TripleInt, %1 : $TripleInt, %1a : $TripleInt):
 // CHECK: bb0([[ARG0:%.*]] : @owned $Builtin.NativeObject, [[ARG1:%.*]] : @owned $Builtin.NativeObject, [[ARG2:%.*]] : @owned $Builtin.NativeObject):
 // CHECK:   [[BOX:%.*]] = alloc_box
 // CHECK:   [[PB_BOX:%.*]] = project_box [[BOX]]
-// CHECK:   [[ELT0:%.*]] = tuple_element_addr [[PB_BOX]] : $*(Builtin.NativeObject, (Builtin.NativeObject, Builtin.NativeObject)), 0
-// CHECK:   [[ELT1:%.*]] = tuple_element_addr [[PB_BOX]] : $*(Builtin.NativeObject, (Builtin.NativeObject, Builtin.NativeObject)), 1
-// CHECK:   [[ELT10:%.*]] = tuple_element_addr [[ELT1]] : $*(Builtin.NativeObject, Builtin.NativeObject), 0
-// CHECK:   [[ELT11:%.*]] = tuple_element_addr [[ELT1]] : $*(Builtin.NativeObject, Builtin.NativeObject), 1
 // CHECK:   [[RHS_TUP:%.*]] = tuple ([[ARG0]] : ${{.*}}, [[ARG1:%.*]] : ${{.*}})
 // CHECK:   [[TUP:%.*]] = tuple ([[ARG2:%.*]] : ${{.*}}, [[RHS_TUP]] : ${{.*}})
+// CHECK:   [[ELT0:%.*]] = tuple_element_addr [[PB_BOX]] : $*(Builtin.NativeObject, (Builtin.NativeObject, Builtin.NativeObject)), 0
+// CHECK:   [[ELT1:%.*]] = tuple_element_addr [[PB_BOX]] : $*(Builtin.NativeObject, (Builtin.NativeObject, Builtin.NativeObject)), 1
 // CHECK:   ([[DESTRUCTURE_TUP_LHS:%.*]], [[DESTRUCTURE_TUP_RHS:%.*]]) = destructure_tuple [[TUP]] : $(Builtin.NativeObject, (Builtin.NativeObject, Builtin.NativeObject))
 // CHECK:   store [[DESTRUCTURE_TUP_LHS]] to [init] [[ELT0]]
+// CHECK:   [[ELT10:%.*]] = tuple_element_addr [[ELT1]] : $*(Builtin.NativeObject, Builtin.NativeObject), 0
+// CHECK:   [[ELT11:%.*]] = tuple_element_addr [[ELT1]] : $*(Builtin.NativeObject, Builtin.NativeObject), 1
 // CHECK:   ([[DESTRUCTURE_TUP_RHS_LHS:%.*]], [[DESTRUCTURE_TUP_RHS_RHS:%.*]]) = destructure_tuple [[DESTRUCTURE_TUP_RHS]] : $(Builtin.NativeObject, Builtin.NativeObject)
 // CHECK:   store [[DESTRUCTURE_TUP_RHS_LHS]] to [init] [[ELT10]]
 // CHECK:   store [[DESTRUCTURE_TUP_RHS_RHS]] to [init] [[ELT11]]
@@ -87,14 +87,14 @@ bb0(%0 : @owned $Builtin.NativeObject, %1 : @owned $Builtin.NativeObject, %1a : 
 // CHECK: bb0([[ARG0:%.*]] : $TripleInt, [[ARG1:%.*]] : $TripleInt, [[ARG2:%.*]] : $TripleInt):
 // CHECK:   [[BOX:%.*]] = alloc_box
 // CHECK:   [[PB_BOX:%.*]] = project_box [[BOX]]
-// CHECK:   [[ELT0:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 0
-// CHECK:   [[ELT1:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 1
-// CHECK:   [[ELT10:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 0
-// CHECK:   [[ELT11:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 1
 // CHECK:   [[RHS_TUP:%.*]] = tuple ([[ARG0]] : ${{.*}}, [[ARG1:%.*]] : ${{.*}})
 // CHECK:   [[TUP:%.*]] = tuple ([[ARG2:%.*]] : ${{.*}}, [[RHS_TUP]] : ${{.*}})
+// CHECK:   [[ELT0:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 0
+// CHECK:   [[ELT1:%.*]] = tuple_element_addr [[PB_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 1
 // CHECK:   ([[DESTRUCTURE_TUP_LHS:%.*]], [[DESTRUCTURE_TUP_RHS:%.*]]) = destructure_tuple [[TUP]] : $(TripleInt, (TripleInt, TripleInt))
 // CHECK:   store [[DESTRUCTURE_TUP_LHS]] to [trivial] [[ELT0]]
+// CHECK:   [[ELT10:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 0
+// CHECK:   [[ELT11:%.*]] = tuple_element_addr [[ELT1]] : $*(TripleInt, TripleInt), 1
 // CHECK:   ([[DESTRUCTURE_TUP_RHS_LHS:%.*]], [[DESTRUCTURE_TUP_RHS_RHS:%.*]]) = destructure_tuple [[DESTRUCTURE_TUP_RHS]] : $(TripleInt, TripleInt)
 // CHECK:   store [[DESTRUCTURE_TUP_RHS_LHS]] to [trivial] [[ELT10]]
 // CHECK:   store [[DESTRUCTURE_TUP_RHS_RHS]] to [trivial] [[ELT11]]
@@ -117,12 +117,12 @@ bb0(%0 : $TripleInt, %1 : $TripleInt, %1a : $TripleInt):
 // CHECK: bb0([[ARG0:%.*]] : $TripleInt, [[ARG1:%.*]] : $TripleInt, [[ARG2:%.*]] : $TripleInt):
 // CHECK:   [[BOX:%.*]] = alloc_box $<τ_0_0> { var τ_0_0 } <(TripleInt, (TripleInt, TripleInt))>
 // CHECK:   [[PROJ_BOX:%.*]] = project_box [[BOX]] : $<τ_0_0> { var τ_0_0 } <(TripleInt, (TripleInt, TripleInt))>, 0
+// CHECK:   [[TUP11:%.*]] = tuple ([[ARG0]] : $TripleInt, [[ARG1]] : $TripleInt)
+// CHECK:   [[TUP1:%.*]] = tuple ([[ARG2]] : $TripleInt, [[TUP11]] : $(TripleInt, TripleInt))
 // CHECK:   [[PROJ_BOX_0:%.*]] = tuple_element_addr [[PROJ_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 0
 // CHECK:   [[PROJ_BOX_1:%.*]] = tuple_element_addr [[PROJ_BOX]] : $*(TripleInt, (TripleInt, TripleInt)), 1
 // CHECK:   [[PROJ_BOX_10:%.*]] = tuple_element_addr %6 : $*(TripleInt, TripleInt), 0
 // CHECK:   [[PROJ_BOX_11:%.*]] = tuple_element_addr %6 : $*(TripleInt, TripleInt), 1
-// CHECK:   [[TUP11:%.*]] = tuple ([[ARG0]] : $TripleInt, [[ARG1]] : $TripleInt)
-// CHECK:   [[TUP1:%.*]] = tuple ([[ARG2]] : $TripleInt, [[TUP11]] : $(TripleInt, TripleInt))
 // CHECK:   [[TUP1_2nd:%.*]] = tuple ([[ARG2]] : $TripleInt, [[TUP11]] : $(TripleInt, TripleInt))
 // CHECK:   ([[TUP1_D_0:%.*]], [[TUP1_D_1:%.*]]) = destructure_tuple [[TUP1]] : $(TripleInt, (TripleInt, TripleInt))
 // CHECK:   store [[TUP1_D_0]] to [trivial] [[PROJ_BOX_0]] : $*TripleInt

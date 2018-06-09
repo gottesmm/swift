@@ -18,4 +18,5 @@ set(MANDATORY_SOURCES
   Mandatory/ClosureLifetimeFixup.cpp
   Mandatory/RawSILInstLowering.cpp
   Mandatory/MandatoryOptUtils.cpp
+  Mandatory/TupleMemoryOperationCanonicalizer.cpp
   PARENT_SCOPE)

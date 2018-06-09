@@ -75,8 +75,14 @@ static void addOwnershipModelEliminatorPipeline(SILPassPipelinePlan &P) {
 /// order.
 static void addDefiniteInitialization(SILPassPipelinePlan &P) {
   P.addMarkUninitializedFixup();
+  P.addTupleMemoryOperationCanonicalizer();
   P.addDefiniteInitialization();
   P.addRawSILInstLowering();
+}
+
+static void addGuaranteedPredictableMemOperations(SILPassPipelinePlan &P) {
+  P.addTupleMemoryOperationCanonicalization();
+  P.addPredictableMemoryOptimizations();
 }
 
 static void addMandatoryOptPipeline(SILPassPipelinePlan &P,
@@ -99,7 +105,7 @@ static void addMandatoryOptPipeline(SILPassPipelinePlan &P,
   P.addOwnershipModelEliminator();
   P.addMandatoryInlining();
   P.addMandatorySILLinker();
-  P.addPredictableMemoryOptimizations();
+  addGuaranteedPredictableMemOperations(P);
 
   // Diagnostic ConstantPropagation must be rerun on deserialized functions
   // because it is sensitive to the assert configuration.

@@ -154,6 +154,9 @@ PASS(RedundantLoadElimination, "redundant-load-elim",
      "Redundant Load Elimination")
 PASS(DeadStoreElimination, "dead-store-elim",
      "Dead Store Elimination")
+PASS(TupleMemoryOperationCanonicalizer,
+     "tuple-memopts-canonicalizer",
+     "Canonicalizes tuple typed memory operations into seperate operations");
 PASS(GenericSpecializer, "generic-specializer",
      "Generic Function Specialization on Static Types")
 PASS(GlobalOpt, "global-opt",

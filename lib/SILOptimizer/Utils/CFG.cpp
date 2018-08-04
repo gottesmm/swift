@@ -805,6 +805,11 @@ bool swift::mergeBasicBlockWithSuccessor(SILBasicBlock *BB, DominanceInfo *DT,
   if (BB == SuccBB || !SuccBB->getSinglePredecessorBlock())
     return false;
 
+  return mergeBasicBlockWithSuccessor(Branch, SuccBB, DT, LI);
+}
+
+bool swift::mergeBasicBlockWithSuccessor(BranchInst *Branch, SILBasicBlock *SuccBB, DominanceInfo *DT, SILLoopInfo *LI) {
+  auto *BB = Branch->getParent();
   // If there are any BB arguments in the destination, replace them with the
   // branch operands, since they must dominate the dest block.
   for (unsigned i = 0, e = Branch->getArgs().size(); i != e; ++i)

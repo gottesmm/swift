@@ -141,6 +141,8 @@ bool splitAllCondBrCriticalEdgesWithNonTrivialArgs(SILFunction &Fn,
 bool mergeBasicBlockWithSuccessor(SILBasicBlock *BB, DominanceInfo *DT,
                                   SILLoopInfo *LI);
 
+bool mergeBasicBlockWithSuccessor(BranchInst *Branch, SILBasicBlock *SuccBB, DominanceInfo *DT, SILLoopInfo *LI);
+
 /// Given a list of \p UserBlocks and a list of \p DefBlocks, find a set of
 /// blocks that together with \p UserBlocks joint-postdominate \p
 /// DefBlocks. This is in a sense finding a set of blocks that "complete" \p

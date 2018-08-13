@@ -17,6 +17,63 @@ namespace swift {
 
 class SILNode;
 
+/// A protocol for handling SIL deserialization notifications.
+class SILDeserializationNotificationHandler {
+public:
+  /// Observe that we deserialized a function declaration.
+  virtual void didDeserialize(ModuleDecl *mod, SILFunction *fn) {}
+
+  /// Observe that we successfully deserialized a function body.
+  virtual void didDeserializeFunctionBody(ModuleDecl *mod, SILFunction *fn) {}
+
+  /// Observe that we successfully deserialized a witness table's entries.
+  virtual void didDeserializeWitnessTableEntries(ModuleDecl *mod,
+                                                 SILWitnessTable *wt) {}
+
+  /// Observe that we successfully deserialized a default witness table's
+  /// entries.
+  virtual void
+  didDeserializeDefaultWitnessTableEntries(ModuleDecl *mod,
+                                           SILDefaultWitnessTable *wt) {}
+
+  /// Observe that we deserialized a global variable declaration.
+  virtual void didDeserialize(ModuleDecl *mod, SILGlobalVariable *var) {}
+
+  /// Observe that we deserialized a v-table declaration.
+  virtual void didDeserialize(ModuleDecl *mod, SILVTable *vtable) {}
+
+  /// Observe that we deserialized a witness-table declaration.
+  virtual void didDeserialize(ModuleDecl *mod, SILWitnessTable *wtable) {}
+
+  /// Observe that we deserialized a default witness-table declaration.
+  virtual void didDeserialize(ModuleDecl *mod, SILDefaultWitnessTable *wtable) {
+  }
+
+  virtual ~SILDeserializationNotificationHandler() = default;
+
+private:
+  virtual void _anchor();
+};
+
+/// A notification handler that only overrides didDeserializeFunctionBody and
+/// calls the passed in function pointer.
+class SILFunctionBodyDeserializationNotificationHandler
+    : public SILDeserializationNotificationHandler {
+public:
+  using Callback = void (*)(ModuleDecl *, SILFunction *);
+
+private:
+  Callback callback;
+
+public:
+  SimpleSILFunctionBodyDeserializationNotificationHandler(Callback callback)
+      : callback(callback) {}
+
+  void didDeserializeFunctionBody(ModuleDecl *mod, SILFunction *fn) override {
+    (*callback)(mod, fn);
+  }
+};
+
 /// A protocol (or interface) for handling value deletion notifications.
 ///
 /// This class is used as a base class for any class that need to accept
@@ -24,7 +81,6 @@ class SILNode;
 /// analysis that need to invalidate data structures that contain pointers.
 /// This is similar to LLVM's ValueHandle.
 struct DeleteNotificationHandler {
-
   DeleteNotificationHandler() { }
   virtual ~DeleteNotificationHandler() {}
 

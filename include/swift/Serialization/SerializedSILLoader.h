@@ -17,6 +17,7 @@
 #include "swift/AST/Identifier.h"
 #include "swift/SIL/SILDeclRef.h"
 #include "swift/SIL/SILLinkage.h"
+#include "swift/SIL/Notifications.h"
 #include <memory>
 #include <vector>
 
@@ -36,24 +37,21 @@ class SILDefaultWitnessTable;
 /// in ASTContext. It provides lookupSILFunction that will perform lookup
 /// on each SILDeserializer.
 class SerializedSILLoader {
-public:
-  using Callback = SILDeserializationNotificationHandler;
-
 private:
   std::vector<std::unique_ptr<SILDeserializer>> LoadedSILSections;
 
   explicit SerializedSILLoader(ASTContext &ctx, SILModule *SILMod,
-                               Callback *callback);
+                               DeserializationNotificationHandlerSet *callbacks);
 
 public:
   /// Create a new loader.
   ///
-  /// \param callback - not owned by the loader
+  /// \param callbacks - not owned by the loader
   static std::unique_ptr<SerializedSILLoader> create(ASTContext &ctx,
                                                      SILModule *SILMod,
-                                                     Callback *callback) {
+                                                     DeserializationNotificationHandlerSet *callbacks) {
     return std::unique_ptr<SerializedSILLoader>(
-      new SerializedSILLoader(ctx, SILMod, callback));
+      new SerializedSILLoader(ctx, SILMod, callbacks));
   }
   ~SerializedSILLoader();
 

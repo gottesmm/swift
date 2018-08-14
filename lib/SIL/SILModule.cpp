@@ -17,6 +17,7 @@
 #include "swift/SIL/FormalLinkage.h"
 #include "swift/SIL/SILDebugScope.h"
 #include "swift/SIL/SILModule.h"
+#include "swift/SIL/Notifications.h"
 #include "swift/Strings.h"
 #include "Linker.h"
 #include "swift/SIL/SILVisitor.h"
@@ -32,7 +33,7 @@
 using namespace swift;
 using namespace Lowering;
 
-class SILModule::SerializationCallback : public SerializedSILLoader::Callback {
+class SILModule::SerializationCallback : public DeserializationNotificationHandler {
   void didDeserialize(ModuleDecl *M, SILFunction *fn) override {
     updateLinkage(fn);
   }
@@ -85,17 +86,21 @@ class SILModule::SerializationCallback : public SerializedSILLoader::Callback {
 
   void didDeserializeFunctionBody(ModuleDecl *M, SILFunction *fn) override {
     // Callbacks are currently applied in the order they are registered.
-    for (auto callBack : fn->getModule().getDeserializationCallbacks())
-      callBack(M, fn);
+    for (auto *handler : fn->getModule().getDeserializationHandlers()) {
+      handler->didDeserializeFunctionBody(M, fn);
+    }
   }
 };
 
 SILModule::SILModule(ModuleDecl *SwiftModule, SILOptions &Options,
                      const DeclContext *associatedDC, bool wholeModule)
     : TheSwiftModule(SwiftModule), AssociatedDeclContext(associatedDC),
-      Stage(SILStage::Raw), Callback(new SILModule::SerializationCallback()),
+      Stage(SILStage::Raw),
       wholeModule(wholeModule), Options(Options), serialized(false),
-      SerializeSILAction(), Types(*this) {}
+      SerializeSILAction(), Types(*this) {
+  // We always add the base SILModule serialization callback.
+  deserializationNotificationHandlers.add(llvm::make_unique<SILModule::SerializationCallback>());
+}
 
 SILModule::~SILModule() {
   // Decrement ref count for each SILGlobalVariable with static initializers.
@@ -469,8 +474,9 @@ SILVTable *SILModule::lookUpVTable(const ClassDecl *C) {
 SerializedSILLoader *SILModule::getSILLoader() {
   // If the SILLoader is null, create it.
   if (!SILLoader)
-    SILLoader = SerializedSILLoader::create(getASTContext(), this,
-                                            Callback.get());
+    SILLoader =
+      SerializedSILLoader::create(getASTContext(), this,
+                                  &deserializationNotificationHandlers);
   // Return the SerializedSILLoader.
   return SILLoader.get();
 }
@@ -569,17 +575,14 @@ lookUpFunctionInVTable(ClassDecl *Class, SILDeclRef Member) {
   return nullptr;
 }
 
-void SILModule::registerDeserializationCallback(
-    SILFunctionBodyCallback callBack) {
-  if (std::find(DeserializationCallbacks.begin(),
-                DeserializationCallbacks.end(), callBack)
-      == DeserializationCallbacks.end())
-    DeserializationCallbacks.push_back(callBack);
+void SILModule::registerDeserializationNotificationHandler(
+    std::unique_ptr<DeserializationNotificationHandler> &&handler) {
+  deserializationNotificationHandlers.add(std::move(handler));
 }
 
-ArrayRef<SILModule::SILFunctionBodyCallback>
-SILModule::getDeserializationCallbacks() {
-  return DeserializationCallbacks;
+void SILModule::registerDeserializationNotificationHandler(
+    SILPassManager *passManager) {
+  deserializationNotificationHandlers.add(passManager);
 }
 
 void SILModule::

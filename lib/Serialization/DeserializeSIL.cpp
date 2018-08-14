@@ -137,7 +137,7 @@ public:
 };
 
 SILDeserializer::SILDeserializer(ModuleFile *MF, SILModule &M,
-                                 SerializedSILLoader::Callback *callback)
+                                 DeserializationNotificationHandlerSet *callback)
     : MF(MF), SILMod(M), Callback(callback) {
 
   SILCursor = MF->getSILCursor();

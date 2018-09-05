@@ -1315,6 +1315,24 @@ variable cannot be used as l-value, i.e. the reference to the object cannot be
 modified. As a consequence the variable cannot be accessed with ``global_addr``
 but only with ``global_value``.
 
+Ownership Constraints
+---------------------
+
+SIL functions can be labeled with the attribute ``[ownership]`` which states
+that its body is in Ownership SSA form (OSSA). OSSA supports propagating ownership through the language by 
+
+All Code in OSSA propagates ownership
+constraints along def-use edges by::
+
+  requiring that::
+
+  * 
+  * All values must statically be mappable to a ValueOwnershipKind that states
+    the type of ownership transfer that any operand of the value must be able to
+    accept or violate ownership constraints.
+    
+  * All operands must produce a set of ValueOwnershipKind and a UseLifetimeConstraint. The ValueOwnership
+
 Dataflow Errors
 ---------------
 

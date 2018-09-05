@@ -46,6 +46,9 @@ At a high level, the Swift compiler follows a strict pipeline architecture:
 - General SIL *Optimization Passes* optionally run over the canonical SIL to
   improve performance of the resulting executable.  These are enabled and
   controlled by the optimization level and are not run at -Onone.
+- *Lowering Passes* are run over canonical SIL and introduce lower level
+  information into the IR. These must be run before *IRGen* but can have
+  optimization passes interleaved in between them.
 - *IRGen* lowers canonical SIL to LLVM IR.
 - The LLVM backend (optionally) applies LLVM optimizations, runs the LLVM code
   generator and emits binary code.
@@ -66,9 +69,12 @@ The form of SIL emitted by SILGen has the following properties:
 - Dataflow requirements, such as definitive assignment, function returns,
   switch coverage (TBD), etc. have not yet been enforced.
 - ``transparent`` function optimization has not yet been honored.
+- Ownership constraints are preserved and valid.
 
 These properties are addressed by subsequent guaranteed optimization and
 diagnostic passes which are always run against the raw SIL.
+
+Ownership
 
 Guaranteed Optimization and Diagnostic Passes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -124,6 +130,20 @@ IR.
   Domain specific optimizations require a defined interface between
   the standard library and the optimizer. More details can be found here:
   :ref:`HighLevelSILOptimizations`
+
+Lowering Passes
+~~~~~~~~~~~~~~~
+
+The SILOptimizer pipeline is split up into several "Lowering stages" where more
+general "semantic sil" is lowered closer to have information more like a
+mid-level LLVM-IR.
+
+- **Ownership Model Eliminator** Once this pass runs, ownership constraints are
+  no longer enforced.
+- **Address Lowering** Once this pass runs, address only types will be
+  represented as opaque addresses instead of as values.
+
+These are both run at all optimization levels before IRGen runs.
 
 Syntax
 ------
@@ -830,9 +850,10 @@ Basic Blocks
 ~~~~~~~~~~~~
 ::
 
+  sil-value-ownership-kind ::= @trivial|@owned|@guaranteed|@unowned|@any
   sil-basic-block ::= sil-label sil-instruction-def* sil-terminator
   sil-label ::= sil-identifier ('(' sil-argument (',' sil-argument)* ')')? ':'
-  sil-argument ::= sil-value-name ':' sil-type
+  sil-argument ::= sil-value-name ':' sil-value-ownership-kind sil-type
 
   sil-instruction-result ::= sil-value-name
   sil-instruction-result ::= '(' (sil-value-name (',' sil-value-name)*)? ')'
@@ -848,16 +869,16 @@ block in its body.
 
 In SIL, basic blocks take arguments, which are used as an alternative to LLVM's
 phi nodes. Basic block arguments are bound by the branch from the predecessor
-block::
+block and must match the ownership::
 
   sil @iif : $(Builtin.Int1, Builtin.Int64, Builtin.Int64) -> Builtin.Int64 {
-  bb0(%cond : $Builtin.Int1, %ifTrue : $Builtin.Int64, %ifFalse : $Builtin.Int64):
+  bb0(%cond : @trivial $Builtin.Int1, %ifTrue : @trivial $Builtin.Int64, %ifFalse : @trivial $Builtin.Int64):
     cond_br %cond : $Builtin.Int1, then, else
   then:
     br finish(%ifTrue : $Builtin.Int64)
   else:
     br finish(%ifFalse : $Builtin.Int64)
-  finish(%result : $Builtin.Int64):
+  finish(%result : @trivial $Builtin.Int64):
     return %result : $Builtin.Int64
   }
 
@@ -865,19 +886,18 @@ Arguments to the entry point basic block, which has no predecessor,
 are bound by the function's caller::
 
   sil @foo : $(Int) -> Int {
-  bb0(%x : $Int):
+  bb0(%x : @trivial $Int):
     return %x : $Int
   }
 
   sil @bar : $(Int, Int) -> () {
-  bb0(%x : $Int, %y : $Int):
+  bb0(%x : @trivial $Int, %y : @trivial $Int):
     %foo = function_ref @foo
     %1 = apply %foo(%x) : $(Int) -> Int
     %2 = apply %foo(%y) : $(Int) -> Int
     %3 = tuple ()
     return %3 : $()
   }
-
 
 Debug Information
 ~~~~~~~~~~~~~~~~~

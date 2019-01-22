@@ -19,6 +19,7 @@
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
+#include "swift/SILOptimizer/Utils/CFG.h"
 #include "swift/SILOptimizer/Utils/Local.h"
 #include "swift/SILOptimizer/Utils/SILSSAUpdater.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -31,6 +32,53 @@ using namespace swift;
 STATISTIC(NumLoadPromoted, "Number of loads promoted");
 STATISTIC(NumDestroyAddrPromoted, "Number of destroy_addrs promoted");
 STATISTIC(NumAllocRemoved, "Number of allocations completely removed");
+
+//===----------------------------------------------------------------------===//
+//                                  Utility
+//===----------------------------------------------------------------------===//
+
+static void
+splitPredEdgesIfCriticalWithNonTrivialArg(ArrayRef<SILPhiArgument *> phis) {
+  SmallVector<std::pair<CondBranchInst *, unsigned>, 8> edgesToSplit;
+
+  // Our Phis should be stored in our basic block headers and in the process of
+  // rewriting, we shouldn't touch them.
+  for (auto *p : phis) {
+    // If our phi has any ownership kind, skip it.
+    if (p->getOwnershipKind() == ValueOwnershipKind::Any)
+      continue;
+
+    // Ok, we may have a target. Check for critical edges in any of our
+    // predecessors, using a worklist to avoid iterator invalidation issues with
+    // our loop.
+    //
+    // TODO: Use iterators by hand to enable us to not use this array.
+    auto *parentBlock = p->getParent();
+    for (auto *predBlock : parentBlock->getPredecessorBlocks()) {
+      auto *cbi = dyn_cast<CondBranchInst>(predBlock->getTerminator());
+      if (!cbi)
+        continue;
+
+      if (parentBlock == cbi->getTrueBB()) {
+        if (!isCriticalEdge(cbi, CondBranchInst::TrueIdx)) {
+          continue;
+        }
+        edgesToSplit.emplace_back(cbi, CondBranchInst::TrueIdx);
+        continue;
+      }
+
+      if (!isCriticalEdge(cbi, CondBranchInst::FalseIdx)) {
+        continue;
+      }
+      edgesToSplit.emplace_back(cbi, CondBranchInst::FalseIdx);
+    }
+
+    while (!edgesToSplit.empty()) {
+      auto p = edgesToSplit.pop_back_val();
+      splitEdge(p.first, p.second);
+    }
+  }
+}
 
 //===----------------------------------------------------------------------===//
 //                            Subelement Analysis
@@ -580,7 +628,10 @@ AvailableValueAggregator::aggregateFullyAvailableValue(SILType loadTy,
   // SSA updater to get a value. The reason why this is safe is that we can only
   // have multiple insertion points if we are storing exactly the same value
   // implying that we can just copy firstVal at each insertion point.
+  SmallVector<SILPhiArgument *, 8> insertedPhis;
   SILSSAUpdater updater(B.getModule());
+  if (B.hasOwnership())
+    updater.setInsertedPhis(&insertedPhis);
   updater.Initialize(loadTy);
 
   for (auto *insertPt : insertPts) {
@@ -601,6 +652,9 @@ AvailableValueAggregator::aggregateFullyAvailableValue(SILType loadTy,
   // Finally, grab the value from the SSA updater.
   SILValue result = updater.GetValueInMiddleOfBlock(B.getInsertionBB());
   assert(result.getOwnershipKind().isCompatibleWith(ValueOwnershipKind::Owned));
+  if (!insertedPhis.empty()) {
+    splitPredEdgesIfCriticalWithNonTrivialArg(insertedPhis);
+  }
   return result;
 }
 
@@ -699,7 +753,10 @@ SILValue AvailableValueAggregator::handlePrimitiveValue(SILType loadTy,
 
   // If we have an available value, then we want to extract the subelement from
   // the borrowed aggregate before each insertion point.
+  SmallVector<SILPhiArgument *, 8> insertedPhis;
   SILSSAUpdater updater(B.getModule());
+  if (B.hasOwnership())
+    updater.setInsertedPhis(&insertedPhis);
   updater.Initialize(loadTy);
 
   for (auto *i : insertPts) {
@@ -719,6 +776,9 @@ SILValue AvailableValueAggregator::handlePrimitiveValue(SILType loadTy,
   assert(!B.hasOwnership() ||
          eltVal.getOwnershipKind().isCompatibleWith(ValueOwnershipKind::Owned));
   assert(eltVal->getType() == loadTy && "Subelement types mismatch");
+  if (!insertedPhis.empty()) {
+    splitPredEdgesIfCriticalWithNonTrivialArg(insertedPhis);
+  }
   return eltVal;
 }
 
@@ -1660,8 +1720,11 @@ static bool optimizeMemoryAccesses(SILFunction &fn) {
   bool changed = false;
   DeadEndBlocks deadEndBlocks(&fn);
 
-  for (auto &bb : fn) {
-    auto i = bb.begin(), e = bb.end();
+  // Since we may split critical edges, use straight up iterators instead of a
+  // range for more precise control.
+  for (auto bi = fn.begin(), be = fn.end(); bi != be; ++bi) {
+    auto *bb = &*bi;
+    auto i = bb->begin(), e = bb->end();
     while (i != e) {
       // First see if i is an allocation that we can optimize. If not, skip it.
       AllocationInst *alloc = getOptimizableAllocation(&*i);
@@ -1702,8 +1765,9 @@ static bool eliminateDeadAllocations(SILFunction &fn) {
   bool changed = false;
   DeadEndBlocks deadEndBlocks(&fn);
 
-  for (auto &bb : fn) {
-    auto i = bb.begin(), e = bb.end();
+  for (auto bi = fn.begin(), be = fn.end(); bi != be; ++bi) {
+    auto *bb = &*bi;
+    auto i = bb->begin(), e = bb->end();
     while (i != e) {
       // First see if i is an allocation that we can optimize. If not, skip it.
       AllocationInst *alloc = getOptimizableAllocation(&*i);

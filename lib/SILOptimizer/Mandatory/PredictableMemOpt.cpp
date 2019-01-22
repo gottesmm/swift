@@ -39,6 +39,7 @@ STATISTIC(NumAllocRemoved, "Number of allocations completely removed");
 
 static void
 splitPredEdgesIfCriticalWithNonTrivialArg(ArrayRef<SILPhiArgument *> phis) {
+  return;
   SmallVector<std::pair<CondBranchInst *, unsigned>, 8> edgesToSplit;
 
   // Our Phis should be stored in our basic block headers and in the process of

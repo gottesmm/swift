@@ -63,7 +63,7 @@ static llvm::cl::opt<bool> AbortOnFailure(
 
 static llvm::cl::opt<bool> VerifyDIHoles(
                               "verify-di-holes",
-                              llvm::cl::init(true));
+                              llvm::cl::init(false));
 
 static llvm::cl::opt<bool> SkipConvertEscapeToNoescapeAttributes(
     "verify-skip-convert-escape-to-noescape-attributes", llvm::cl::init(false));

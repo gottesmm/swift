@@ -1963,7 +1963,7 @@ public:
            "trying to move to postmatter without a registered start "
            "of postmatter?");
 
-    SGF.B.setInsertionPoint(newIP);
+    SGF.B.getBuilder().setInsertionPoint(newIP);
     SGF.CurFunctionSection = section;
   }
 

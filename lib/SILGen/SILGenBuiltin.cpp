@@ -91,7 +91,7 @@ static ManagedValue emitBuiltinRetain(SILGenFunction &SGF,
   // The value was produced at +1; we can produce an unbalanced retain simply by
   // disabling the cleanup. But this would violate ownership semantics. Instead,
   // we must allow for the cleanup and emit a new unmanaged retain value.
-  SGF.B.createUnmanagedRetainValue(loc, args[0].getValue(),
+  SGF.B.getSILBuilder().createUnmanagedRetainValue(loc, args[0].getValue(),
                                    SGF.B.getDefaultAtomicity());
   return ManagedValue::forUnmanaged(SGF.emitEmptyTuple(loc));    
 }
@@ -104,7 +104,7 @@ static ManagedValue emitBuiltinRelease(SILGenFunction &SGF,
   // The value was produced at +1, so to produce an unbalanced
   // release we need to leave the cleanup intact and then do a *second*
   // release.
-  SGF.B.createUnmanagedReleaseValue(loc, args[0].getValue(),
+  SGF.B.getSILBuilder().createUnmanagedReleaseValue(loc, args[0].getValue(),
                                     SGF.B.getDefaultAtomicity());
   return ManagedValue::forUnmanaged(SGF.emitEmptyTuple(loc));    
 }
@@ -114,7 +114,7 @@ static ManagedValue emitBuiltinAutorelease(SILGenFunction &SGF,
                                            SubstitutionMap substitutions,
                                            ArrayRef<ManagedValue> args,
                                            SGFContext C) {
-  SGF.B.createUnmanagedAutoreleaseValue(loc, args[0].getValue(),
+  SGF.B.getSILBuilder().createUnmanagedAutoreleaseValue(loc, args[0].getValue(),
                                         SGF.B.getDefaultAtomicity());
   return ManagedValue::forUnmanaged(SGF.emitEmptyTuple(loc));    
 }

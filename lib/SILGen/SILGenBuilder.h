@@ -38,6 +38,8 @@ class SGFContext;
 /// A subclass of SILBuilder that tracks used protocol conformances. Please use
 /// instead of SILBuilder if one wishes to create instructions in SILGen.
 class ConformanceEndowedSILBuilder : public SILBuilder {
+  SILGenFunction &SGF;
+
 public:
   ConformanceEndowedSILBuilder(SILGenFunction &SGF);
   ConformanceEndowedSILBuilder(SILGenFunction &SGF, SILBasicBlock *insertBB);
@@ -68,7 +70,7 @@ public:
   // scope.
   ConformanceEndowedSILBuilder(ConformanceEndowedSILBuilder &builder,
                                SILBasicBlock *insertBB)
-      : b(insertBB, builder.getCurrentDebugScope(),
+      : SILBuilder(insertBB, builder.getCurrentDebugScope(),
           builder.getBuilderContext()),
         SGF(builder.SGF) {}
 
@@ -153,14 +155,35 @@ public:
   // Create a new builder, inheriting the given builder's context and debug
   // scope.
   SILGenBuilder(SILGenBuilder &builder, SILBasicBlock *insertBB)
-      : b(insertBB, builder.getCurrentDebugScope(), builder.getBuilderContext(),
-          builder.SGF),
+      : b(builder.getBuilder(), insertBB),
         SGF(builder.SGF) {}
 
-  ConformanceEndowedSILBuilder &getBuilder() const { return b; }
+  ConformanceEndowedSILBuilder &getBuilder()  { return b; }
 
   SILGenModule &getSILGenModule() const;
   SILGenFunction &getSILGenFunction() const { return SGF; }
+
+  //--- Delegate to SILBuilder.
+  void setCurrentDebugScope(const SILDebugScope *ds) {
+    b.setCurrentDebugScope(ds);
+  }
+  const SILDebugScope *getCurrentDebugScope() const { return b.getCurrentDebugScope(); }
+
+  const SILBuilderContext &getBuilderContext() const {
+    return b.getBuilderContext();
+  }
+
+  SILBasicBlock *getInsertionBB() {
+    return b.getInsertionBB();
+  }
+
+  void setInsertionPoint(SILFunction::iterator bbIter) {
+    b.setInsertionPoint(bbIter);
+  }
+  
+  SILBasicBlock *getInsertionPoint() const { return b.getInsertionPoint(); }
+
+  //--- Ownership endowed APIs
 
   ManagedValue createPartialApply(SILLocation loc, SILValue fn,
                                   SILType substFnTy, SubstitutionMap subs,

@@ -4,7 +4,33 @@ from __future__ import print_function
 
 import argparse
 import os
+import shutil
 import subprocess
+
+
+def perform_build(args, swiftbuild_path, config, binary_name, opt_flag):
+    assert(config in ['debug', 'release'])
+    assert(binary_name in ['Bench_O', 'Bench_Onone', 'Bench_Osize'])
+    assert(opt_flag in ['-O', '-Osize', '-Onone'])
+
+    inner_build_dir = os.path.join(args.build_path, binary_name)
+    swiftbuild_args = [
+        swiftbuild_path,
+        '--package-path', args.package_path,
+        '--build-path', inner_build_dir,
+        '--configuration', config,
+        '-Xswiftc', '-Xllvm',
+        '-Xswiftc', '-align-module-to-page-size',
+        '-Xswiftc', opt_flag,
+    ]
+    if args.verbose:
+        swiftbuild_args.append('--verbose')
+    subprocess.call(swiftbuild_args)
+
+    # Copy the benchmark file into the final ./bin directory.
+    binpath = os.path.join(inner_build_dir, binary_name, config, 'SwiftBench')
+    finalpath = os.path.join(args.build_path, 'bin', binary_name)
+    shutil.copyfile(binpath, finalpath)
 
 
 def main():
@@ -14,30 +40,15 @@ def main():
     parser.add_argument('--build-path', type=str, required=True)
     parser.add_argument('--toolchain', type=str, required=True)
 
-    # Build the debug/release versions.
     args = parser.parse_args()
-    swiftbuild_path = os.path.join(args.toolchain, 'usr', 'bin', 'swift-build')
-    swiftbuild_args = [
-        swiftbuild_path,
-        '--package-path', args.package_path,
-        '--build-path', args.build_path,
-        '--configuration', 'debug',
-    ]
-    if args.verbose:
-        swiftbuild_args.append('--verbose')
-    subprocess.call(swiftbuild_args)
 
-    swiftbuild_args = [
-        swiftbuild_path,
-        '--package-path', args.package_path,
-        '--build-path', args.build_path,
-        '--configuration', 'release',
-        '-Xswiftc', '-Xllvm',
-        '-Xswiftc', '-align-module-to-page-size',
-    ]
-    if args.verbose:
-        swiftbuild_args.append('--verbose')
-    subprocess.call(swiftbuild_args)
+    # Create our bin directory so we can copy in the binaries.
+    os.makedirs(os.path.join(args.build_path, 'bin'))
+
+    swiftbuild_path = os.path.join(args.toolchain, 'usr', 'bin', 'swift-build')
+    perform_build(args, swiftbuild_path, 'debug', 'Bench_Onone', '-Onone')
+    perform_build(args, swiftbuild_path, 'release', 'Bench_Osize', '-Osize')
+    perform_build(args, swiftbuild_path, 'release', 'Bench_O', '-O')
 
 
 if __name__ == "__main__":

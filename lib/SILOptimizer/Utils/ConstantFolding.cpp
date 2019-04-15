@@ -1746,11 +1746,13 @@ ConstantFolder::processWorkList() {
                   if (OwnershipKind.isCompatibleWith(
                           ValueOwnershipKind::Guaranteed)) {
                     SILValue DTIResult = DTI->getResult(O->getOperandNumber());
-                    DTIResult->replaceAllUsesWith(NewVal);
-                    FoldedUsers.insert(DTI);
-                    if (auto *Inst = NewVal->getDefiningInstruction())
-                      WorkList.insert(Inst);
-                    continue;
+                    if (!DTIResult->use_empty()) {
+                      DTIResult->replaceAllUsesWith(NewVal);
+                      FoldedUsers.insert(DTI);
+                      if (auto *Inst = NewVal->getDefiningInstruction())
+                        WorkList.insert(Inst);
+                      continue;
+                    }
                   }
                 }
               }
@@ -1761,7 +1763,13 @@ ConstantFolder::processWorkList() {
               FoldedUsers.insert(TI);
           }
 
-          // We were able to fold, so all users should use the new folded value.
+          // We were able to fold, so all users should use the new folded
+          // value. If we don't have any such users, continue.
+          SILValue r = User->getResult(Index);
+          if (r->use_empty())
+            continue;
+
+          // Otherwise, do the RAUW.
           User->getResult(Index)->replaceAllUsesWith(C);
 
           // The new constant could be further folded now, add it to the

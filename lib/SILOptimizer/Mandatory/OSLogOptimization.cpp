@@ -32,7 +32,8 @@
 /// and performs the following steps on each such call.
 ///
 ///  1. Determines the range of instructions to constant evaluate.
-///    The range starts from the first instruction that corresponds to the
+///
+///     The range starts from the first instruction that corresponds to the
 ///     construction of the custom string interpolation to the last instruction
 ///     of the body of the log call. The log call is also inlined into the
 ///     caller.
@@ -641,6 +642,7 @@ class OSLogOptimization : public SILFunctionTransform {
 
   /// The entry point to the transformation.
   void run() override {
+    return;
     // Don't rerun optimization on deserialized functions or stdlib functions.
     if (getFunction()->wasDeserializedCanonical()) {
       return;

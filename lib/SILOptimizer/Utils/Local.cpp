@@ -951,9 +951,9 @@ static bool useHasTransitiveOwnership(const SILInstruction *I) {
   if (isa<ConvertEscapeToNoEscapeInst>(I))
     return true;
 
-  // Look through copy_value. It is inert for our purposes, but we need to look
-  // through it.
-  return isa<CopyValueInst>(I);
+  // Look through copy_value, begin_borrow. They are inert for our purposes, but
+  // we need to look through it.
+  return isa<CopyValueInst>(I) || isa<BeginBorrowInst>(I);
 }
 
 static SILValue createLifetimeExtendedAllocStack(

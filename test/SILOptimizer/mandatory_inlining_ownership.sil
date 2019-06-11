@@ -83,7 +83,7 @@ bb2(%5 : @owned $Error):
   throw %5 : $Error
 }
 
-// Partial Apply copy_value test.
+// Partial Apply copy_value, begin_borrow
 
 sil @nativeobject_plus : $@convention(thin) (@owned Builtin.NativeObject, @owned Builtin.NativeObject) -> @owned Builtin.NativeObject
 sil @partial_apply_user : $@convention(thin) (@owned @callee_owned (@owned Builtin.NativeObject) -> @owned Builtin.NativeObject) -> ()
@@ -144,7 +144,6 @@ bb3:
   destroy_value %0 : $Builtin.NativeObject
   return %13 : $Builtin.NativeObject
 }
-
 
 sil [transparent] [ossa] @term_ossa_checked_cast_addr_br_takealways_callee : $@convention(thin) (@owned Builtin.NativeObject) -> () {
 bb0(%0 : @owned $Builtin.NativeObject):

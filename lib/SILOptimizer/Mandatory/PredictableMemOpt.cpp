@@ -147,7 +147,8 @@ static unsigned computeSubelement(SILValue Pointer,
       continue;
     }
 
-    
+    // This fails when we visit unchecked_take_enum_data_addr. We should just
+    // add support for enums.
     assert(isa<InitExistentialAddrInst>(Pointer) &&
            "Unknown access path instruction");
     // Cannot promote loads and stores from within an existential projection.
@@ -233,7 +234,9 @@ public:
     InsertionPoints.set_union(Other.InsertionPoints);
   }
 
-  void addInsertionPoint(StoreInst *I) & { InsertionPoints.insert(I); }
+  void addInsertionPoint(SILInstruction *I) & {
+    InsertionPoints.insert(cast<StoreInst>(I));
+  }
 
   AvailableValue emitStructExtract(SILBuilder &B, SILLocation Loc, VarDecl *D,
                                    unsigned SubElementNumber) const {
@@ -865,6 +868,15 @@ class AvailableValueDataflowContext {
   /// predecessors during dataflow.
   llvm::SmallPtrSet<SILBasicBlock *, 32> HasLocalDefinition;
 
+  /// The set of blocks that have definitions which specifically "kill" the
+  /// given value.
+  ///
+  /// NOTE: These are not considered escapes.
+  llvm::SmallPtrSet<SILBasicBlock *, 32> HasLocalKill;
+
+  /// This is a set of load takes that we are tracking.
+  llvm::SmallPtrSet<SILInstruction *, 8> LoadTakeUses;
+
   /// This is a map of uses that are not loads (i.e., they are Stores,
   /// InOutUses, and Escapes), to their entry in Uses.
   llvm::SmallDenseMap<SILInstruction *, unsigned, 16> NonLoadUses;
@@ -925,10 +937,19 @@ AvailableValueDataflowContext::AvailableValueDataflowContext(
     auto &Use = Uses[ui];
     assert(Use.Inst && "No instruction identified?");
 
-    // Keep track of all the uses that aren't loads.
-    if (Use.Kind == PMOUseKind::Load)
+    // If we have a load...
+    if (Use.Kind == PMOUseKind::Load) {
+      // That is not a load take, continue. Otherwise, stash the load [take].
+      if (auto *LI = dyn_cast<LoadInst>(Use.Inst)) {
+        if (LI->getOwnershipQualifier() == LoadOwnershipQualifier::Take) {
+          LoadTakeUses.insert(LI);
+          HasLocalKill.insert(LI->getParent());
+        }
+      }
       continue;
+    }
 
+    // Keep track of all the uses that aren't loads.
     NonLoadUses[Use.Inst] = ui;
     HasLocalDefinition.insert(Use.Inst->getParent());
 
@@ -945,43 +966,118 @@ AvailableValueDataflowContext::AvailableValueDataflowContext(
   HasLocalDefinition.insert(TheMemory->getParent());
 }
 
+// This function takes in the current (potentially uninitialized) available
+// values for theMemory and for the subset of AvailableValues corresponding to
+// \p address either:
+//
+// 1. If uninitialized, optionally initialize the available value with a new
+//    SILValue. It is optional since in certain cases, (for instance when
+//    invalidating one just wants to skip empty available values).
+//
+// 2. Given an initialized value, either add the given instruction as an
+//    insertion point or state that we have a conflict.
+static inline void updateAvailableValuesHelper(
+    SingleValueInstruction *theMemory, SILInstruction *inst, SILValue address,
+    SmallBitVector &requiredElts, SmallVectorImpl<AvailableValue> &result,
+    SmallBitVector &conflictingValues,
+    function_ref<Optional<AvailableValue>(unsigned)> defaultFunc,
+    function_ref<bool(AvailableValue &, unsigned)> isSafeFunc) {
+  auto &mod = theMemory->getModule();
+  unsigned startSubElt = computeSubelement(address, theMemory);
+
+  // TODO: Is this needed now?
+  assert(startSubElt != ~0U && "Store within enum projection not handled");
+  for (unsigned i :
+       range(getNumSubElements(address->getType().getObjectType(), mod))) {
+    // If this element is not required, don't fill it in.
+    if (!requiredElts[startSubElt + i])
+      continue;
+
+    // At this point we know that we will either mark the value as conflicting
+    // or give it a value.
+    requiredElts[startSubElt + i] = false;
+
+    // First see if we have an entry at all.
+    auto &entry = result[startSubElt + i];
+
+    // If we don't...
+    if (!entry) {
+      // and we are told to initialize it, do so.
+      if (auto defaultValue = defaultFunc(i)) {
+        entry = std::move(defaultValue.getValue());
+      } else {
+        // Otherwise, mark this as a conflicting value. There is some available
+        // value here, we just do not know what it is at this point. This
+        // ensures that if we visit a kill where we do not have an entry yet, we
+        // properly invalidate our state.
+        conflictingValues[startSubElt + i] = true;
+      }
+      continue;
+    }
+
+    // Check if our caller thinks that the value currently in entry is
+    // compatible with \p inst. If not, mark the values as conflicting and
+    // continue.
+    if (!isSafeFunc(entry, i)) {
+      conflictingValues[startSubElt + i] = true;
+      continue;
+    }
+
+    // Otherwise, we found another insertion point for our available value.
+    assert(cast<StoreInst>(inst) && "This is always a store today");
+    entry.addInsertionPoint(inst);
+  }
+}
+
 void AvailableValueDataflowContext::updateAvailableValues(
     SILInstruction *Inst, SmallBitVector &RequiredElts,
     SmallVectorImpl<AvailableValue> &Result,
     SmallBitVector &ConflictingValues) {
+
+  // If we are visiting a load [take], it invalidates the underlying available
+  // values.
+  //
+  // NOTE: Since we are always looking back from the instruction to promote,
+  // when we attempt to promote the load [take] itself, we will never hit this
+  // code since.
+  if (auto *LI = dyn_cast<LoadInst>(Inst)) {
+    // First see if this is a load inst that we are tracking.
+    if (LoadTakeUses.count(LI)) {
+      updateAvailableValuesHelper(TheMemory, LI, LI->getOperand(), RequiredElts,
+                                  Result, ConflictingValues,
+                                  /*default*/
+                                  [](unsigned) -> Optional<AvailableValue> {
+                                    // We never initialize values. We only
+                                    // want to invalidate.
+                                    return None;
+                                  },
+                                  /*isSafe*/
+                                  [](AvailableValue &, unsigned) -> bool {
+                                    // Always assume values conflict.
+                                    return false;
+                                  });
+      return;
+    }
+  }
+
   // Handle store.
   if (auto *SI = dyn_cast<StoreInst>(Inst)) {
-    unsigned StartSubElt = computeSubelement(SI->getDest(), TheMemory);
-    assert(StartSubElt != ~0U && "Store within enum projection not handled");
-    SILType ValTy = SI->getSrc()->getType();
-
-    for (unsigned i : range(getNumSubElements(ValTy, getModule()))) {
-      // If this element is not required, don't fill it in.
-      if (!RequiredElts[StartSubElt+i]) continue;
-
-      // This element is now provided.
-      RequiredElts[StartSubElt + i] = false;
-
-      // If there is no result computed for this subelement, record it.  If
-      // there already is a result, check it for conflict.  If there is no
-      // conflict, then we're ok.
-      auto &Entry = Result[StartSubElt+i];
-      if (!Entry) {
-        Entry = {SI->getSrc(), i, SI};
-        continue;
-      }
-
-      // TODO: This is /really/, /really/, conservative. This basically means
-      // that if we do not have an identical store, we will not promote.
-      if (Entry.getValue() != SI->getSrc() ||
-          Entry.getSubElementNumber() != i) {
-        ConflictingValues[StartSubElt + i] = true;
-        continue;
-      }
-
-      Entry.addInsertionPoint(SI);
-    }
-
+    updateAvailableValuesHelper(
+        TheMemory, SI, SI->getDest(), RequiredElts, Result, ConflictingValues,
+        /*default*/
+        [&](unsigned ResultOffset) -> Optional<AvailableValue> {
+          Optional<AvailableValue> Result;
+          Result.emplace(SI->getSrc(), ResultOffset, SI);
+          return Result;
+        },
+        /*isSafe*/
+        [&](AvailableValue &Entry, unsigned ResultOffset) -> bool {
+          // TODO: This is /really/, /really/, conservative. This basically
+          // means that if we do not have an identical store, we will not
+          // promote.
+          return Entry.getValue() == SI->getSrc() &&
+                 Entry.getSubElementNumber() == ResultOffset;
+        });
     return;
   }
   
@@ -1082,20 +1178,21 @@ void AvailableValueDataflowContext::computeAvailableValuesFrom(
         &VisitedBlocks,
     SmallBitVector &ConflictingValues) {
   assert(!RequiredElts.none() && "Scanning with a goal of finding nothing?");
-  
+
   // If there is a potential modification in the current block, scan the block
-  // to see if the store or escape is before or after the load.  If it is
-  // before, check to see if it produces the value we are looking for.
-  if (HasLocalDefinition.count(BB)) {
+  // to see if the store, escape, or load [take] is before or after the load. If
+  // it is before, check to see if it produces the value we are looking for.
+  bool shouldCheckBlock =
+      HasLocalDefinition.count(BB) || HasLocalKill.count(BB);
+  if (shouldCheckBlock) {
     for (SILBasicBlock::iterator BBI = StartingFrom; BBI != BB->begin();) {
       SILInstruction *TheInst = &*std::prev(BBI);
-
       // If this instruction is unrelated to the element, ignore it.
-      if (!NonLoadUses.count(TheInst)) {
+      if (!NonLoadUses.count(TheInst) && !LoadTakeUses.count(TheInst)) {
         --BBI;
         continue;
       }
-      
+
       // Given an interesting instruction, incorporate it into the set of
       // results, and filter down the list of demanded subelements that we still
       // need.
@@ -1111,7 +1208,6 @@ void AvailableValueDataflowContext::computeAvailableValuesFrom(
         --BBI;
     }
   }
-  
   
   // Otherwise, we need to scan up the CFG looking for available values.
   for (auto PI = BB->pred_begin(), E = BB->pred_end(); PI != E; ++PI) {
@@ -1237,6 +1333,11 @@ void AvailableValueDataflowContext::explodeCopyAddr(CopyAddrInst *CAI) {
       // "assign" operation on the destination of the copyaddr.
       if (LoadUse.isValid() &&
           getAccessPathRoot(NewInst->getOperand(0)) == TheMemory) {
+        if (auto *LI = dyn_cast<LoadInst>(NewInst)) {
+          if (LI->getOwnershipQualifier() == LoadOwnershipQualifier::Take) {
+            LoadTakeUses.insert(LI);
+          }
+        }
         LoadUse.Inst = NewInst;
         Uses.push_back(LoadUse);
       }

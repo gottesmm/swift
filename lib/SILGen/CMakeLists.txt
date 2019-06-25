@@ -33,3 +33,10 @@ add_swift_host_library(swiftSILGen STATIC
   SILGenType.cpp)
 target_link_libraries(swiftSILGen PRIVATE
   swiftSIL)
+
+add_swift_host_library(swiftSwiftLibDemo SHARED
+  REQUIRES_SWIFTC
+  Lib1.swift)
+set_target_properties(swiftSwiftLibDemo PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE)
+target_link_options(swiftSwiftLibDemo PUBLIC "LINKER:-install_name,@rpath/libswiftSwiftLibDemo.dylib")
+target_link_libraries(swiftSILGen PUBLIC swiftSwiftLibDemo)

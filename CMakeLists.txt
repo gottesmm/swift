@@ -24,6 +24,7 @@ else()
 endif()
 
 ENABLE_LANGUAGE(C)
+ENABLE_LANGUAGE(Swift)
 
 # First include general CMake utilities.
 include(SwiftUtils)
@@ -438,8 +439,11 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
 if(SWIFT_BUILT_STANDALONE)
-  project(Swift C CXX ASM)
+  project(Swift C CXX ASM Swift)
 endif()
+
+# Place all modules into `swift` in the root of the build tree
+set(CMAKE_Swift_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/swift)
 
 if(MSVC OR "${CMAKE_SIMULATE_ID}" STREQUAL MSVC)
   include(ClangClCompileRules)

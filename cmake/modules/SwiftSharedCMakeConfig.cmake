@@ -101,6 +101,12 @@ macro(swift_common_standalone_build_config_llvm product)
   include(AddSwiftTableGen) # This imports TableGen from LLVM.
   include(HandleLLVMOptions)
 
+  if (LLVM_ENABLE_ASSERTIONS)
+    if (NOT uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
+      remove_definitions( -UNDEBUG )
+    endif()
+  endif()
+
   # HACK: Not all targets support -z,defs as a linker flag. 
   #
   # Normally, LLVM would only add it as an option for known ELF targets;

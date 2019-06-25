@@ -32,6 +32,10 @@ using namespace Lowering;
 // SILGenFunction Class implementation
 //===----------------------------------------------------------------------===//
 
+extern "C" {
+  extern void inject_into_swift();
+}
+
 SILGenFunction::SILGenFunction(SILGenModule &SGM, SILFunction &F,
                                DeclContext *DC)
     : SGM(SGM), F(F), silConv(SGM.M), FunctionDC(DC),
@@ -42,6 +46,7 @@ SILGenFunction::SILGenFunction(SILGenModule &SGM, SILFunction &F,
   B.setInsertionPoint(createBasicBlock());
   B.setCurrentDebugScope(F.getDebugScope());
   B.setOpenedArchetypesTracker(&OpenedArchetypesTracker);
+  inject_into_swift();
 }
 
 /// SILGenFunction destructor - called after the entire function's AST has been

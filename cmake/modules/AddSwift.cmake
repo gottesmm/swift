@@ -1423,6 +1423,7 @@ endfunction()
 #   add_swift_host_library(name
 #     [SHARED]
 #     [STATIC]
+#     [REQUIRES_SWIFTC]
 #     [LLVM_LINK_COMPONENTS comp1 ...]
 #     [FILE_DEPENDS target1 ...]
 #     source1 [source2 source3 ...])
@@ -1436,6 +1437,10 @@ endfunction()
 # STATIC
 #   Build a static library.
 #
+# REQUIRES_SWIFTC
+#   Is this library a pure swift host library that requires either a bootstrap
+#   build or a system swiftc.
+#
 # LLVM_LINK_COMPONENTS
 #   LLVM components this library depends on.
 #
@@ -1448,7 +1453,8 @@ function(add_swift_host_library name)
   set(options
         FORCE_BUILD_OPTIMIZED
         SHARED
-        STATIC)
+        STATIC
+        REQUIRES_SWIFTC)
   set(single_parameter_options)
   set(multiple_parameter_options
         C_COMPILE_FLAGS
@@ -1480,19 +1486,26 @@ function(add_swift_host_library name)
     message(FATAL_ERROR "Either SHARED or STATIC must be specified")
   endif()
 
-  _add_swift_library_single(
-    ${name}
-    ${name}
-    ${ASHL_SHARED_keyword}
-    ${ASHL_STATIC_keyword}
-    ${ASHL_SOURCES}
-    ${ASHL_FORCE_BUILD_OPTIMIZED_keyword}
-    SDK ${SWIFT_HOST_VARIANT_SDK}
-    ARCHITECTURE ${SWIFT_HOST_VARIANT_ARCH}
-    LLVM_LINK_COMPONENTS ${ASHL_LLVM_LINK_COMPONENTS}
-    FILE_DEPENDS ${ASHL_FILE_DEPENDS}
-    INSTALL_IN_COMPONENT "dev"
-    )
+  if (NOT ASHL_REQUIRES_SWIFTC)
+    _add_swift_library_single(
+      ${name}
+      ${name}
+      ${ASHL_SHARED_keyword}
+      ${ASHL_STATIC_keyword}
+      ${ASHL_SOURCES}
+      ${ASHL_FORCE_BUILD_OPTIMIZED_keyword}
+      SDK ${SWIFT_HOST_VARIANT_SDK}
+      ARCHITECTURE ${SWIFT_HOST_VARIANT_ARCH}
+      LLVM_LINK_COMPONENTS ${ASHL_LLVM_LINK_COMPONENTS}
+      FILE_DEPENDS ${ASHL_FILE_DEPENDS}
+      INSTALL_IN_COMPONENT "dev"
+      )
+  else()
+    add_library(${name}
+      ${ASHL_SHARED_keyword}
+      ${ASHL_STATIC_keyword}
+      ${ASHL_SOURCES})
+  endif()
 
   if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     swift_install_in_component(TARGETS ${name}

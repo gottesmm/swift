@@ -1,0 +1,61 @@
+//===--- BridgeFunctionBridgingHelpers.def ---------------------*- c++ -*--===//
+//
+// This source file is part of the Swift.org open source project
+//
+// Copyright (c) 2014 - 2019 Apple Inc. and the Swift project authors
+// Licensed under Apache License v2.0 with Runtime Library Exception
+//
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+//
+//===----------------------------------------------------------------------===//
+
+// A .def file that defines a set of common commands for setting up a bridging
+// header for swift's c++ functions.
+//
+// Include the file once at the top of the bridging macros you declare and once
+// at the bottom. This makes it easier to maintain the cleanup of the variables
+// of this helper .def.
+
+#ifndef BRIDGEFUNCTION_HELPER_ENABLED
+#define BRIDGEFUNCTION_HELPER_ENABLED
+
+// This is the name of the c struct wrapper. E.x.: TYPE(SIL, SILModule).
+#ifndef TYPE
+#define TYPE(TYPE_NAME)
+#endif
+
+// NOTE: We infer self! The type should be the type as e
+#ifndef METHOD0
+#define METHOD0(TYPE_NAME, METHOD_NAME, METHOD_RETURN)
+#endif
+
+#ifndef METHOD1
+#define METHOD1(TYPE_NAME, METHOD_NAME, METHOD_RETURN, ...)
+#endif
+
+#ifndef METHOD2
+#define METHOD2(TYPE_NAME, METHOD_NAME, METHOD_RETURN, ...)
+#endif
+
+#ifndef METHOD3
+#define METHOD3(TYPE_NAME, METHOD_NAME, METHOD_RETURN, ...)
+#endif
+
+#ifndef METHOD4
+#define METHOD4(TYPE_NAME, METHOD_NAME, METHOD_RETURN, ...)
+#endif
+
+#else
+
+// When we are exiting, we undef
+
+#undef BRIDGEFUNCTION_HELPER_ENABLED
+#undef METHOD0
+#undef METHOD1
+#undef METHOD2
+#undef METHOD3
+#undef METHOD4
+#undef TYPE
+
+#endif

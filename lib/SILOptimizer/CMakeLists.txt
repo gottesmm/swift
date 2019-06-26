@@ -36,4 +36,5 @@ add_subdirectory(Utils)
 add_swift_host_library(swiftSILOptimizer STATIC
   ${SILOPTIMIZER_SOURCES})
 target_link_libraries(swiftSILOptimizer PRIVATE
-  swiftSIL)
+  swiftSIL
+  swiftSILOptimizerSwiftBridge)

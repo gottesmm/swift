@@ -1,0 +1,8 @@
+
+#include "swift-c/SwiftBridge/BridgeFunctionBridgingHelpers.def"
+
+TYPE(SILModule)
+METHOD0(SILModule, verify, void, void)
+METHOD0(SILModule, dump, void, void)
+
+#include "swift-c/SwiftBridge/BridgeFunctionBridgingHelpers.def"

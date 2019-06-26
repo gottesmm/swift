@@ -1,0 +1,5 @@
+
+add_swift_host_library(swiftSILOptimizerSwiftBridge STATIC
+  SILOptimizerBridgedTypes.cpp)
+target_link_libraries(swiftSILOptimizerSwiftBridge PRIVATE swiftSILSwiftBridge)
+add_dependencies(swiftSILOptimizerSwiftBridge intrinsics_gen clang-tablegen-targets)

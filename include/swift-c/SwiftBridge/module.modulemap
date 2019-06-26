@@ -1,0 +1,5 @@
+module SwiftBridge {
+  header "SILBridgedTypes.h"
+  header "SILOptimizerBridgedTypes.h"
+  export *
+}

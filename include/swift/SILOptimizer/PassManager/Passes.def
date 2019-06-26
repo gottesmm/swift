@@ -32,6 +32,15 @@
 #error "Macro must be defined by includer"
 #endif
 
+/// An optimizer pass that is written in swift via the SwiftBridge C
+/// interface. Only enabled when a host swift is available.
+///
+/// We use the term bridged here since in principle any language with a clang
+/// importer like swift's could plug into this mechanism.
+#ifndef BRIDGED_PASS
+#define BRIDGED_PASS(Id, Tag, Description) PASS(Id, Tag, Description)
+#endif
+
 /// IRGEN_PASS(Id, Tag, Description)
 ///   This macro follows the same conventions as PASS(Id, Tag, Description),
 ///   but is used for IRGen passes which are built outside of the
@@ -315,5 +324,6 @@ PASS(BugReducerTester, "bug-reducer-tester",
 PASS_RANGE(AllPasses, AADumper, BugReducerTester)
 
 #undef IRGEN_PASS
+#undef BRIDGED_PASS
 #undef PASS
 #undef PASS_RANGE

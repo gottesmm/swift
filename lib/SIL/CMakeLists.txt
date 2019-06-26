@@ -49,7 +49,8 @@ add_swift_host_library(swiftSIL STATIC
   ValueUtils.cpp)
 target_link_libraries(swiftSIL PRIVATE
   swiftSema
-  swiftSerialization)
+  swiftSerialization
+  swiftSILSwiftBridge)
 
 # intrinsics_gen is the LLVM tablegen target that generates the include files
 # where intrinsics and attributes are declared. swiftSIL depends on these

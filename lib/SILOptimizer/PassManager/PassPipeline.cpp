@@ -405,6 +405,7 @@ static void addPerfEarlyModulePassPipeline(SILPassPipelinePlan &P) {
 
 static void addHighLevelEarlyLoopOptPipeline(SILPassPipelinePlan &P) {
   P.startPipeline("HighLevel+EarlyLoopOpt");
+  P.addModuleDumper();
   // FIXME: update this to be a function pass.
   P.addEagerSpecializer();
   addSSAPasses(P, OptimizationLevelKind::HighLevel);

@@ -30,3 +30,7 @@ silopt_register_sources(
   StripDebugInfo.cpp
   OwnershipDumper.cpp
 )
+
+silopt_register_swift_sources(
+  ModuleDumper.swift
+  )

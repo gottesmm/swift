@@ -98,7 +98,7 @@ function(_add_variant_c_compile_link_flags)
   set(oneValueArgs SDK ARCH BUILD_TYPE RESULT_VAR_NAME ENABLE_LTO ANALYZE_CODE_COVERAGE
     DEPLOYMENT_VERSION_OSX DEPLOYMENT_VERSION_IOS DEPLOYMENT_VERSION_TVOS DEPLOYMENT_VERSION_WATCHOS)
   cmake_parse_arguments(CFLAGS
-    ""
+    "IS_HOST"
     "${oneValueArgs}"
     ""
     ${ARGN})
@@ -131,7 +131,11 @@ function(_add_variant_c_compile_link_flags)
 
   set(_sysroot "${SWIFT_SDK_${CFLAGS_SDK}_ARCH_${CFLAGS_ARCH}_PATH}")
   if(IS_DARWIN)
-    list(APPEND result "-isysroot" "${_sysroot}")
+    if (CFLAGS_IS_HOST)
+      list(APPEND result "-sdk" "${_sysroot}")
+    else()
+      list(APPEND result "-isysroot" "${_sysroot}")
+    endif()
   elseif(NOT SWIFT_COMPILER_IS_MSVC_LIKE AND NOT "${_sysroot}" STREQUAL "/")
     list(APPEND result "--sysroot=${_sysroot}")
   endif()
@@ -146,9 +150,11 @@ function(_add_variant_c_compile_link_flags)
 
   if(IS_DARWIN)
     list(APPEND result
-      "-arch" "${CFLAGS_ARCH}"
-      "-F" "${SWIFT_SDK_${CFLAGS_SDK}_PATH}/../../../Developer/Library/Frameworks"
-      "-m${SWIFT_SDK_${CFLAGS_SDK}_VERSION_MIN_NAME}-version-min=${DEPLOYMENT_VERSION}")
+      "-F" "${SWIFT_SDK_${CFLAGS_SDK}_PATH}/../../../Developer/Library/Frameworks")
+    # What is the correct flag to use here when linking with swiftc?
+    if (NOT CFLAGS_IS_HOST)
+      list(APPEND result "-m${SWIFT_SDK_${CFLAGS_SDK}_VERSION_MIN_NAME}-version-min=${DEPLOYMENT_VERSION}")
+    endif()
   endif()
 
   if(CFLAGS_ANALYZE_CODE_COVERAGE)
@@ -169,12 +175,13 @@ function(_add_variant_c_compile_flags)
     DEPLOYMENT_VERSION_OSX DEPLOYMENT_VERSION_IOS DEPLOYMENT_VERSION_TVOS DEPLOYMENT_VERSION_WATCHOS
     RESULT_VAR_NAME ENABLE_LTO)
   cmake_parse_arguments(CFLAGS
-    "FORCE_BUILD_OPTIMIZED"
+    "FORCE_BUILD_OPTIMIZED;IS_HOST"
     "${oneValueArgs}"
     ""
     ${ARGN})
 
   set(result ${${CFLAGS_RESULT_VAR_NAME}})
+  translate_flags(CFLAGS "IS_HOST")
 
   _add_variant_c_compile_link_flags(
     SDK "${CFLAGS_SDK}"
@@ -187,8 +194,15 @@ function(_add_variant_c_compile_flags)
     DEPLOYMENT_VERSION_IOS "${CFLAGS_DEPLOYMENT_VERSION_IOS}"
     DEPLOYMENT_VERSION_TVOS "${CFLAGS_DEPLOYMENT_VERSION_TVOS}"
     DEPLOYMENT_VERSION_WATCHOS "${CFLAGS_DEPLOYMENT_VERSION_WATCHOS}"
+    ${CFLAGS_IS_HOST_keyword}
     RESULT_VAR_NAME result)
 
+  # Do not go further
+  if (CFLAGS_IS_HOST)
+    set("${CFLAGS_RESULT_VAR_NAME}" "${result}" PARENT_SCOPE)
+    return()
+  endif()
+    
   is_build_type_optimized("${CFLAGS_BUILD_TYPE}" optimized)
   if(optimized OR CFLAGS_FORCE_BUILD_OPTIMIZED)
     list(APPEND result "-O2")
@@ -289,7 +303,7 @@ function(_add_variant_c_compile_flags)
   endif()
 
   if(CFLAGS_ENABLE_ASSERTIONS)
-    list(APPEND result "-UNDEBUG")
+    remove_definitions("-DNDEBUG")
   else()
     list(APPEND result "-DNDEBUG")
   endif()
@@ -413,13 +427,14 @@ function(_add_variant_link_flags)
   DEPLOYMENT_VERSION_OSX DEPLOYMENT_VERSION_IOS DEPLOYMENT_VERSION_TVOS DEPLOYMENT_VERSION_WATCHOS
   RESULT_VAR_NAME ENABLE_LTO LTO_OBJECT_NAME LINK_LIBRARIES_VAR_NAME LIBRARY_SEARCH_DIRECTORIES_VAR_NAME)
   cmake_parse_arguments(LFLAGS
-    ""
+    "IS_HOST"
     "${oneValueArgs}"
     ""
     ${ARGN})
 
   precondition(LFLAGS_SDK MESSAGE "Should specify an SDK")
   precondition(LFLAGS_ARCH MESSAGE "Should specify an architecture")
+  translate_flags(LFLAGS "IS_HOST")
 
   set(result ${${LFLAGS_RESULT_VAR_NAME}})
   set(link_libraries ${${LFLAGS_LINK_LIBRARIES_VAR_NAME}})
@@ -436,6 +451,7 @@ function(_add_variant_link_flags)
     DEPLOYMENT_VERSION_IOS "${LFLAGS_DEPLOYMENT_VERSION_IOS}"
     DEPLOYMENT_VERSION_TVOS "${LFLAGS_DEPLOYMENT_VERSION_TVOS}"
     DEPLOYMENT_VERSION_WATCHOS "${LFLAGS_DEPLOYMENT_VERSION_WATCHOS}"
+    ${LFLAGS_IS_HOST_keyword}
     RESULT_VAR_NAME result)
 
   if("${LFLAGS_SDK}" STREQUAL "LINUX")
@@ -460,7 +476,7 @@ function(_add_variant_link_flags)
          ${CMAKE_BINARY_DIR}/winsdk_lib_${LFLAGS_ARCH}_symlinks)
   elseif("${LFLAGS_SDK}" STREQUAL "HAIKU")
     list(APPEND link_libraries "bsd" "atomic")
-    list(APPEND result "-Wl,-Bsymbolic")
+    list(APPEND result "-Xlinker" "-Bsymbolic")
   elseif("${LFLAGS_SDK}" STREQUAL "ANDROID")
     list(APPEND link_libraries "dl" "log" "atomic")
     # We need to add the math library, which is linked implicitly by libc++
@@ -503,7 +519,7 @@ function(_add_variant_link_flags)
         MESSAGE "Should specify a unique name for the lto object")
       set(lto_object_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR})
       set(lto_object ${lto_object_dir}/${LFLAGS_LTO_OBJECT_NAME}-lto.o)
-        list(APPEND result "-Wl,-object_path_lto,${lto_object}")
+        list(APPEND result "-Xlinker" "-object_path_lto" "-Xlinker" "${lto_object}")
       endif()
   endif()
 
@@ -545,7 +561,7 @@ function(_add_variant_link_flags)
     if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
       # See rdar://48283130: This gives 6MB+ size reductions for swift and
       # SourceKitService, and much larger size reductions for sil-opt etc.
-      list(APPEND result "-Wl,-dead_strip")
+      list(APPEND result "-Xlinker" "-dead_strip")
     endif()
   endif()
 
@@ -1317,7 +1333,10 @@ function(_add_swift_library_single target name)
 
     set(PLIST_INFO_PLIST_OUT "${PLIST_INFO_PLIST}")
     list(APPEND link_flags
-         "-Wl,-sectcreate,__TEXT,__info_plist,${CMAKE_CURRENT_BINARY_DIR}/${PLIST_INFO_PLIST_OUT}")
+      "-Xlinker" "-sectcreate"
+      "-Xlinker" "__TEXT"
+      "-Xlinker" "__info_plist"
+      "-Xlinker" "${CMAKE_CURRENT_BINARY_DIR}/${PLIST_INFO_PLIST_OUT}")
     configure_file(
         "${SWIFT_SOURCE_DIR}/stdlib/${PLIST_INFO_PLIST}.in"
         "${PLIST_INFO_PLIST_OUT}"
@@ -1327,7 +1346,7 @@ function(_add_swift_library_single target name)
     # If Application Extensions are enabled, pass the linker flag marking
     # the dylib as safe.
     if (CXX_SUPPORTS_FAPPLICATION_EXTENSION AND (NOT DISABLE_APPLICATION_EXTENSION))
-      list(APPEND link_flags "-Wl,-application_extension")
+      list(APPEND link_flags "-Xlinker" "-application_extension")
     endif()
 
     set(PLIST_INFO_UTI)
@@ -1417,12 +1436,19 @@ function(_add_swift_library_single target name)
   # Do not add code here.
 endfunction()
 
+if(CMAKE_Swift_COMPILER_TARGET)
+    set(CMAKE_Swift_CREATE_STATIC_LIBRARY "xcrun -sdk macosx ${CMAKE_Swift_COMPILER} -target <CMAKE_Swift_COMPILER_TARGET> -output-file-map <SWIFT_OUTPUT_FILE_MAP> -incremental -emit-library -static -o <TARGET> -module-name <SWIFT_MODULE_NAME> -module-link-name <SWIFT_LIBRARY_NAME> -emit-module -emit-module-path <SWIFT_MODULE> -emit-dependencies <DEFINES> <FLAGS> <INCLUDES> <SWIFT_SOURCES> <LINK_FLAGS> <LINK_LIBRARIES>")
+else()
+    set(CMAKE_Swift_CREATE_STATIC_LIBRARY "xcrun -sdk macosx ${CMAKE_Swift_COMPILER} -output-file-map <SWIFT_OUTPUT_FILE_MAP> -incremental -emit-library -static -o <TARGET> -module-name <SWIFT_MODULE_NAME> -module-link-name <SWIFT_LIBRARY_NAME> -emit-module -emit-module-path <SWIFT_MODULE> -emit-dependencies <DEFINES> <FLAGS> <INCLUDES> <SWIFT_SOURCES> <LINK_FLAGS> <LINK_LIBRARIES>")
+endif()
+
 # Add a new Swift host library.
 #
 # Usage:
 #   add_swift_host_library(name
 #     [SHARED]
 #     [STATIC]
+#     [REQUIRES_SWIFTC]
 #     [LLVM_LINK_COMPONENTS comp1 ...]
 #     [FILE_DEPENDS target1 ...]
 #     source1 [source2 source3 ...])
@@ -1436,6 +1462,10 @@ endfunction()
 # STATIC
 #   Build a static library.
 #
+# REQUIRES_SWIFTC
+#   Is this library a pure swift host library that requires either a bootstrap
+#   build or a system swiftc.
+#
 # LLVM_LINK_COMPONENTS
 #   LLVM components this library depends on.
 #
@@ -1448,7 +1478,8 @@ function(add_swift_host_library name)
   set(options
         FORCE_BUILD_OPTIMIZED
         SHARED
-        STATIC)
+        STATIC
+        REQUIRES_SWIFTC)
   set(single_parameter_options)
   set(multiple_parameter_options
         C_COMPILE_FLAGS
@@ -1480,19 +1511,26 @@ function(add_swift_host_library name)
     message(FATAL_ERROR "Either SHARED or STATIC must be specified")
   endif()
 
-  _add_swift_library_single(
-    ${name}
-    ${name}
-    ${ASHL_SHARED_keyword}
-    ${ASHL_STATIC_keyword}
-    ${ASHL_SOURCES}
-    ${ASHL_FORCE_BUILD_OPTIMIZED_keyword}
-    SDK ${SWIFT_HOST_VARIANT_SDK}
-    ARCHITECTURE ${SWIFT_HOST_VARIANT_ARCH}
-    LLVM_LINK_COMPONENTS ${ASHL_LLVM_LINK_COMPONENTS}
-    FILE_DEPENDS ${ASHL_FILE_DEPENDS}
-    INSTALL_IN_COMPONENT "dev"
-    )
+  if (NOT ASHL_REQUIRES_SWIFTC)
+    _add_swift_library_single(
+      ${name}
+      ${name}
+      ${ASHL_SHARED_keyword}
+      ${ASHL_STATIC_keyword}
+      ${ASHL_SOURCES}
+      ${ASHL_FORCE_BUILD_OPTIMIZED_keyword}
+      SDK ${SWIFT_HOST_VARIANT_SDK}
+      ARCHITECTURE ${SWIFT_HOST_VARIANT_ARCH}
+      LLVM_LINK_COMPONENTS ${ASHL_LLVM_LINK_COMPONENTS}
+      FILE_DEPENDS ${ASHL_FILE_DEPENDS}
+      INSTALL_IN_COMPONENT "dev"
+      )
+  else()
+    add_library(${name}
+      ${ASHL_SHARED_keyword}
+      ${ASHL_STATIC_keyword}
+      ${ASHL_SOURCES})
+  endif()
 
   if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     swift_install_in_component(TARGETS ${name}
@@ -1889,7 +1927,7 @@ function(add_swift_target_library name)
     # Setting back linker flags which are not supported when making Android build on macOS cross-compile host.
     if(SWIFTLIB_SHARED)
       if(sdk IN_LIST SWIFT_APPLE_PLATFORMS)
-        list(APPEND swiftlib_link_flags_all "-dynamiclib -Wl,-headerpad_max_install_names")
+        list(APPEND swiftlib_link_flags_all "-emit-library" "-Xlinker" "-headerpad_max_install_names")
       elseif(sdk STREQUAL ANDROID)
         list(APPEND swiftlib_link_flags_all "-shared")
         # TODO: Instead of `lib${name}.so` find variable or target property which already have this value.
@@ -2255,16 +2293,14 @@ endfunction()
 function(_add_swift_executable_single name)
   # Parse the arguments we were given.
   cmake_parse_arguments(SWIFTEXE_SINGLE
-    "EXCLUDE_FROM_ALL"
+    "EXCLUDE_FROM_ALL;IS_HOST"
     "SDK;ARCHITECTURE"
     "DEPENDS;LLVM_LINK_COMPONENTS;LINK_LIBRARIES;COMPILE_FLAGS"
     ${ARGN})
 
   set(SWIFTEXE_SINGLE_SOURCES ${SWIFTEXE_SINGLE_UNPARSED_ARGUMENTS})
 
-  translate_flag(${SWIFTEXE_SINGLE_EXCLUDE_FROM_ALL}
-      "EXCLUDE_FROM_ALL"
-      SWIFTEXE_SINGLE_EXCLUDE_FROM_ALL_FLAG)
+  translate_flags(SWIFTEXE_SINGLE "IS_HOST")
 
   # Check arguments.
   precondition(SWIFTEXE_SINGLE_SDK MESSAGE "Should specify an SDK")
@@ -2297,7 +2333,8 @@ function(_add_swift_executable_single name)
     ANALYZE_CODE_COVERAGE "${SWIFT_ANALYZE_CODE_COVERAGE}"
     RESULT_VAR_NAME link_flags
     LINK_LIBRARIES_VAR_NAME link_libraries
-    LIBRARY_SEARCH_DIRECTORIES_VAR_NAME library_search_directories)
+    LIBRARY_SEARCH_DIRECTORIES_VAR_NAME library_search_directories
+    ${SWIFTEXE_SINGLE_IS_HOST_keyword})
 
   if(${SWIFTEXE_SINGLE_SDK} IN_LIST SWIFT_APPLE_PLATFORMS)
     list(APPEND link_flags
@@ -2348,7 +2385,15 @@ function(_add_swift_executable_single name)
       COMPILE_FLAGS " ${c_compile_flags}")
   swift_target_link_search_directories("${name}" "${library_search_directories}")
   set_property(TARGET ${name} APPEND_STRING PROPERTY
-      LINK_FLAGS " ${link_flags}")
+    LINK_FLAGS " ${link_flags}")
+  get_target_property(final_link_flags ${name} LINK_FLAGS)
+  string(REGEX REPLACE "-Wl,([^,]*),([^ ])* " "-Xlinker \\1 -Xlinker \\2" final_link_flags ${final_link_flags})
+  string(REGEX REPLACE "-Wl,([^ ]*) " "-Xlinker \\1" final_link_flags ${final_link_flags})
+  string(REGEX REPLACE "-W[^ ] " "" final_link_flags ${final_link_flags})
+  string(REGEX REPLACE "-f[^ ] " "" final_link_flags ${final_link_flags})
+  string(REGEX REPLACE "-O2 " "" final_link_flags ${final_link_flags})
+  set_target_properties(${name} PROPERTIES LINK_FLAGS "${final_link_flags}")
+
   set_property(TARGET ${name} APPEND PROPERTY LINK_LIBRARIES ${link_libraries})
   if (SWIFT_PARALLEL_LINK_JOBS)
     set_property(TARGET ${name} PROPERTY JOB_POOL_LINK swift_link_job_pool)
@@ -2404,6 +2449,7 @@ function(add_swift_host_tool executable)
   _add_swift_executable_single(${executable}
     SDK ${SWIFT_HOST_VARIANT_SDK}
     ARCHITECTURE ${SWIFT_HOST_VARIANT_ARCH}
+    IS_HOST
     ${ASHT_UNPARSED_ARGUMENTS})
 
   swift_install_in_component(TARGETS ${executable}

@@ -101,6 +101,12 @@ macro(swift_common_standalone_build_config_llvm product)
   include(AddSwiftTableGen) # This imports TableGen from LLVM.
   include(HandleLLVMOptions)
 
+  if (LLVM_ENABLE_ASSERTIONS)
+    if (NOT uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
+      remove_definitions( -UNDEBUG )
+    endif()
+  endif()
+
   # HACK: Not all targets support -z,defs as a linker flag. 
   #
   # Normally, LLVM would only add it as an option for known ELF targets;
@@ -135,7 +141,7 @@ macro(swift_common_standalone_build_config_llvm product)
 
   # *NOTE* if we want to support separate Clang builds as well as separate LLVM
   # builds, the clang build directory needs to be added here.
-  link_directories("${LLVM_LIBRARY_DIR}")
+  #link_directories("${LLVM_LIBRARY_DIR}")
 
   set(LIT_ARGS_DEFAULT "-sv")
   if(XCODE)

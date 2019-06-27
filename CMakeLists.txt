@@ -24,6 +24,7 @@ else()
 endif()
 
 ENABLE_LANGUAGE(C)
+ENABLE_LANGUAGE(Swift)
 
 # First include general CMake utilities.
 include(SwiftUtils)
@@ -438,8 +439,11 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
 if(SWIFT_BUILT_STANDALONE)
-  project(Swift C CXX ASM)
+  project(Swift C CXX ASM Swift)
 endif()
+
+# Place all modules into `swift` in the root of the build tree
+set(CMAKE_Swift_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/swift)
 
 if(MSVC OR "${CMAKE_SIMULATE_ID}" STREQUAL MSVC)
   include(ClangClCompileRules)
@@ -487,6 +491,18 @@ set(CMAKE_C_ARCHIVE_FINISH "")
 set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> crs <TARGET> <LINK_FLAGS> <OBJECTS>")
 set(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> qs <TARGET> <LINK_FLAGS> <OBJECTS>")
 set(CMAKE_CXX_ARCHIVE_FINISH "")
+
+# Make sure that we use swift to link swift instead of clang so we get the
+# proper flags for the swift code we have.
+#
+# That also means we eliminate CMAKE_C_FLAGS CMAKE_CXX_FLAGS and friends from
+# the line. CMake is injecting -Wl and other flags there.
+set(CMAKE_C_LINK_EXECUTABLE
+  "${CMAKE_Swift_COMPILER} <LINK_FLAGS> <OBJECTS>  -o <TARGET> <LINK_LIBRARIES> -lswiftCore")
+set(CMAKE_CXX_LINK_EXECUTABLE
+  "${CMAKE_Swift_COMPILER} <LINK_FLAGS> -lc++ <OBJECTS>  -o <TARGET> <LINK_LIBRARIES> -lswiftCore")
+set(CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG "-Xlinker -rpath -Xlinker ")
+set(CMAKE_SHARED_LIBRARY_RUNTIME_CXX_FLAG "-Xlinker -rpath -Xlinker ")
 
 #
 # Include CMake modules

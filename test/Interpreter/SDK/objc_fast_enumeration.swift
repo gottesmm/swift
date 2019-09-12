@@ -5,20 +5,34 @@
 
 import Foundation
 
-class Canary {
+final class Canary {
   var x: Int
 
   deinit { print("dead \(x)") }
+  @inline(never)
   init(_ x: Int) { self.x = x }
+  @inline(never)
   func chirp() { print("\(x)") }
 }
 
-func main() {
+func makingArray() {
   print("making array")
+}
 
-  var b: NSArray = NSArray(objects: [Canary(1), Canary(2), Canary(3)], count: 3)
-
+func iteratingArray() {
   print("iterating array")
+}
+
+func exiting() {
+  print("exiting!")
+}
+
+func main() {
+  makingArray()
+
+  var b: NSArray = NSArray(object: Canary(1))
+
+  iteratingArray()
 
   // CHECK-DAG: 1
   for x in b {
@@ -27,7 +41,7 @@ func main() {
   }
 
   // CHECK-DAG: exiting
-  print("exiting")
+  exiting()
 }
 
 autoreleasepool {

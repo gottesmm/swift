@@ -21,6 +21,7 @@
 #ifndef SWIFT_SIL_APPLYSITE_H
 #define SWIFT_SIL_APPLYSITE_H
 
+#include "swift/SIL/SILBasicBlock.h"
 #include "swift/SIL/SILInstruction.h"
 
 namespace swift {
@@ -394,6 +395,22 @@ public:
       return false;
     case ApplySiteKind::PartialApplyInst:
       llvm_unreachable("Unhandled case");
+    }
+  }
+
+  /// If this is a terminator then pass the first instruction of each
+  /// successor to fun. Otherwise, pass std::next(applySite).
+  ///
+  /// The intention is that these instructions are used as insertion points to
+  /// write code once that handles terminator and non-terminator apply insts.
+  void insertAfter(llvm::function_ref<void(SILBasicBlock::iterator)> &&fun) {
+    auto *ti = dyn_cast<TermInst>(Inst);
+    if (!ti) {
+      return fun(std::next(Inst->getIterator()));
+    }
+
+    for (auto *succBlock : ti->getSuccessorBlocks()) {
+      fun(succBlock->begin());
     }
   }
 

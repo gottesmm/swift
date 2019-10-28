@@ -72,7 +72,8 @@ bool SILInliner::canInlineApplySite(FullApplySite apply) {
   return true;
 }
 
-namespace swift {
+namespace {
+
 /// Utility class for rewiring control-flow of inlined begin_apply functions.
 class BeginApplySite {
   SILLocation Loc;
@@ -101,15 +102,18 @@ public:
     return BeginApplySite(BeginApply, Loc, Builder);
   }
 
-  void preprocess(SILBasicBlock *returnToBB) {
-    // Get the end_apply, abort_apply instructions.
-    auto Token = BeginApply->getTokenResult();
-    for (auto *TokenUse : Token->getUses()) {
-      if (auto End = dyn_cast<EndApplyInst>(TokenUse->getUser())) {
-        collectEndApply(End);
-      } else {
-        collectAbortApply(cast<AbortApplyInst>(TokenUse->getUser()));
-      }
+  void preprocess(SILBasicBlock *returnToBB,
+                  SmallVectorImpl<SILInstruction *> &endBorrowInsertPts) {
+    SmallVector<EndApplyInst *, 1> endApplyInsts;
+    SmallVector<AbortApplyInst *, 1> abortApplyInsts;
+    BeginApply->getCoroutineEndPoints(endApplyInsts, abortApplyInsts);
+    while (!endApplyInsts.empty()) {
+      auto *endApply = endApplyInsts.pop_back_val();
+      collectEndApply(endApply);
+      endBorrowInsertPts.push_back(&*std::next(endApply->getIterator()));
+    }
+    while (!abortApplyInsts.empty()) {
+      collectAbortApply(abortApplyInsts.pop_back_val());
     }
   }
 
@@ -228,7 +232,8 @@ public:
     assert(!BeginApply->hasUsesOfAnyResult());
   }
 };
-} // namespace swift
+
+} // end anonymous namespace
 
 namespace swift {
 class SILInlineCloner

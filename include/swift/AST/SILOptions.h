@@ -59,7 +59,7 @@ public:
   bool DisableSILPerfOptimizations = false;
 
   /// Controls whether or not paranoid verification checks are run.
-  bool VerifyAll = false;
+  bool VerifyAll = true;
 
   /// Are we debugging sil serialization.
   bool DebugSerialization = false;

@@ -43,6 +43,12 @@ public:
     propagateLiveness();
   }
 
+  ValueLifetimeAnalysis(SILInstruction *def,
+                        ArrayRef<SingleValueInstruction *> userList)
+      : defValue(def), userSet(userList.begin(), userList.end()) {
+    propagateLiveness();
+  }
+
   /// Constructor for the value \p def considering all the value's uses.
   ValueLifetimeAnalysis(SILInstruction *def) : defValue(def) {
     for (auto result : def->getResults()) {

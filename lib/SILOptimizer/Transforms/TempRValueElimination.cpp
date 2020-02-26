@@ -59,7 +59,7 @@ namespace {
 /// it finds cases in which it is easy to determine that the source is
 /// unmodified during the copy destination's lifetime. Thus, the destination can
 /// be viewed as a short-lived "rvalue".
-class TempRValueOptPass : public SILFunctionTransform {
+struct TempRValueEliminator {
   AliasAnalysis *aa = nullptr;
 
   bool collectLoads(Operand *userOp, SILInstruction *userInst,
@@ -74,7 +74,7 @@ class TempRValueOptPass : public SILFunctionTransform {
 
   bool tryOptimizeCopyIntoTemp(CopyAddrInst *copyInst);
 
-  void run() override;
+  bool run(SILFunction &fn);
 };
 
 } // anonymous namespace
@@ -92,7 +92,7 @@ class TempRValueOptPass : public SILFunctionTransform {
 /// location at \address. The temporary must be initialized by the original copy
 /// and never written to again. Therefore, collectLoads disallows any operation
 /// that may write to memory at \p address.
-bool TempRValueOptPass::collectLoads(
+bool TempRValueEliminator::collectLoads(
     Operand *userOp, SILInstruction *user, SingleValueInstruction *address,
     SILValue srcObject, SmallPtrSetImpl<SILInstruction *> &loadInsts) {
   // All normal uses (loads) must be in the initialization block.
@@ -212,7 +212,7 @@ bool TempRValueOptPass::collectLoads(
 /// generates). Instead we guarantee that all normal uses are within the block
 /// of the temporary and look for the last use, which effectively ends the
 /// lifetime.
-bool TempRValueOptPass::checkNoSourceModification(
+bool TempRValueEliminator::checkNoSourceModification(
     CopyAddrInst *copyInst, const SmallPtrSetImpl<SILInstruction *> &useInsts) {
   unsigned numLoadsFound = 0;
   auto iter = std::next(copyInst->getIterator());
@@ -250,8 +250,8 @@ bool TempRValueOptPass::checkNoSourceModification(
 /// it is legal to destroy an in-memory object by loading the value and
 /// releasing it. Rather than detecting unbalanced load releases, simply check
 /// that tempObj is destroyed directly on all paths.
-bool TempRValueOptPass::checkTempObjectDestroy(AllocStackInst *tempObj,
-                                               CopyAddrInst *copyInst) {
+bool TempRValueEliminator::checkTempObjectDestroy(AllocStackInst *tempObj,
+                                                  CopyAddrInst *copyInst) {
   // If the original copy was a take, then replacing all uses cannot affect
   // the lifetime.
   if (copyInst->isTakeOfSrc())
@@ -285,7 +285,7 @@ bool TempRValueOptPass::checkTempObjectDestroy(AllocStackInst *tempObj,
     auto pos = frontierInst->getIterator();
     // If the frontier is at the head of a block, then either it is an
     // unexpected lifetime exit, or the lifetime ended at a
-    // terminator. TempRValueOptPass does not handle either case.
+    // terminator. TempRValueEliminator does not handle either case.
     if (pos == frontierInst->getParent()->begin())
       return false;
 
@@ -308,7 +308,7 @@ bool TempRValueOptPass::checkTempObjectDestroy(AllocStackInst *tempObj,
 }
 
 /// Tries to perform the temporary rvalue copy elimination for \p copyInst
-bool TempRValueOptPass::tryOptimizeCopyIntoTemp(CopyAddrInst *copyInst) {
+bool TempRValueEliminator::tryOptimizeCopyIntoTemp(CopyAddrInst *copyInst) {
   if (!copyInst->isInitializationOfDest())
     return false;
 
@@ -392,18 +392,11 @@ bool TempRValueOptPass::tryOptimizeCopyIntoTemp(CopyAddrInst *copyInst) {
 //===----------------------------------------------------------------------===//
 
 /// The main entry point of the pass.
-void TempRValueOptPass::run() {
-  if (getFunction()->hasOwnership())
-    return;
-
-  LLVM_DEBUG(llvm::dbgs() << "Copy Peephole in Func "
-                          << getFunction()->getName() << "\n");
-
-  aa = getPassManager()->getAnalysis<AliasAnalysis>();
+bool TempRValueEliminator::run(SILFunction &fn) {
   bool changed = false;
 
   // Find all copy_addr instructions.
-  for (auto &block : *getFunction()) {
+  for (auto &block : fn) {
     auto ii = block.begin();
     while (ii != block.end()) {
       auto *copyInst = dyn_cast<CopyAddrInst>(&*ii);
@@ -430,9 +423,26 @@ void TempRValueOptPass::run() {
     }
   }
 
-  if (changed) {
-    invalidateAnalysis(SILAnalysis::InvalidationKind::Instructions);
-  }
+  return changed;
 }
+
+namespace {
+
+class TempRValueOptPass : public SILFunctionTransform {
+  void run() override {
+    if (getFunction()->hasOwnership())
+      return;
+
+    LLVM_DEBUG(llvm::dbgs()
+               << "Copy Peephole in Func " << getFunction()->getName() << "\n");
+    auto *aa = getPassManager()->getAnalysis<AliasAnalysis>();
+    TempRValueEliminator eliminator{aa};
+    if (eliminator.run(*getFunction())) {
+      invalidateAnalysis(SILAnalysis::InvalidationKind::Instructions);
+    }
+  }
+};
+
+} // end anonymous namespace
 
 SILTransform *swift::createTempRValueOpt() { return new TempRValueOptPass(); }

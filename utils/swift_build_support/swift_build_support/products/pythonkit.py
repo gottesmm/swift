@@ -22,10 +22,6 @@ class PythonKit(product.Product):
     def product_source_name(cls):
         return "PythonKit"
 
-    @classmethod
-    def is_build_script_impl_product(cls):
-        return False
-
     def should_build(self, host_target):
         return True
 

@@ -14,19 +14,21 @@ import os
 import platform
 
 from . import product
+from . import buildscriptimplproduct
 from .. import shell
 from .. import targets
 
 
 # Build against the current installed toolchain.
 class Benchmarks(product.Product):
+
+    @classmethod
+    def get_dependencies(cls):
+        return [buildscriptimplproduct.BuildScriptImplProduct]
+
     @classmethod
     def product_source_name(cls):
         return "benchmarks"
-
-    @classmethod
-    def is_build_script_impl_product(cls):
-        return False
 
     def should_build(self, host_target):
         return True

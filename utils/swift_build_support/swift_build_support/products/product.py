@@ -55,7 +55,7 @@ class Product(object):
 
         Whether this product is produced by build-script-impl.
         """
-        return True
+        return False
 
     @classmethod
     def is_swiftpm_unified_build_product(cls):
@@ -65,6 +65,14 @@ class Product(object):
         products.
         """
         return False
+
+    @classmethod
+    def get_dependencies(cls):
+        """get_dependencies() -> [typeof(Product)]
+
+        Returns a list of Product objects that are dependencies of this class.
+        """
+        raise NotImplementedError()
 
     def should_build(self, host_target):
         """should_build() -> Bool

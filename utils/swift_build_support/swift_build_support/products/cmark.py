@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 
 from . import product
+from . import buildscriptimplproduct
 
-
-class CMark(product.Product):
+class CMark(buildscriptimplproduct.BuildScriptImplProduct):
     pass

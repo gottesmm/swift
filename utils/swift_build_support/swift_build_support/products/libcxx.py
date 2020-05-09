@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 
 from . import product
+from . import buildscriptimplproduct
 
-
-class LibCXX(product.Product):
+class LibCXX(buildscriptimplproduct.BuildScriptImplProduct):
     pass

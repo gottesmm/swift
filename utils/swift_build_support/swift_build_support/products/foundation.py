@@ -11,9 +11,9 @@
 # ----------------------------------------------------------------------------
 
 from . import product
+from . import buildscriptimplproduct
 
-
-class Foundation(product.Product):
+class Foundation(buildscriptimplproduct.BuildScriptImplProduct):
     @classmethod
     def product_source_name(cls):
         """product_source_name() -> str

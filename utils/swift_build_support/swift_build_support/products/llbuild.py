@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 
 from . import product
+from . import buildscriptimplproduct
 
-
-class LLBuild(product.Product):
+class LLBuild(buildscriptimplproduct.BuildScriptImplProduct):
     pass

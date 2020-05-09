@@ -11,6 +11,7 @@
 # ----------------------------------------------------------------------------
 
 from .benchmarks import Benchmarks
+from .buildscriptimplproduct import BuildScriptImplProduct
 from .cmark import CMark
 from .foundation import Foundation
 from .indexstoredb import IndexStoreDB
@@ -57,4 +58,5 @@ __all__ = [
     'SourceKitLSP',
     'Benchmarks',
     'TSanLibDispatch',
+    'BuildScriptImplProduct',
 ]

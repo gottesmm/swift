@@ -11,7 +11,8 @@
 # ----------------------------------------------------------------------------
 
 from . import product
+from . import buildscriptimplproduct
 
 
-class LLDB(product.Product):
+class LLDB(buildscriptimplproduct.BuildScriptImplProduct):
     pass

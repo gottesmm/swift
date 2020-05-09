@@ -12,13 +12,14 @@
 
 from . import product
 from ..cmake import CMakeOptions
+from . import buildscriptimplproduct
 
 
-class LLVM(product.Product):
+class LLVM(buildscriptimplproduct.BuildScriptImplProduct):
 
     def __init__(self, args, toolchain, source_dir, build_dir):
-        product.Product.__init__(self, args, toolchain, source_dir,
-                                 build_dir)
+        buildscriptimplproduct.BuildScriptImplProduct.__init__(self, args, toolchain, source_dir,
+                                                build_dir)
 
         # Add the cmake option for enabling or disabling assertions.
         self.cmake_options.define(

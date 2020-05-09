@@ -12,13 +12,15 @@
 
 from . import product
 from ..cmake import CMakeOptions
+from . import buildscriptimplproduct
 
 
-class Swift(product.Product):
+class Swift(buildscriptimplproduct.BuildScriptImplProduct):
 
     def __init__(self, args, toolchain, source_dir, build_dir):
-        product.Product.__init__(self, args, toolchain, source_dir,
-                                 build_dir)
+        buildscriptimplproduct.BuildScriptImplProduct.__init__(self, args, toolchain,
+                                                source_dir,
+                                                build_dir)
         # Add any runtime sanitizer arguments.
         self.cmake_options.extend(self._runtime_sanitizer_flags)
 

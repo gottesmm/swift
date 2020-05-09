@@ -11,9 +11,9 @@
 # ----------------------------------------------------------------------------
 
 from . import product
+from . import buildscriptimplproduct
 
-
-class XCTest(product.Product):
+class XCTest(buildscriptimplproduct.BuildScriptImplProduct):
     @classmethod
     def product_source_name(cls):
         """product_source_name() -> str

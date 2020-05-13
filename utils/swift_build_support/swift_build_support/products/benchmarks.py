@@ -14,7 +14,7 @@ import os
 import platform
 
 from . import product
-from . import buildscriptimplproduct
+from . import swiftpm
 from .. import shell
 from .. import targets
 
@@ -24,7 +24,7 @@ class Benchmarks(product.Product):
 
     @classmethod
     def get_dependencies(cls):
-        return [buildscriptimplproduct.BuildScriptImplProduct]
+        return [swiftpm.SwiftPM]
 
     @classmethod
     def product_source_name(cls):

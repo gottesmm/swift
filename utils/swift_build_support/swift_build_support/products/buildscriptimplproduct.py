@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 
 from . import product
-from . import cmark
+from . import ninja
 
 # A super class of all build-script-impl based products. Needed to express a
 # class type based dependency on all build-script-impl products in our
@@ -33,4 +33,4 @@ class BuildScriptImplProduct(product.Product):
 
         Returns a list of Product objects that are dependencies of this class.
         """
-        return [cmark.CMark]
+        return [ninja.Ninja]

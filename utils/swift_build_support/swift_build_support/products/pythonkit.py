@@ -19,6 +19,10 @@ from .. import targets
 
 class PythonKit(product.Product):
     @classmethod
+    def get_dependencies(cls):
+        return [buildscriptimplproduct.BuildScriptImplProduct]
+
+    @classmethod
     def product_source_name(cls):
         return "PythonKit"
 

@@ -22,6 +22,10 @@ from .. import shell
 
 class SKStressTester(product.Product):
     @classmethod
+    def get_dependencies(cls):
+        return [buildscriptimplproduct.BuildScriptImplProduct]
+
+    @classmethod
     def product_source_name(cls):
         """product_source_name() -> str
 

@@ -15,9 +15,14 @@ import os
 from . import product
 from .. import shell
 from .. import targets
+from . import buildscriptimplproduct
 
 
 class IndexStoreDB(product.Product):
+    @classmethod
+    def get_dependencies(cls):
+        return [buildscriptimplproduct.BuildScriptImplProduct]
+
     @classmethod
     def product_source_name(cls):
         return "indexstore-db"

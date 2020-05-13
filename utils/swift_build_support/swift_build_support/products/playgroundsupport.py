@@ -28,6 +28,10 @@ def get_os_spelling(os):
 
 class PlaygroundSupport(product.Product):
     @classmethod
+    def get_dependencies(cls):
+        return [buildscriptimplproduct.BuildScriptImplProduct]
+
+    @classmethod
     def product_source_name(cls):
         return "swift-xcode-playground-support"
 

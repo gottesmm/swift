@@ -27,6 +27,11 @@ from .. import shell
 
 class Ninja(product.Product):
     @classmethod
+    def get_dependencies(cls):
+        # We are the root of the dependency graph
+        return []
+
+    @classmethod
     def new_builder(cls, args, toolchain, workspace, host):
         return NinjaBuilder(cls, args, toolchain, workspace)
 

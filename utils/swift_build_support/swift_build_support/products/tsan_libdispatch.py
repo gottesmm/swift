@@ -22,6 +22,10 @@ def join_path(*paths):
 
 class TSanLibDispatch(product.Product):
     @classmethod
+    def get_dependencies(cls):
+        return [buildscriptimplproduct.BuildScriptImplProduct]
+
+    @classmethod
     def product_source_name(cls):
         return "tsan-libdispatch-test"
 

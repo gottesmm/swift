@@ -238,6 +238,7 @@ EXPECTED_DEFAULTS = {
     'watchos': False,
     'watchos_all': False,
     'infer_dependencies': False,
+    'llvm_install_components': defaults.llvm_install_components(),
 }
 
 
@@ -678,4 +679,5 @@ EXPECTED_OPTIONS = [
     IgnoreOption('--watchos-all'),
 
     SetTrueOption('--infer-deps', dest='infer_dependencies'),
+    StrOption('--llvm-install-components'),
 ]

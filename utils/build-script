@@ -44,6 +44,7 @@ from swift_build_support.swift_build_support.host_specific_configuration \
     import HostSpecificConfiguration
 from swift_build_support.swift_build_support.targets import StdlibDeploymentTarget
 from swift_build_support.swift_build_support.toolchain import host_toolchain
+from swift_build_support.swift_build_support import build_graph
 
 
 # -----------------------------------------------------------------------------
@@ -862,6 +863,30 @@ class BuildScriptInvocation(object):
         # not build_script_impl products.
         for prod in product_classes:
             assert(not prod.is_build_script_impl_product())
+
+        # Now that we have our two lists of product_classes, if we are asked to
+        # infer dependencies, infer the dependencies now and then re-split the
+        # list.
+        if self.args.infer_dependencies:
+            combined = impl_product_classes + product_classes
+
+            # Now that we have produced the schedule, resplit. We require our
+            # dependencies to respect our build-script-impl property. This means
+            # that no build-script-impl products can have dependencies on
+            # non-build-script-impl products. Otherwise, it would be unsafe to
+            # re-order build-script-impl products in front of non
+            # build-script-impl products.
+            impl_product_classes = []
+            product_classes = []
+            is_darwin = platform.system() == 'Darwin'
+            for p in build_graph.produce_scheduled_build(combined)[0]:
+                if is_darwin and p.is_nondarwin_only_build_product():
+                    continue
+
+                if p.is_build_script_impl_product():
+                    impl_product_classes.append(p)
+                else:
+                    product_classes.append(p)
 
         return (impl_product_classes, product_classes)
 

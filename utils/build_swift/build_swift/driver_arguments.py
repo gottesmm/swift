@@ -541,6 +541,9 @@ def create_argument_parser():
     # -------------------------------------------------------------------------
     in_group('Options to select projects')
 
+    option('--infer-deps', store_true('infer_dependencies'),
+           help='Infer any downstream dependencies from enabled projects')
+
     option(['-l', '--lldb'], store_true('build_lldb'),
            help='build LLDB')
 

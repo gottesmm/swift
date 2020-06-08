@@ -236,7 +236,8 @@ EXPECTED_DEFAULTS = {
     'validation_test': None,
     'verbose_build': False,
     'watchos': False,
-    'watchos_all': False
+    'watchos_all': False,
+    'infer_dependencies': False,
 }
 
 
@@ -675,4 +676,6 @@ EXPECTED_OPTIONS = [
     IgnoreOption('--ios-all'),
     IgnoreOption('--tvos-all'),
     IgnoreOption('--watchos-all'),
+
+    SetTrueOption('--infer-deps', dest='infer_dependencies'),
 ]

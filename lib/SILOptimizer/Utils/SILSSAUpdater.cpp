@@ -25,71 +25,75 @@
 
 using namespace swift;
 
-void *SILSSAUpdater::allocate(unsigned Size, unsigned Align) const {
-  return AlignedAlloc(Size, Align);
+void *SILSSAUpdater::allocate(unsigned size, unsigned align) const {
+  return AlignedAlloc(size, align);
 }
 
-void SILSSAUpdater::deallocateSentinel(SILUndef *D) {
-  AlignedFree(D);
+void SILSSAUpdater::deallocateSentinel(SILUndef *undef) {
+  AlignedFree(undef);
 }
 
-SILSSAUpdater::SILSSAUpdater(SmallVectorImpl<SILPhiArgument *> *PHIs)
-    : AV(nullptr), PHISentinel(nullptr, deallocateSentinel),
-      InsertedPHIs(PHIs) {}
+SILSSAUpdater::SILSSAUpdater(SmallVectorImpl<SILPhiArgument *> *phis)
+    : blockToAvailableValueMap(nullptr),
+      phiSentinel(nullptr, deallocateSentinel), insertedPhis(phis) {}
 
 SILSSAUpdater::~SILSSAUpdater() = default;
 
-void SILSSAUpdater::Initialize(SILType Ty) {
-  ValType = Ty;
+void SILSSAUpdater::initialize(SILType inputType) {
+  type = inputType;
 
-  PHISentinel = std::unique_ptr<SILUndef, void (*)(SILUndef *)>(
-      SILUndef::getSentinelValue(Ty, this), SILSSAUpdater::deallocateSentinel);
+  phiSentinel = std::unique_ptr<SILUndef, void (*)(SILUndef *)>(
+      SILUndef::getSentinelValue(type, this),
+      SILSSAUpdater::deallocateSentinel);
 
-  if (!AV)
-    AV.reset(new AvailableValsTy());
+  if (!blockToAvailableValueMap)
+    blockToAvailableValueMap.reset(new AvailableValsTy());
   else
-    AV->clear();
+    blockToAvailableValueMap->clear();
 }
 
-bool SILSSAUpdater::HasValueForBlock(SILBasicBlock *BB) const {
-  return AV->count(BB);
+bool SILSSAUpdater::hasValueForBlock(SILBasicBlock *block) const {
+  return blockToAvailableValueMap->count(block);
 }
 
 /// Indicate that a rewritten value is available in the specified block with the
 /// specified value.
-void SILSSAUpdater::AddAvailableValue(SILBasicBlock *BB, SILValue V) {
-  (*AV)[BB] = V;
+void SILSSAUpdater::addAvailableValue(SILBasicBlock *block, SILValue value) {
+  (*blockToAvailableValueMap)[block] = value;
 }
 
 /// Construct SSA form, materializing a value that is live at the end of the
 /// specified block.
-SILValue SILSSAUpdater::GetValueAtEndOfBlock(SILBasicBlock *BB) {
-  return GetValueAtEndOfBlockInternal(BB);
+SILValue SILSSAUpdater::getValueAtEndOfBlock(SILBasicBlock *block) {
+  return getValueAtEndOfBlockInternal(block);
 }
 
 /// Are all available values identicalTo each other.
-static bool areIdentical(llvm::DenseMap<SILBasicBlock *, SILValue> &Avails) {
-  if (auto *First = dyn_cast<SingleValueInstruction>(Avails.begin()->second)) {
-    for (auto Avail : Avails) {
-      auto *Inst = dyn_cast<SingleValueInstruction>(Avail.second);
-      if (!Inst)
+static bool areIdentical(
+    llvm::DenseMap<SILBasicBlock *, SILValue> &blockToAvailableValueMap) {
+  if (auto *firstInst = dyn_cast<SingleValueInstruction>(
+          blockToAvailableValueMap.begin()->second)) {
+    for (auto pair : blockToAvailableValueMap) {
+      auto *inst = dyn_cast<SingleValueInstruction>(pair.second);
+      if (!inst)
         return false;
-      if (!Inst->isIdenticalTo(First))
+      if (!inst->isIdenticalTo(firstInst))
         return false;
     }
     return true;
   }
 
-  auto *MVIR = dyn_cast<MultipleValueInstructionResult>(Avails.begin()->second);
-  if (!MVIR)
+  auto *mvir = dyn_cast<MultipleValueInstructionResult>(
+      blockToAvailableValueMap.begin()->second);
+  if (!mvir)
     return false;
 
-  for (auto Avail : Avails) {
-    auto *Result = dyn_cast<MultipleValueInstructionResult>(Avail.second);
+  for (auto pair : blockToAvailableValueMap) {
+    auto *Result = dyn_cast<MultipleValueInstructionResult>(pair.second);
     if (!Result)
       return false;
-    if (!Result->getParent()->isIdenticalTo(MVIR->getParent()) ||
-        Result->getIndex() != MVIR->getIndex()) {
+    if (!Result->getParent()->isIdenticalTo(mvir->getParent()) ||
+        Result->getIndex() != mvir->getIndex()) {
       return false;
     }
   }
@@ -98,65 +102,71 @@ static bool areIdentical(llvm::DenseMap<SILBasicBlock *, SILValue> &Avails) {
 
 /// This should be called in top-down order of each def that needs its uses
 /// rewrited. The order that we visit uses for a given def is irrelevant.
-void SILSSAUpdater::RewriteUse(Operand &Op) {
+void SILSSAUpdater::rewriteUse(Operand &op) {
   // Replicate function_refs to their uses. SILGen can't build phi nodes for
   // them and it would not make much sense anyways.
-  if (auto *FR = dyn_cast<FunctionRefInst>(Op.get())) {
-    assert(areIdentical(*AV) &&
+  if (auto *fri = dyn_cast<FunctionRefInst>(op.get())) {
+    assert(areIdentical(*blockToAvailableValueMap) &&
            "The function_refs need to have the same value");
-    SILInstruction *User = Op.getUser();
-    auto *NewFR = cast<FunctionRefInst>(FR->clone(User));
-    Op.set(NewFR);
+    SILInstruction *user = op.getUser();
+    auto *newFRI = cast<FunctionRefInst>(fri->clone(user));
+    op.set(newFRI);
     return;
-  } else if (auto *FR = dyn_cast<PreviousDynamicFunctionRefInst>(Op.get())) {
-    assert(areIdentical(*AV) &&
+  }
+
+  if (auto *pdfri = dyn_cast<PreviousDynamicFunctionRefInst>(op.get())) {
+    assert(areIdentical(*blockToAvailableValueMap) &&
            "The function_refs need to have the same value");
-    SILInstruction *User = Op.getUser();
-    auto *NewFR = cast<PreviousDynamicFunctionRefInst>(FR->clone(User));
-    Op.set(NewFR);
+    SILInstruction *user = op.getUser();
+    auto *newInst = cast<PreviousDynamicFunctionRefInst>(pdfri->clone(user));
+    op.set(newInst);
     return;
-  } else if (auto *FR = dyn_cast<DynamicFunctionRefInst>(Op.get())) {
-    assert(areIdentical(*AV) &&
+  }
+
+  if (auto *dfri = dyn_cast<DynamicFunctionRefInst>(op.get())) {
+    assert(areIdentical(*blockToAvailableValueMap) &&
            "The function_refs need to have the same value");
-    SILInstruction *User = Op.getUser();
-    auto *NewFR = cast<DynamicFunctionRefInst>(FR->clone(User));
-    Op.set(NewFR);
+    SILInstruction *User = op.getUser();
+    auto *newInst = cast<DynamicFunctionRefInst>(dfri->clone(User));
+    op.set(newInst);
     return;
-  } else if (auto *IL = dyn_cast<IntegerLiteralInst>(Op.get()))
-    if (areIdentical(*AV)) {
+  }
+
+  if (auto *ili = dyn_cast<IntegerLiteralInst>(op.get()))
+    if (areIdentical(*blockToAvailableValueMap)) {
       // Some llvm intrinsics don't like phi nodes as their constant inputs (e.g
       // ctlz).
-      SILInstruction *User = Op.getUser();
-      auto *NewIL = cast<IntegerLiteralInst>(IL->clone(User));
-      Op.set(NewIL);
+      SILInstruction *user = op.getUser();
+      auto *newInst = cast<IntegerLiteralInst>(ili->clone(user));
+      op.set(newInst);
       return;
     }
 
   // Again we need to be careful here, because ssa construction (with the
   // existing representation) can change the operand from under us.
-  UseWrapper UW(&Op);
+  UseWrapper useWrapper(&op);
 
-  SILInstruction *User = Op.getUser();
-  SILValue NewVal = GetValueInMiddleOfBlock(User->getParent());
-  assert(NewVal && "Need a valid value");
- ((Operand *)UW)->set((SILValue)NewVal);
+  SILInstruction *user = op.getUser();
+  SILValue newVal = getValueInMiddleOfBlock(user->getParent());
+  assert(newVal && "Need a valid value");
+  ((Operand *)useWrapper)->set((SILValue)newVal);
 }
 
-
 /// Get the edge values from the terminator to the destination basic block.
-static OperandValueArrayRef getEdgeValuesForTerminator(TermInst *TI,
-                                                       SILBasicBlock *ToBB) {
-  if (auto *BrInst = dyn_cast<BranchInst>(TI)) {
-    assert(BrInst->getDestBB() == ToBB &&
+static OperandValueArrayRef getEdgeValuesForTerminator(TermInst *ti,
+                                                       SILBasicBlock *toBlock) {
+  if (auto *br = dyn_cast<BranchInst>(ti)) {
+    assert(br->getDestBB() == toBlock &&
            "Incoming edge block and phi block mismatch");
-    return BrInst->getArgs();
+    return br->getArgs();
   }
-  if (auto *CondBrInst = dyn_cast<CondBranchInst>(TI)) {
-    bool IsTrueEdge = CondBrInst->getTrueBB() == ToBB;
-    assert(((IsTrueEdge && CondBrInst->getTrueBB() == ToBB) ||
-            CondBrInst->getFalseBB() == ToBB) &&
+
+  if (auto *cbi = dyn_cast<CondBranchInst>(ti)) {
+    bool isTrueEdge = cbi->getTrueBB() == toBlock;
+    assert(((isTrueEdge && cbi->getTrueBB() == toBlock) ||
+            cbi->getFalseBB() == toBlock) &&
            "Incoming edge block and phi block mismatch");
-    return IsTrueEdge ? CondBrInst->getTrueArgs() : CondBrInst->getFalseArgs();
+    return isTrueEdge ? cbi->getTrueArgs() : cbi->getFalseArgs();
   }
 
   // We need a predecessor who is capable of holding outgoing branch
@@ -167,76 +177,76 @@ static OperandValueArrayRef getEdgeValuesForTerminator(TermInst *TI,
 /// Check that the argument has the same incoming edge values as the value
 /// map.
 static bool
-isEquivalentPHI(SILPhiArgument *PHI,
-                llvm::SmallDenseMap<SILBasicBlock *, SILValue, 8> &ValueMap) {
-  SILBasicBlock *PhiBB = PHI->getParent();
-  size_t Idx = PHI->getIndex();
-  for (auto *PredBB : PhiBB->getPredecessorBlocks()) {
-    auto DesiredVal = ValueMap[PredBB];
-    OperandValueArrayRef EdgeValues =
-        getEdgeValuesForTerminator(PredBB->getTerminator(), PhiBB);
-    if (EdgeValues[Idx] != DesiredVal)
+isEquivalentPHI(SILPhiArgument *phi,
+                llvm::SmallDenseMap<SILBasicBlock *, SILValue, 8> &valueMap) {
+  SILBasicBlock *phiBlock = phi->getParent();
+  size_t phiArgIndex = phi->getIndex();
+  for (auto *predBlock : phiBlock->getPredecessorBlocks()) {
+    auto desiredValue = valueMap[predBlock];
+    OperandValueArrayRef edgeValues =
+        getEdgeValuesForTerminator(predBlock->getTerminator(), phiBlock);
+    if (edgeValues[phiArgIndex] != desiredValue)
       return false;
   }
   return true;
 }
 
-SILValue SILSSAUpdater::GetValueInMiddleOfBlock(SILBasicBlock *BB) {
+SILValue SILSSAUpdater::getValueInMiddleOfBlock(SILBasicBlock *block) {
   // If this basic block does not define a value we can just use the value
   // live at the end of the block.
-  if (!HasValueForBlock(BB))
-    return GetValueAtEndOfBlock(BB);
+  if (!hasValueForBlock(block))
+    return getValueAtEndOfBlock(block);
 
   /// Otherwise, we have to build SSA for the value defined in this block and
   /// this block's predecessors.
-  SILValue SingularValue;
-  SmallVector<std::pair<SILBasicBlock*, SILValue>, 4> PredVals;
-  bool FirstPred = true;
+  SILValue singularValue;
+  SmallVector<std::pair<SILBasicBlock *, SILValue>, 4> predVals;
+  bool firstPred = true;
 
   // SSAUpdater can modify TerminatorInst and therefore invalidate the
   // predecessor iterator. Find all the predecessors before the SSA update.
-  SmallVector<SILBasicBlock *, 4> Preds;
-  for (auto *PredBB : BB->getPredecessorBlocks()) {
-    Preds.push_back(PredBB);
+  SmallVector<SILBasicBlock *, 4> predBlocks;
+  for (auto *block : block->getPredecessorBlocks()) {
+    predBlocks.push_back(block);
   }
 
-  for (auto *PredBB : Preds) {
-    SILValue PredVal = GetValueAtEndOfBlock(PredBB);
-    PredVals.push_back(std::make_pair(PredBB, PredVal));
-    if (FirstPred) {
-      SingularValue = PredVal;
-      FirstPred = false;
-    } else if (SingularValue != PredVal)
-      SingularValue = SILValue();
+  for (auto *block : predBlocks) {
+    SILValue value = getValueAtEndOfBlock(block);
+    predVals.push_back(std::make_pair(block, value));
+    if (firstPred) {
+      singularValue = value;
+      firstPred = false;
+    } else if (singularValue != value)
+      singularValue = SILValue();
   }
 
   // Return undef for blocks without predecessor.
-  if (PredVals.empty())
-    return SILUndef::get(ValType, *BB->getParent());
+  if (predVals.empty())
+    return SILUndef::get(type, *block->getParent());
 
-  if (SingularValue)
-    return SingularValue;
+  if (singularValue)
+    return singularValue;
 
   // Check if we already have an equivalent phi.
-  if (!BB->getArguments().empty()) {
-    llvm::SmallDenseMap<SILBasicBlock *, SILValue, 8> ValueMap(PredVals.begin(),
-                                                               PredVals.end());
-    for (auto *Arg : BB->getSILPhiArguments())
-      if (isEquivalentPHI(Arg, ValueMap))
-        return Arg;
-
+  if (!block->getArguments().empty()) {
+    llvm::SmallDenseMap<SILBasicBlock *, SILValue, 8> valueMap(predVals.begin(),
+                                                               predVals.end());
+    for (auto *arg : block->getSILPhiArguments())
+      if (isEquivalentPHI(arg, valueMap))
+        return arg;
   }
 
   // Create a new phi node.
-  SILPhiArgument *PHI =
-      BB->createPhiArgument(ValType, ValueOwnershipKind::Owned);
-  for (auto &EV : PredVals)
-    addNewEdgeValueToBranch(EV.first->getTerminator(), BB, EV.second);
+  SILPhiArgument *phi =
+      block->createPhiArgument(type, ValueOwnershipKind::Owned);
 
-  if (InsertedPHIs)
-    InsertedPHIs->push_back(PHI);
+  for (auto &pair : predVals)
+    addNewEdgeValueToBranch(pair.first->getTerminator(), block, pair.second);
 
-  return PHI;
+  if (insertedPhis)
+    insertedPhis->push_back(phi);
+
+  return phi;
 }
 
 /// SSAUpdaterTraits<MachineSSAUpdater> - Traits for the SSAUpdaterImpl
@@ -250,128 +260,132 @@ public:
   typedef SILPhiArgument PhiT;
 
   typedef SILBasicBlock::succ_iterator BlkSucc_iterator;
-  static BlkSucc_iterator BlkSucc_begin(BlkT *BB) { return BB->succ_begin(); }
-  static BlkSucc_iterator BlkSucc_end(BlkT *BB) { return BB->succ_end(); }
+  static BlkSucc_iterator BlkSucc_begin(BlkT *block) {
+    return block->succ_begin();
+  }
+  static BlkSucc_iterator BlkSucc_end(BlkT *block) { return block->succ_end(); }
 
   /// Iterator for PHI operands.
   class PHI_iterator {
   private:
-    SILBasicBlock::pred_iterator PredIt;
-    SILBasicBlock *BB;
-    size_t Idx;
+    SILBasicBlock::pred_iterator predecessorIterator;
+    SILBasicBlock *block;
+    size_t argumentIndex;
 
   public:
     explicit PHI_iterator(SILPhiArgument *P) // begin iterator
-        : PredIt(P->getParent()->pred_begin()),
-          BB(P->getParent()),
-          Idx(P->getIndex()) {}
+        : predecessorIterator(P->getParent()->pred_begin()),
+          block(P->getParent()), argumentIndex(P->getIndex()) {}
     PHI_iterator(SILPhiArgument *P, bool) // end iterator
-        : PredIt(P->getParent()->pred_end()),
-          BB(P->getParent()),
-          Idx(P->getIndex()) {}
+        : predecessorIterator(P->getParent()->pred_end()),
+          block(P->getParent()), argumentIndex(P->getIndex()) {}
 
-    PHI_iterator &operator++() { ++PredIt; return *this; }
-    bool operator==(const PHI_iterator& x) const { return PredIt == x.PredIt; }
+    PHI_iterator &operator++() {
+      ++predecessorIterator;
+      return *this;
+    }
+    bool operator==(const PHI_iterator &x) const {
+      return predecessorIterator == x.predecessorIterator;
+    }
     bool operator!=(const PHI_iterator& x) const { return !operator==(x); }
 
-    SILValue getValueForBlock(size_t Idx, SILBasicBlock *BB, TermInst *TI) {
-      OperandValueArrayRef Args = getEdgeValuesForTerminator(TI, BB);
-      assert(Idx < Args.size() && "Not enough values on incoming edge");
-      return Args[Idx];
+    SILValue getValueForBlock(size_t argumentIndex, SILBasicBlock *block,
+                              TermInst *ti) {
+      OperandValueArrayRef args = getEdgeValuesForTerminator(ti, block);
+      assert(argumentIndex < args.size() &&
+             "Not enough values on incoming edge");
+      return args[argumentIndex];
     }
 
     SILValue getIncomingValue() {
-      return getValueForBlock(Idx, BB, (*PredIt)->getTerminator());
+      return getValueForBlock(argumentIndex, block,
+                              (*predecessorIterator)->getTerminator());
     }
 
-    SILBasicBlock *getIncomingBlock() {
-      return *PredIt;
-    }
+    SILBasicBlock *getIncomingBlock() { return *predecessorIterator; }
   };
 
-  static inline PHI_iterator PHI_begin(PhiT *PHI) { return PHI_iterator(PHI); }
-  static inline PHI_iterator PHI_end(PhiT *PHI) {
-    return PHI_iterator(PHI, true);
+  static inline PHI_iterator PHI_begin(PhiT *phi) { return PHI_iterator(phi); }
+  static inline PHI_iterator PHI_end(PhiT *phi) {
+    return PHI_iterator(phi, true);
   }
 
   /// Put the predecessors of BB into the Preds vector.
-  static void FindPredecessorBlocks(SILBasicBlock *BB,
-                                    SmallVectorImpl<SILBasicBlock*> *Preds){
-    for (SILBasicBlock::pred_iterator PI = BB->pred_begin(), E = BB->pred_end();
-         PI != E; ++PI)
-      Preds->push_back(*PI);
+  static void
+  FindPredecessorBlocks(SILBasicBlock *block,
+                        SmallVectorImpl<SILBasicBlock *> *predBlocks) {
+    assert(predBlocks);
+    llvm::copy(block->getPredecessorBlocks(), std::back_inserter(*predBlocks));
   }
 
-  static SILValue GetUndefVal(SILBasicBlock *BB,
-                              SILSSAUpdater *Updater) {
-    return SILUndef::get(Updater->ValType, *BB->getParent());
+  static SILValue GetUndefVal(SILBasicBlock *block, SILSSAUpdater *updater) {
+    return SILUndef::get(updater->type, *block->getParent());
   }
 
   /// Add an Argument to the basic block.
-  static SILValue CreateEmptyPHI(SILBasicBlock *BB, unsigned NumPreds,
-                                 SILSSAUpdater *Updater) {
+  static SILValue CreateEmptyPHI(SILBasicBlock *block, unsigned numPreds,
+                                 SILSSAUpdater *updater) {
     // Add the argument to the block.
-    SILValue PHI(
-        BB->createPhiArgument(Updater->ValType, ValueOwnershipKind::Owned));
+    SILValue phi(
+        block->createPhiArgument(updater->type, ValueOwnershipKind::Owned));
 
     // Mark all predecessor blocks with the sentinel undef value.
-    SmallVector<SILBasicBlock*, 4> Preds(BB->pred_begin(), BB->pred_end());
-    for (auto *PredBB: Preds) {
-      TermInst *TI = PredBB->getTerminator();
-      addNewEdgeValueToBranch(TI, BB, Updater->PHISentinel.get());
+    SmallVector<SILBasicBlock *, 4> predBlocks(block->getPredecessorBlocks());
+    for (auto *block : predBlocks) {
+      TermInst *ti = block->getTerminator();
+      addNewEdgeValueToBranch(ti, block, updater->phiSentinel.get());
     }
-    return PHI;
+    return phi;
   }
 
   /// Add the specified value as an operand of the PHI for the specified
   /// predecessor block.
-  static void AddPHIOperand(SILPhiArgument *PHI, SILValue Val,
-                            SILBasicBlock *Pred) {
-    auto *PHIBB = PHI->getParent();
-    size_t PhiIdx = PHI->getIndex();
-    auto *TI = Pred->getTerminator();
-    changeEdgeValue(TI, PHIBB, PhiIdx, Val);
+  static void AddPHIOperand(SILPhiArgument *phi, SILValue value,
+                            SILBasicBlock *predBlock) {
+    auto *phiBlock = phi->getParent();
+    size_t phiArgIndex = phi->getIndex();
+    auto *ti = predBlock->getTerminator();
+    changeEdgeValue(ti, phiBlock, phiArgIndex, value);
   }
 
   /// InstrIsPHI - Check if an instruction is a PHI.
   ///
-  static SILPhiArgument *InstrIsPHI(ValueBase *I) {
-    auto *Res = dyn_cast<SILPhiArgument>(I);
-    return Res;
+  static SILPhiArgument *InstrIsPHI(ValueBase *value) {
+    return dyn_cast<SILPhiArgument>(value);
   }
 
   /// ValueIsPHI - Check if the instruction that defines the specified register
   /// is a PHI instruction.
-  static SILPhiArgument *ValueIsPHI(SILValue V, SILSSAUpdater *Updater) {
-    return InstrIsPHI(V);
+  static SILPhiArgument *ValueIsPHI(SILValue value, SILSSAUpdater *updater) {
+    return InstrIsPHI(value);
   }
 
   /// Like ValueIsPHI but also check if the PHI has no source
   /// operands, i.e., it was just added.
-  static SILPhiArgument *ValueIsNewPHI(SILValue Val, SILSSAUpdater *Updater) {
-    SILPhiArgument *PHI = ValueIsPHI(Val, Updater);
-    if (PHI) {
-      auto *PhiBB = PHI->getParent();
-      size_t PhiIdx = PHI->getIndex();
+  static SILPhiArgument *ValueIsNewPHI(SILValue value, SILSSAUpdater *updater) {
+    SILPhiArgument *phi = ValueIsPHI(value, updater);
+    if (phi) {
+      auto *phiBlock = phi->getParent();
+      size_t phiArgIndex = phi->getIndex();
 
       // If all predecessor edges are 'not set' this is a new phi.
-      for (auto *PredBB : PhiBB->getPredecessorBlocks()) {
-        OperandValueArrayRef Edges =
-            getEdgeValuesForTerminator(PredBB->getTerminator(), PhiBB);
+      for (auto *predBlock : phiBlock->getPredecessorBlocks()) {
+        OperandValueArrayRef edges =
+            getEdgeValuesForTerminator(predBlock->getTerminator(), phiBlock);
 
-        assert(PhiIdx < Edges.size() && "Not enough edges!");
+        assert(phiArgIndex < edges.size() && "Not enough edges!");
 
-        SILValue V = Edges[PhiIdx];
+        SILValue edgeValue = edges[phiArgIndex];
         // Check for the 'not set' sentinel.
-        if (V != Updater->PHISentinel.get())
+        if (edgeValue != updater->phiSentinel.get())
           return nullptr;
       }
-      return PHI;
+      return phi;
     }
     return nullptr;
   }
 
-  static SILValue GetPHIValue(SILPhiArgument *PHI) { return PHI; }
+  static SILValue GetPHIValue(SILPhiArgument *phi) { return phi; }
 };
 
 } // namespace llvm
@@ -379,14 +393,14 @@ public:
 /// Check to see if AvailableVals has an entry for the specified BB and if so,
 /// return it.  If not, construct SSA form by first calculating the required
 /// placement of PHIs and then inserting new PHIs where needed.
-SILValue SILSSAUpdater::GetValueAtEndOfBlockInternal(SILBasicBlock *BB){
-  AvailableValsTy &AvailableVals = *AV;
-  auto AI = AvailableVals.find(BB);
-  if (AI != AvailableVals.end())
-    return AI->second;
+SILValue SILSSAUpdater::getValueAtEndOfBlockInternal(SILBasicBlock *block) {
+  AvailableValsTy &availableVals = *blockToAvailableValueMap;
+  auto iter = availableVals.find(block);
+  if (iter != availableVals.end())
+    return iter->second;
 
-  llvm::SSAUpdaterImpl<SILSSAUpdater> Impl(this, &AvailableVals, InsertedPHIs);
-  return Impl.GetValue(BB);
+  llvm::SSAUpdaterImpl<SILSSAUpdater> Impl(this, &availableVals, insertedPhis);
+  return Impl.GetValue(block);
 }
 
 /// Construct a use wrapper. For branches we store information so that we
@@ -395,67 +409,67 @@ SILValue SILSSAUpdater::GetValueAtEndOfBlockInternal(SILBasicBlock *BB){
 /// When a branch is modified existing pointers to the operand
 /// (ValueUseIterator) become invalid as they point to freed operands.  Instead
 /// we store the branch's parent and the idx so that we can reconstruct the use.
-UseWrapper::UseWrapper(Operand *Use) {
-  U = nullptr;
-  Type = kRegularUse;
+UseWrapper::UseWrapper(Operand *inputUse) {
+  wrappedUse = nullptr;
+  type = kRegularUse;
 
-  SILInstruction *User = Use->getUser();
+  SILInstruction *inputUser = inputUse->getUser();
 
   // Direct branch user.
-  if (auto *Br = dyn_cast<BranchInst>(User)) {
-    auto Opds = User->getAllOperands();
-    for (unsigned i = 0, e = Opds.size(); i != e; ++i) {
-      if (Use == &Opds[i]) {
-        Idx = i;
-        Type = kBranchUse;
-        Parent = Br->getParent();
+  if (auto *br = dyn_cast<BranchInst>(inputUser)) {
+    auto operands = inputUser->getAllOperands();
+    for (unsigned i = 0, e = operands.size(); i != e; ++i) {
+      if (inputUse == &operands[i]) {
+        index = i;
+        type = kBranchUse;
+        parent = br->getParent();
         return;
       }
     }
   }
 
   // Conditional branch user.
-  if (auto *Br = dyn_cast<CondBranchInst>(User)) {
-    auto Opds = User->getAllOperands();
-    auto NumTrueArgs = Br->getTrueArgs().size();
-    for (unsigned i = 0, e = Opds.size(); i != e; ++i) {
-      if (Use == &Opds[i]) {
+  if (auto *cbi = dyn_cast<CondBranchInst>(inputUser)) {
+    auto operands = inputUser->getAllOperands();
+    unsigned numTrueArgs = cbi->getTrueArgs().size();
+    for (unsigned i = 0, e = operands.size(); i != e; ++i) {
+      if (inputUse == &operands[i]) {
         // We treat the condition as part of the true args.
-        if (i < NumTrueArgs + 1) {
-          Idx = i;
-          Type = kCondBranchUseTrue;
+        if (i < numTrueArgs + 1) {
+          index = i;
+          type = kCondBranchUseTrue;
         } else {
-          Idx = i - NumTrueArgs - 1;
-          Type = kCondBranchUseFalse;
+          index = i - numTrueArgs - 1;
+          type = kCondBranchUseFalse;
         }
-        Parent = Br->getParent();
+        parent = cbi->getParent();
         return;
       }
     }
   }
 
-  U = Use;
+  wrappedUse = inputUse;
 }
 
 /// Return the operand we wrap. Reconstructing branch operands.
 Operand *UseWrapper::getOperand() {
-  switch (Type) {
+  switch (type) {
   case kRegularUse:
-    return U;
+    return wrappedUse;
 
   case kBranchUse: {
-    auto *Br = cast<BranchInst>(Parent->getTerminator());
-    assert(Idx < Br->getNumArgs());
-    return &Br->getAllOperands()[Idx];
+    auto *br = cast<BranchInst>(parent->getTerminator());
+    assert(index < br->getNumArgs());
+    return &br->getAllOperands()[index];
   }
 
   case kCondBranchUseTrue:
   case kCondBranchUseFalse: {
-    auto *Br = cast<CondBranchInst>(Parent->getTerminator());
+    auto *cbi = cast<CondBranchInst>(parent->getTerminator());
     unsigned IdxToUse =
-        Type == kCondBranchUseTrue ? Idx : Br->getTrueArgs().size() + 1 + Idx;
-    assert(IdxToUse < Br->getAllOperands().size());
-    return &Br->getAllOperands()[IdxToUse];
+        type == kCondBranchUseTrue ? index : cbi->getTrueArgs().size() + 1 + index;
+    assert(IdxToUse < cbi->getAllOperands().size());
+    return &cbi->getAllOperands()[IdxToUse];
   }
   }
 
@@ -470,12 +484,11 @@ Operand *UseWrapper::getOperand() {
 /// ArgValues are the values feeding the specified Argument from each
 /// predecessor. They must be listed in order of Arg->getParent()->getPreds().
 static StructInst *
-replaceBBArgWithStruct(SILPhiArgument *Arg,
-                       SmallVectorImpl<SILValue> &ArgValues) {
-
-  SILBasicBlock *PhiBB = Arg->getParent();
-  auto *FirstSI = dyn_cast<StructInst>(ArgValues[0]);
-  if (!FirstSI)
+replaceBBArgWithStruct(SILPhiArgument *phi,
+                       SmallVectorImpl<SILValue> &argValues) {
+  SILBasicBlock *phiBlock = phi->getParent();
+  auto *firstSI = dyn_cast<StructInst>(argValues[0]);
+  if (!firstSI)
     return nullptr;
 
   // Collect the BBArg index of each struct oper.
@@ -483,54 +496,56 @@ replaceBBArgWithStruct(SILPhiArgument *Arg,
   //   struct(A, B)
   //   br (B, A)
   // : ArgIdxForOper => {1, 0}
-  SmallVector<unsigned, 4> ArgIdxForOper;
-  for (unsigned OperIdx : indices(FirstSI->getElements())) {
-    bool FoundMatchingArgIdx = false;
-    for (unsigned ArgIdx : indices(PhiBB->getArguments())) {
-      SmallVectorImpl<SILValue>::const_iterator AVIter = ArgValues.begin();
-      bool TryNextArgIdx = false;
-      for (SILBasicBlock *PredBB : PhiBB->getPredecessorBlocks()) {
-        // All argument values must be StructInst.
-        auto *PredSI = dyn_cast<StructInst>(*AVIter++);
-        if (!PredSI)
+  SmallVector<unsigned, 4> argIdxForOper;
+  for (unsigned operIdx : indices(firstSI->getElements())) {
+    bool foundMatchingArgIdx = false;
+    for (unsigned argIdx : indices(phiBlock->getArguments())) {
+      auto availableValueIter = argValues.begin();
+      bool tryNextArgIndex = false;
+      for (auto *predblock : phiBlock->getPredecessorBlocks()) {
+        // all argument values must be structinst.
+        auto *predsi = dyn_cast<StructInst>(*availableValueIter++);
+        if (!predsi)
           return nullptr;
-        OperandValueArrayRef EdgeValues =
-          getEdgeValuesForTerminator(PredBB->getTerminator(), PhiBB);
-        if (EdgeValues[ArgIdx] != PredSI->getElements()[OperIdx]) {
-          TryNextArgIdx = true;
+        auto edgeValues =
+            getEdgeValuesForTerminator(predblock->getTerminator(), phiBlock);
+        if (edgeValues[argIdx] != predsi->getElements()[operIdx]) {
+          tryNextArgIndex = true;
           break;
         }
       }
-      if (!TryNextArgIdx) {
-        assert(AVIter == ArgValues.end() && "# ArgValues does not match # BB preds");
-        FoundMatchingArgIdx = true;
-        ArgIdxForOper.push_back(ArgIdx);
+      if (!tryNextArgIndex) {
+        assert(availableValueIter == argValues.end() &&
+               "# argvalues does not match # bb preds");
+        foundMatchingArgIdx = true;
+        argIdxForOper.push_back(argIdx);
         break;
       }
     }
-    if (!FoundMatchingArgIdx)
+    if (!foundMatchingArgIdx)
       return nullptr;
   }
 
-  SmallVector<SILValue, 4> StructArgs;
-  for (auto ArgIdx : ArgIdxForOper)
-    StructArgs.push_back(PhiBB->getArgument(ArgIdx));
+  SmallVector<SILValue, 4> structArgs;
+  for (auto argidx : argIdxForOper)
+    structArgs.push_back(phiBlock->getArgument(argidx));
 
-  SILBuilder Builder(PhiBB, PhiBB->begin());
-  return Builder.createStruct(cast<StructInst>(ArgValues[0])->getLoc(),
-                              Arg->getType(), StructArgs);
+  // todo: what is the right debug scope to use here!
+  SILBuilder builder(phiBlock, phiBlock->begin());
+  return builder.createStruct(cast<StructInst>(argValues[0])->getLoc(),
+                              phi->getType(), structArgs);
 }
 
-/// Canonicalize BB arguments, replacing argument-of-casts with
-/// cast-of-arguments. This only eliminates existing arguments, replacing them
-/// with casts. No new arguments are created. This allows downstream pattern
+/// canonicalize bb arguments, replacing argument-of-casts with
+/// cast-of-arguments. this only eliminates existing arguments, replacing them
+/// with casts. no new arguments are created. this allows downstream pattern
 /// detection like induction variable analysis to succeed.
 ///
-/// If Arg is replaced, return the cast instruction. Otherwise return nullptr.
-SILValue swift::replaceBBArgWithCast(SILPhiArgument *Arg) {
-  SmallVector<SILValue, 4> ArgValues;
-  Arg->getIncomingPhiValues(ArgValues);
-  if (isa<StructInst>(ArgValues[0]))
-    return replaceBBArgWithStruct(Arg, ArgValues);
+/// if arg is replaced, return the cast instruction. Otherwise return nullptr.
+SILValue swift::replaceBBArgWithCast(SILPhiArgument *arg) {
+  SmallVector<SILValue, 4> argValues;
+  arg->getIncomingPhiValues(argValues);
+  if (isa<StructInst>(argValues[0]))
+    return replaceBBArgWithStruct(arg, argValues);
   return nullptr;
 }

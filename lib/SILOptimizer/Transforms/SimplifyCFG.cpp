@@ -50,6 +50,10 @@ STATISTIC(NumDeadArguments, "Number of unused arguments removed");
 STATISTIC(NumSROAArguments, "Number of aggregate argument levels split by "
                             "SROA");
 
+static llvm::cl::opt<bool> ForceRunOnOwnership(
+    "sil-simplify-cfg-force-run-on-ownership", llvm::cl::init(true),
+    llvm::cl::desc("Run simplify cfg on ownership code instead of early exiting. For testing purporses!"));
+
 //===----------------------------------------------------------------------===//
 //                             CFG Simplification
 //===----------------------------------------------------------------------===//
@@ -3796,6 +3800,8 @@ bool SimplifyCFG::simplifyArgument(SILBasicBlock *BB, unsigned i) {
   return true;
 }
 
+// OWNERSHIP NOTE: This is always safe for guaranteed and owned arguments since
+// in both cases the phi will consume its input.
 static void tryToReplaceArgWithIncomingValue(SILBasicBlock *BB, unsigned i,
                                              DominanceInfo *DT) {
   auto *A = BB->getArgument(i);
@@ -3893,6 +3899,7 @@ bool SimplifyCFG::simplifyProgramTerminationBlock(SILBasicBlock *BB) {
     case SILInstructionKind::StrongReleaseInst:
     case SILInstructionKind::ReleaseValueInst:
     case SILInstructionKind::DestroyAddrInst:
+    case SILInstructionKind::DestroyValueInst:
       break;
     default:
       continue;
@@ -3917,7 +3924,7 @@ class SimplifyCFGPass : public SILFunctionTransform {
 public:
   void run() override {
     // FIXME: We should be able to handle ownership.
-    if (getFunction()->hasOwnership())
+    if (getFunction()->hasOwnership() && !ForceRunOnOwnership)
       return;
 
     if (SimplifyCFG(*getFunction(), *this, getOptions().VerifyAll,

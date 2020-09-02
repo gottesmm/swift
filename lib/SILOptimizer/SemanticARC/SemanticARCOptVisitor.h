@@ -27,11 +27,12 @@
 namespace swift {
 namespace semanticarc {
 
-extern bool VerifyAfterTransform;
+extern bool VerifyAfterTransform LLVM_LIBRARY_VISIBILITY;
 
 bool constructCacheValue(
     SILValue initialValue,
-    SmallVectorImpl<Operand *> &wellBehavedWriteAccumulator);
+    SmallVectorImpl<Operand *> &wellBehavedWriteAccumulator)
+    LLVM_LIBRARY_VISIBILITY;
 
 /// A visitor that optimizes ownership instructions and eliminates any trivially
 /// dead code that results after optimization. It uses an internal worklist that

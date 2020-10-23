@@ -401,7 +401,8 @@ void SILGenFunction::emitCaptures(SILLocation loc,
             /*mutable*/ true);
 
         AllocBoxInst *allocBox = B.createAllocBox(loc, boxTy);
-        ProjectBoxInst *boxAddress = B.createProjectBox(loc, allocBox, 0);
+        SILValue borrowedBox = B.emitBeginBorrowOperation(loc, allocBox);
+        ProjectBoxInst *boxAddress = B.createProjectBox(loc, borrowedBox, 0);
         B.createCopyAddr(loc, entryValue, boxAddress, IsNotTake,
                          IsInitialization);
         if (canGuarantee)

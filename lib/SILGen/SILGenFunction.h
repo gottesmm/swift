@@ -2031,6 +2031,12 @@ public:
   CleanupHandle enterDormantTemporaryCleanup(SILValue temp,
                                              const TypeLowering &tempTL);
 
+  /// Cleanup an initialized alloc_box that we borrowed/projected out of. We
+  /// assume the box was immediately borrowed.
+  CleanupHandle enterDestroyBoxCleanup(SILValue box);
+
+  /// Cleanup an uninitialized alloc_box that we borrowed/projected out of. We
+  /// assume the box was immediately borrowed.
   CleanupHandle enterDeallocBoxCleanup(SILValue box);
 
   /// Enter a currently-dormant cleanup to destroy the value in the

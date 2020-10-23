@@ -57,12 +57,13 @@ static void lifetimeExtendAddressOnlyRValueSubValues(
            "addresses must be address only.");
     auto boxTy = SILBoxType::get(v->getType().getASTType());
     SILValue box = SGF.B.createAllocBox(loc, boxTy);
-    SILValue addr = SGF.B.createProjectBox(loc, box, 0);
+    SILValue boxProject = SGF.B.emitBeginBorrowOperation(loc, box);
+    SILValue addr = SGF.B.createProjectBox(loc, boxProject, 0);
     SGF.B.createCopyAddr(loc, v, addr, IsTake, IsInitialization);
 
     // Then save the box so we create the box destroy in the caller and
     // overwrite v with the project box since that is where the value is now.
-    lifetimeExtendingBoxes.emplace_back(box);
+    lifetimeExtendingBoxes.emplace_back(boxProject);
     v = addr;
   }
 }

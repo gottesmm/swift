@@ -65,7 +65,9 @@ public:
   void emit(SILGenFunction &SGF, CleanupLocation loc, ForUnwind_t forUnwind)
   override {
     assert(box && "buffer never emitted before activating cleanup?!");
-    SGF.B.createDeallocBox(loc, box);
+    auto *bbi = cast<BeginBorrowInst>(box);
+    SGF.B.emitEndBorrowOperation(loc, bbi);
+    SGF.B.createDeallocBox(loc, bbi->getOperand());
   }
   
   void dump(SILGenFunction &SGF) const override {
@@ -157,14 +159,15 @@ public:
       SILBoxType::get(SGF.getASTContext(),
                       boxLayout,
                       layoutSubs));
-    
+    SILValue borrowedResultBox = SGF.B.emitBeginBorrowOperation(loc, resultBox);
+
     // Complete the cleanup to deallocate this buffer later, after we're
     // finished with the argument.
-    static_cast<IndirectOpenedSelfCleanup&>(SGF.Cleanups.getCleanup(handle))
-      .setBox(resultBox);
+    static_cast<IndirectOpenedSelfCleanup &>(SGF.Cleanups.getCleanup(handle))
+        .setBox(borrowedResultBox);
     SGF.Cleanups.setCleanupState(handle, CleanupState::Active);
 
-    resultBuf = SGF.B.createProjectBox(loc, resultBox, 0);
+    resultBuf = SGF.B.createProjectBox(loc, borrowedResultBox, 0);
     outList.emplace_back(resultBuf);
   }
 

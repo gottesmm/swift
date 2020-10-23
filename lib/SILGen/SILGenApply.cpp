@@ -3419,14 +3419,17 @@ void DelayedArgument::emitBorrowedLValue(SILGenFunction &SGF,
 } // end anonymous namespace
 
 namespace {
-/// Cleanup to destroy an uninitialized box.
+
+/// Cleanup to destroy a borrowed uninitialized box.
 class DeallocateUninitializedBox : public Cleanup {
-  SILValue box;
+  BeginBorrowInst *box;
+
 public:
-  DeallocateUninitializedBox(SILValue box) : box(box) {}
+  DeallocateUninitializedBox(SILValue box) : box(cast<BeginBorrowInst>(box)) {}
 
   void emit(SILGenFunction &SGF, CleanupLocation l, ForUnwind_t forUnwind) override {
-    SGF.B.createDeallocBox(l, box);
+    SGF.B.emitEndBorrowOperation(l, box);
+    SGF.B.createDeallocBox(l, box->getOperand());
   }
 
   void dump(SILGenFunction &SGF) const override {
@@ -3437,10 +3440,42 @@ public:
 #endif
   }
 };
+
+/// Cleanup to destroy a borrowed uninitialized box.
+class DestroyInitializedBox : public Cleanup {
+  BeginBorrowInst *box;
+
+public:
+  DestroyInitializedBox(SILValue box) : box(cast<BeginBorrowInst>(box)) {}
+
+  void emit(SILGenFunction &SGF, CleanupLocation l,
+            ForUnwind_t forUnwind) override {
+    SGF.B.emitEndBorrowOperation(l, box);
+    SGF.B.createDeallocBox(l, box->getOperand());
+  }
+
+  void dump(SILGenFunction &SGF) const override {
+#ifndef NDEBUG
+    llvm::errs() << "DestroyInitializedBox "
+                 << "State:" << getState() << " "
+                 << "Box: " << box << "\n";
+#endif
+  }
+};
+
 } // end anonymous namespace
 
 CleanupHandle SILGenFunction::enterDeallocBoxCleanup(SILValue box) {
+  assert(
+      box.getOwnershipKind().isCompatibleWith(ValueOwnershipKind::Guaranteed));
   Cleanups.pushCleanup<DeallocateUninitializedBox>(box);
+  return Cleanups.getTopCleanup();
+}
+
+CleanupHandle SILGenFunction::enterDestroyBoxCleanup(SILValue box) {
+  assert(
+      box.getOwnershipKind().isCompatibleWith(ValueOwnershipKind::Guaranteed));
+  Cleanups.pushCleanup<DestroyInitializedBox>(box);
   return Cleanups.getTopCleanup();
 }
 
@@ -4714,11 +4749,12 @@ ManagedValue SILGenFunction::emitInjectEnum(SILLocation loc,
     auto boxTy = SGM.M.Types.getBoxTypeForEnumElement(getTypeExpansionContext(),
                                                       enumTy, element);
     auto *box = B.createAllocBox(loc, boxTy);
-    auto *addr = B.createProjectBox(loc, box, 0);
+    auto borrowedBox = B.emitBeginBorrowOperation(loc, box);
+    auto *addr = B.createProjectBox(loc, borrowedBox, 0);
 
-    CleanupHandle initCleanup = enterDestroyCleanup(box);
+    CleanupHandle initCleanup = enterDestroyBoxCleanup(borrowedBox);
     Cleanups.setCleanupState(initCleanup, CleanupState::Dormant);
-    CleanupHandle uninitCleanup = enterDeallocBoxCleanup(box);
+    CleanupHandle uninitCleanup = enterDeallocBoxCleanup(borrowedBox);
 
     BoxInitialization dest(box, addr, uninitCleanup, initCleanup);
     std::move(payload).forwardInto(*this, origFormalType, &dest,

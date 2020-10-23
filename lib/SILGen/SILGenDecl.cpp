@@ -354,11 +354,12 @@ public:
     if (kind)
       allocBox = SGF.B.createMarkUninitialized(decl, allocBox, kind.getValue());
 
-    SILValue addr = SGF.B.createProjectBox(decl, allocBox, 0);
+    SILValue borrowedBox = SGF.B.emitBeginBorrowOperation(decl, allocBox);
+    SILValue addr = SGF.B.createProjectBox(decl, borrowedBox, 0);
 
     /// Remember that this is the memory location that we're emitting the
     /// decl to.
-    SGF.VarLocs[decl] = SILGenFunction::VarLoc::get(addr, allocBox);
+    SGF.VarLocs[decl] = SILGenFunction::VarLoc::get(addr, borrowedBox);
 
     // Push a cleanup to destroy the local variable.  This has to be
     // inactive until the variable is initialized.
@@ -1665,18 +1666,21 @@ void SILGenFunction::destroyLocalVariable(SILLocation silLoc, VarDecl *vd) {
 
   // For a heap variable, the box is responsible for the value. We just need
   // to give up our retain count on it.
-  if (loc.box) {
-    B.emitDestroyValueOperation(silLoc, loc.box);
+  if (SILValue box = loc.box) {
+    // If we have a borrow that was on the box, look through the begin_borrow
+    // for our actual box.
+    if (auto *bbi = dyn_cast<BeginBorrowInst>(box)) {
+      box = bbi->getOperand();
+      assert(isa<AllocBoxInst>(box));
+      B.emitEndBorrowOperation(silLoc, bbi);
+    }
+    B.emitDestroyValueOperation(silLoc, box);
     return;
   }
 
   // For 'let' bindings, we emit a release_value or destroy_addr, depending on
   // whether we have an address or not.
-  SILValue Val = loc.value;
-  if (!Val->getType().isAddress())
-    B.emitDestroyValueOperation(silLoc, Val);
-  else
-    B.createDestroyAddr(silLoc, Val);
+  B.emitDestroyOperation(silLoc, loc.value);
 }
 
 void SILGenFunction::deallocateUninitializedLocalVariable(SILLocation silLoc,

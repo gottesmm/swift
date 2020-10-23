@@ -648,6 +648,7 @@ public:
     RefTailAddr,
     OpenExistentialBox,
     StoreBorrow,
+    ProjectBox,
   };
 
 private:
@@ -676,6 +677,8 @@ public:
       return Kind::OpenExistentialBox;
     case SILInstructionKind::StoreBorrowInst:
       return Kind::StoreBorrow;
+    case SILInstructionKind::ProjectBoxInst:
+      return Kind::ProjectBox;
     }
   }
 
@@ -694,6 +697,8 @@ public:
       return Kind::OpenExistentialBox;
     case ValueKind::StoreBorrowInst:
       return Kind::StoreBorrow;
+    case ValueKind::ProjectBoxInst:
+      return Kind::ProjectBox;
     }
   }
 
@@ -745,6 +750,7 @@ struct InteriorPointerOperand {
     case InteriorPointerOperandKind::RefElementAddr:
     case InteriorPointerOperandKind::RefTailAddr:
     case InteriorPointerOperandKind::OpenExistentialBox:
+    case InteriorPointerOperandKind::ProjectBox:
     case InteriorPointerOperandKind::StoreBorrow: {
       // Ok, we have a valid instruction. Return the relevant operand.
       auto *op =
@@ -787,6 +793,8 @@ struct InteriorPointerOperand {
       return cast<OpenExistentialBoxInst>(operand->getUser());
     case InteriorPointerOperandKind::StoreBorrow:
       return cast<StoreBorrowInst>(operand->getUser());
+    case InteriorPointerOperandKind::ProjectBox:
+      return cast<ProjectBoxInst>(operand->getUser());
     }
     llvm_unreachable("Covered switch isn't covered?!");
   }

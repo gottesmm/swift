@@ -128,6 +128,11 @@ static unsigned computeSubelement(SILValue Pointer,
       continue;
     }
 
+    if (auto *BBI = dyn_cast<BeginBorrowInst>(Pointer)) {
+      Pointer = BBI->getOperand();
+      continue;
+    }
+
     if (auto *BAI = dyn_cast<BeginAccessInst>(Pointer)) {
       Pointer = BAI->getSource();
       continue;

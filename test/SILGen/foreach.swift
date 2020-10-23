@@ -53,7 +53,8 @@ protocol GenericCollection : Collection {
 // CHECK-LABEL: sil hidden [ossa] @$s7foreach13trivialStructyySaySiGF : $@convention(thin) (@guaranteed Array<Int>) -> () {
 // CHECK: bb0([[ARRAY:%.*]] : @guaranteed $Array<Int>):
 // CHECK:   [[ITERATOR_BOX:%.*]] = alloc_box ${ var IndexingIterator<Array<Int>> }, var, name "$x$generator"
-// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[ITERATOR_BOX]]
+// CHECK:   [[B_ITERATOR_BOX:%.*]] = begin_borrow [[ITERATOR_BOX]]
+// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[B_ITERATOR_BOX]]
 // CHECK:   br [[LOOP_DEST:bb[0-9]+]]
 //
 // CHECK: [[LOOP_DEST]]:
@@ -105,7 +106,8 @@ func trivialStructBreak(_ xx: [Int]) {
 // CHECK-LABEL: sil hidden [ossa] @$s7foreach26trivialStructContinueBreakyySaySiGF : $@convention(thin) (@guaranteed Array<Int>) -> () {
 // CHECK: bb0([[ARRAY:%.*]] : @guaranteed $Array<Int>):
 // CHECK:   [[ITERATOR_BOX:%.*]] = alloc_box ${ var IndexingIterator<Array<Int>> }, var, name "$x$generator"
-// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[ITERATOR_BOX]]
+// CHECK:   [[B_ITERATOR_BOX:%.*]] = begin_borrow [[ITERATOR_BOX]]
+// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[B_ITERATOR_BOX]]
 // CHECK:   [[BORROWED_ARRAY_STACK:%.*]] = alloc_stack $Array<Int>
 // CHECK:   store [[ARRAY_COPY:%.*]] to [init] [[BORROWED_ARRAY_STACK]]
 // CHECK:   [[MAKE_ITERATOR_FUNC:%.*]] = witness_method $Array<Int>, #Sequence.makeIterator : <Self where Self : Sequence> (__owned Self) -> () -> Self.Iterator : $@convention(witness_method: Sequence) <τ_0_0 where τ_0_0 : Sequence> (@in τ_0_0) -> @out τ_0_0.Iterator
@@ -205,7 +207,8 @@ func existentialBreak(_ xx: [P]) {
 // CHECK-LABEL: sil hidden [ossa] @$s7foreach24existentialContinueBreakyySayAA1P_pGF : $@convention(thin) (@guaranteed Array<P>) -> () {
 // CHECK: bb0([[ARRAY:%.*]] : @guaranteed $Array<P>):
 // CHECK:   [[ITERATOR_BOX:%.*]] = alloc_box ${ var IndexingIterator<Array<P>> }, var, name "$x$generator"
-// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[ITERATOR_BOX]]
+// CHECK:   [[B_ITERATOR_BOX:%.*]] = begin_borrow [[ITERATOR_BOX]]
+// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[B_ITERATOR_BOX]]
 // CHECK:   [[BORROWED_ARRAY_STACK:%.*]] = alloc_stack $Array<P>
 // CHECK:   store [[ARRAY_COPY:%.*]] to [init] [[BORROWED_ARRAY_STACK]]
 // CHECK:   [[MAKE_ITERATOR_FUNC:%.*]] = witness_method $Array<P>, #Sequence.makeIterator : <Self where Self : Sequence> (__owned Self) -> () -> Self.Iterator : $@convention(witness_method: Sequence) <τ_0_0 where τ_0_0 : Sequence> (@in τ_0_0) -> @out τ_0_0.Iterator
@@ -365,7 +368,8 @@ func genericStructBreak<T>(_ xx: [GenericStruct<T>]) {
 // CHECK-LABEL: sil hidden [ossa] @$s7foreach26genericStructContinueBreakyySayAA07GenericC0VyxGGlF : $@convention(thin) <T> (@guaranteed Array<GenericStruct<T>>) -> () {
 // CHECK: bb0([[ARRAY:%.*]] : @guaranteed $Array<GenericStruct<T>>):
 // CHECK:   [[ITERATOR_BOX:%.*]] = alloc_box $<τ_0_0> { var IndexingIterator<Array<GenericStruct<τ_0_0>>> } <T>, var, name "$x$generator"
-// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[ITERATOR_BOX]]
+// CHECK:   [[B_ITERATOR_BOX:%.*]] = begin_borrow [[ITERATOR_BOX]]
+// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[B_ITERATOR_BOX]]
 // CHECK:   [[BORROWED_ARRAY_STACK:%.*]] = alloc_stack $Array<GenericStruct<T>>
 // CHECK:   store [[ARRAY_COPY:%.*]] to [init] [[BORROWED_ARRAY_STACK]]
 // CHECK:   [[MAKE_ITERATOR_FUNC:%.*]] = witness_method $Array<GenericStruct<T>>, #Sequence.makeIterator : <Self where Self : Sequence> (__owned Self) -> () -> Self.Iterator : $@convention(witness_method: Sequence) <τ_0_0 where τ_0_0 : Sequence> (@in τ_0_0) -> @out τ_0_0.Iterator
@@ -473,7 +477,8 @@ func genericCollectionBreak<T : Collection>(_ xx: T) {
 // CHECK-LABEL: sil hidden [ossa] @$s7foreach30genericCollectionContinueBreakyyxSlRzlF : $@convention(thin) <T where T : Collection> (@in_guaranteed T) -> () {
 // CHECK: bb0([[COLLECTION:%.*]] : $*T):
 // CHECK:   [[ITERATOR_BOX:%.*]] = alloc_box $<τ_0_0 where τ_0_0 : Collection> { var τ_0_0.Iterator } <T>, var, name "$x$generator"
-// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[ITERATOR_BOX]]
+// CHECK:   [[B_ITERATOR_BOX:%.*]] = begin_borrow [[ITERATOR_BOX]]
+// CHECK:   [[PROJECT_ITERATOR_BOX:%.*]] = project_box [[B_ITERATOR_BOX]]
 // CHECK:   [[MAKE_ITERATOR_FUNC:%.*]] = witness_method $T, #Sequence.makeIterator :
 // CHECK:   apply [[MAKE_ITERATOR_FUNC]]<T>([[PROJECT_ITERATOR_BOX]], [[COLLECTION_COPY:%.*]])
 // CHECK:   [[ELT_STACK:%.*]] = alloc_stack $Optional<T.Element>

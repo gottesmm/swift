@@ -33,8 +33,8 @@ func read_only_capture(_ x: Int) -> Int {
   var x = x
   // CHECK: bb0([[X:%[0-9]+]] : $Int):
   // CHECK:   [[XBOX:%[0-9]+]] = alloc_box ${ var Int }
-  // SEMANTIC ARC TODO: This is incorrect. We need to do the project_box on the copy.
-  // CHECK:   [[PROJECT:%.*]] = project_box [[XBOX]]
+  // CHECK:   [[B_XBOX:%.*]] = begin_borrow [[XBOX]]
+  // CHECK:   [[PROJECT:%.*]] = project_box [[B_XBOX]]
   // CHECK:   store [[X]] to [trivial] [[PROJECT]]
 
   func cap() -> Int {
@@ -42,12 +42,10 @@ func read_only_capture(_ x: Int) -> Int {
   }
 
   return cap()
-  // CHECK:   [[XBOX_BORROW:%.*]] = begin_borrow [[XBOX]]
-  // SEMANTIC ARC TODO: See above. This needs to happen on the copy_valued box.
   // CHECK:   mark_function_escape [[PROJECT]]
   // CHECK:   [[CAP:%[0-9]+]] = function_ref @[[CAP_NAME:\$s8closures17read_only_capture.*]] : $@convention(thin) (@guaranteed { var Int }) -> Int
-  // CHECK:   [[RET:%[0-9]+]] = apply [[CAP]]([[XBOX_BORROW]])
-  // CHECK:   end_borrow [[XBOX_BORROW]]
+  // CHECK:   [[RET:%[0-9]+]] = apply [[CAP]]([[B_XBOX]])
+  // CHECK:   end_borrow [[B_XBOX]]
   // CHECK:   destroy_value [[XBOX]]
   // CHECK:   return [[RET]]
 }
@@ -67,13 +65,14 @@ func write_to_capture(_ x: Int) -> Int {
   var x = x
   // CHECK: bb0([[X:%[0-9]+]] : $Int):
   // CHECK:   [[XBOX:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK:   [[XBOX_PB:%.*]] = project_box [[XBOX]]
+  // CHECK:   [[B_XBOX:%.*]] = begin_borrow [[XBOX]]
+  // CHECK:   [[XBOX_PB:%.*]] = project_box [[B_XBOX]]
   // CHECK:   store [[X]] to [trivial] [[XBOX_PB]]
   // CHECK:   [[X2BOX:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK:   [[X2BOX_PB:%.*]] = project_box [[X2BOX]]
+  // CHECK:   [[B_X2BOX:%.*]] = begin_borrow [[X2BOX]]
+  // CHECK:   [[X2BOX_PB:%.*]] = project_box [[B_X2BOX]]
   // CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[XBOX_PB]] : $*Int
   // CHECK:   copy_addr [[ACCESS]] to [initialization] [[X2BOX_PB]]
-  // CHECK:   [[X2BOX_BORROW:%.*]] = begin_borrow [[X2BOX]]
   // SEMANTIC ARC TODO: This next mark_function_escape should be on a projection from X2BOX_BORROW.
   // CHECK:   mark_function_escape [[X2BOX_PB]]
   var x2 = x
@@ -84,10 +83,7 @@ func write_to_capture(_ x: Int) -> Int {
 
   scribble()
   // CHECK:   [[SCRIB:%[0-9]+]] = function_ref @[[SCRIB_NAME:\$s8closures16write_to_capture.*]] : $@convention(thin) (@guaranteed { var Int }) -> ()
-  // CHECK:   apply [[SCRIB]]([[X2BOX_BORROW]])
-  // SEMANTIC ARC TODO: This should load from X2BOX_BORROW project. There is an
-  // issue here where after a copy_value, we need to reassign a projection in
-  // some way.
+  // CHECK:   apply [[SCRIB]]([[B_X2BOX]])
   // CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[X2BOX_PB]] : $*Int
   // CHECK:   [[RET:%[0-9]+]] = load [trivial] [[ACCESS]]
   // CHECK:   destroy_value [[X2BOX]]
@@ -126,15 +122,15 @@ func capture_local_func(_ x: Int) -> () -> () -> Int {
   // CHECK: bb0([[ARG:%.*]] : $Int):
   var x = x
   // CHECK:   [[XBOX:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK:   [[XBOX_PB:%.*]] = project_box [[XBOX]]
+  // CHECK:   [[B_XBOX:%.*]] = begin_borrow [[XBOX]]
+  // CHECK:   [[XBOX_PB:%.*]] = project_box [[B_XBOX]]
   // CHECK:   store [[ARG]] to [trivial] [[XBOX_PB]]
 
   func aleph() -> Int { return x }
 
   func beth() -> () -> Int { return aleph }
   // CHECK: [[BETH_REF:%.*]] = function_ref @[[BETH_NAME:\$s8closures18capture_local_funcySiycycSiF4bethL_SiycyF]] : $@convention(thin) (@guaranteed { var Int }) -> @owned @callee_guaranteed () -> Int
-  // CHECK: [[XBOX_COPY:%.*]] = copy_value [[XBOX]]
-  // SEMANTIC ARC TODO: This is incorrect. This should be a project_box from XBOX_COPY.
+  // CHECK: [[XBOX_COPY:%.*]] = copy_value [[B_XBOX]]
   // CHECK: mark_function_escape [[XBOX_PB]]
   // CHECK: [[BETH_CLOSURE:%[0-9]+]] = partial_apply [callee_guaranteed] [[BETH_REF]]([[XBOX_COPY]])
 
@@ -163,7 +159,8 @@ func anon_read_only_capture(_ x: Int) -> Int {
   var x = x
   // CHECK: bb0([[X:%[0-9]+]] : $Int):
   // CHECK: [[XBOX:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[PB:%.*]] = project_box [[XBOX]]
+  // CHECK: [[B_XBOX:%.*]] = begin_borrow [[XBOX]]
+  // CHECK: [[PB:%.*]] = project_box [[B_XBOX]]
 
   return ({ x })()
   // -- func expression
@@ -185,7 +182,8 @@ func small_closure_capture(_ x: Int) -> Int {
   var x = x
   // CHECK: bb0([[X:%[0-9]+]] : $Int):
   // CHECK: [[XBOX:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[PB:%.*]] = project_box [[XBOX]]
+  // CHECK: [[B_XBOX:%.*]] = begin_borrow [[XBOX]]
+  // CHECK: [[PB:%.*]] = project_box [[B_XBOX]]
 
   return { x }()
   // -- func expression
@@ -207,11 +205,12 @@ func small_closure_capture(_ x: Int) -> Int {
 func small_closure_capture_with_argument(_ x: Int) -> (_ y: Int) -> Int {
   var x = x
   // CHECK: [[XBOX:%[0-9]+]] = alloc_box ${ var Int }
+  // CHECK: [[B_XBOX:%.*]] = begin_borrow [[XBOX]]
 
   return { x + $0 }
   // -- func expression
   // CHECK: [[ANON:%[0-9]+]] = function_ref @[[CLOSURE_NAME:\$s8closures35small_closure_capture_with_argument.*]] : $@convention(thin) (Int, @guaranteed { var Int }) -> Int
-  // CHECK: [[XBOX_COPY:%.*]] = copy_value [[XBOX]]
+  // CHECK: [[XBOX_COPY:%.*]] = copy_value [[B_XBOX]]
   // CHECK: [[ANON_CLOSURE_APP:%[0-9]+]] = partial_apply [callee_guaranteed] [[ANON]]([[XBOX_COPY]])
   // -- return
   // CHECK: destroy_value [[XBOX]]
@@ -244,7 +243,8 @@ func uncaptured_locals(_ x: Int) -> (Int, Int) {
   // -- locals without captures are stack-allocated
   // CHECK: bb0([[XARG:%[0-9]+]] : $Int):
   // CHECK:   [[XADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK:   [[PB:%.*]] = project_box [[XADDR]]
+  // CHECK:   [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+  // CHECK:   [[PB:%.*]] = project_box [[B_XADDR]]
   // CHECK:   store [[XARG]] to [trivial] [[PB]]
 
   var y = zero
@@ -318,7 +318,8 @@ class SelfCapturedInInit : Base {
   // First create our initial value for self.
   // CHECK:   [[SELF_BOX:%.*]] = alloc_box ${ var SelfCapturedInInit }, let, name "self"
   // CHECK:   [[UNINIT_SELF:%.*]] = mark_uninitialized [derivedself] [[SELF_BOX]]
-  // CHECK:   [[PB_SELF_BOX:%.*]] = project_box [[UNINIT_SELF]]
+  // CHECK:   [[B_UNINIT_SELF:%.*]] = begin_borrow [[UNINIT_SELF]]
+  // CHECK:   [[PB_SELF_BOX:%.*]] = project_box [[B_UNINIT_SELF]]
   // CHECK:   store [[SELF]] to [init] [[PB_SELF_BOX]]
   //
   // Then perform the super init sequence.
@@ -663,40 +664,42 @@ class SuperSub : SuperBase {
 }
 
 // CHECK-LABEL: sil hidden [ossa] @$s8closures24UnownedSelfNestedCaptureC06nestedE0{{[_0-9a-zA-Z]*}}F : $@convention(method) (@guaranteed UnownedSelfNestedCapture) -> ()
-// -- We enter with an assumed strong +1.
+// -- We enter with an assumed strong +0.
 // CHECK:  bb0([[SELF:%.*]] : @guaranteed $UnownedSelfNestedCapture):
 // CHECK:         [[OUTER_SELF_CAPTURE:%.*]] = alloc_box ${ var @sil_unowned UnownedSelfNestedCapture }
-// CHECK:         [[PB:%.*]] = project_box [[OUTER_SELF_CAPTURE]]
-// -- strong +2
+// CHECK:         [[B_OUTER_SELF_CAPTURE:%.*]] = begin_borrow [[OUTER_SELF_CAPTURE]]
+// CHECK:         [[PB:%.*]] = project_box [[B_OUTER_SELF_CAPTURE]]
+// -- strong +1
 // CHECK:         [[SELF_COPY:%.*]] = copy_value [[SELF]]
 // CHECK:         [[UNOWNED_SELF:%.*]] = ref_to_unowned [[SELF_COPY]] :
 // -- TODO: A lot of fussy r/r traffic and owned/unowned conversions here.
-// -- strong +2, unowned +1
+// -- strong +1, unowned +1
 // CHECK:         [[UNOWNED_SELF_COPY:%.*]] = copy_value [[UNOWNED_SELF]]
 // CHECK:         store [[UNOWNED_SELF_COPY]] to [init] [[PB]]
 // SEMANTIC ARC TODO: This destroy_value should probably be /after/ the load from PB on the next line.
+// -- strong +0, unowned +1
 // CHECK:         destroy_value [[SELF_COPY]]
 // CHECK:         [[UNOWNED_SELF:%.*]] = load_borrow [[PB]]
-// -- strong +2, unowned +1
+// -- strong +1, unowned +1
 // CHECK:         [[SELF:%.*]] = strong_copy_unowned_value [[UNOWNED_SELF]]
 // CHECK:         end_borrow [[UNOWNED_SELF]]
 // CHECK:         [[UNOWNED_SELF2:%.*]] = ref_to_unowned [[SELF]]
-// -- strong +2, unowned +2
-// CHECK:         [[UNOWNED_SELF2_COPY:%.*]] = copy_value [[UNOWNED_SELF2]]
 // -- strong +1, unowned +2
+// CHECK:         [[UNOWNED_SELF2_COPY:%.*]] = copy_value [[UNOWNED_SELF2]]
+// -- strong +0, unowned +2
 // CHECK:         destroy_value [[SELF]]
 // -- closure takes unowned ownership
 // CHECK:         [[OUTER_CLOSURE:%.*]] = partial_apply [callee_guaranteed] {{%.*}}([[UNOWNED_SELF2_COPY]])
 // CHECK:         [[OUTER_CONVERT:%.*]] = convert_escape_to_noescape [not_guaranteed] [[OUTER_CLOSURE]]
 // -- call consumes closure
-// -- strong +1, unowned +1
+// -- strong +0, unowned +1
 // CHECK:         [[INNER_CLOSURE:%.*]] = apply [[OUTER_CONVERT]]
 // CHECK:         [[B:%.*]] = begin_borrow [[INNER_CLOSURE]]
 // CHECK:         [[CONSUMED_RESULT:%.*]] = apply [[B]]()
 // CHECK:         destroy_value [[CONSUMED_RESULT]]
 // CHECK:         destroy_value [[INNER_CLOSURE]]
 // -- destroy_values unowned self in box
-// -- strong +1, unowned +0
+// -- strong +0, unowned +0
 // CHECK:         destroy_value [[OUTER_SELF_CAPTURE]]
 // -- strong +0, unowned +0
 // CHECK: } // end sil function '$s8closures24UnownedSelfNestedCaptureC06nestedE0{{[_0-9a-zA-Z]*}}F'

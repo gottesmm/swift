@@ -32,6 +32,7 @@ AddressOnlyTangentVectorTests.test("LoadableClassAddressOnlyTangentVector") {
     var x = s.stored
     return x
   }
+  print("First")
   expectEqual(.init(stored: 1), gradient(at: LoadableClass<Float>(10), of: projection))
 
   @differentiable(reverse)
@@ -39,6 +40,7 @@ AddressOnlyTangentVectorTests.test("LoadableClassAddressOnlyTangentVector") {
     var tuple = (s, (s, s))
     return tuple.1.0.stored
   }
+  print("Second")
   expectEqual(.init(stored: 1), gradient(at: LoadableClass<Float>(10), of: tuple))
 
   @differentiable(reverse)
@@ -47,6 +49,7 @@ AddressOnlyTangentVectorTests.test("LoadableClassAddressOnlyTangentVector") {
     if false {}
     return tuple.1.0.stored
   }
+  print("Third")
   expectEqual(.init(stored: 1), gradient(at: LoadableClass<Float>(10), of: conditional))
 
   @differentiable(reverse)
@@ -57,6 +60,7 @@ AddressOnlyTangentVectorTests.test("LoadableClassAddressOnlyTangentVector") {
     }
     return result[0].stored
   }
+  print("Fourth")
   expectEqual([.init(stored: 1)], gradient(at: [LoadableClass<Float>(10)], of: loop))
 
   @differentiable(reverse)
@@ -64,7 +68,10 @@ AddressOnlyTangentVectorTests.test("LoadableClassAddressOnlyTangentVector") {
     var result: [[LoadableClass<T>]] = [[s, s]]
     return result[0][1].stored
   }
+  print("Fifth")
   expectEqual(.init(stored: 1), gradient(at: LoadableClass<Float>(10), of: arrayLiteral))
+
+  print("Sixth")
 }
 
 runAllTests()

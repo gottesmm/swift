@@ -174,7 +174,8 @@ func stringToPointer(_ s: String) {
 func inoutToPointer() {
   var int = 0
   // CHECK: [[INT:%.*]] = alloc_box ${ var Int }
-  // CHECK: [[PB:%.*]] = project_box [[INT]]
+  // CHECK: [[B_INT:%.*]] = begin_borrow [[INT]]
+  // CHECK: [[PB:%.*]] = project_box [[B_INT]]
   takesMutablePointer(&int)
   // CHECK: [[WRITE:%.*]] = begin_access [modify] [unknown] [[PB]]
   // CHECK: [[POINTER:%.*]] = address_to_pointer [[WRITE]]
@@ -222,33 +223,35 @@ func takesPlusOnePointer(_ x: UnsafeMutablePointer<C>) {}
 func takesPlusZeroPointer(_ x: AutoreleasingUnsafeMutablePointer<C>) {}
 func takesPlusZeroOptionalPointer(_ x: AutoreleasingUnsafeMutablePointer<C?>) {}
 
-// CHECK-LABEL: sil hidden [ossa] @$s18pointer_conversion19classInoutToPointeryyF
+// CHECK-LABEL: sil hidden [ossa] @$s18pointer_conversion19classInoutToPointeryyF :
 func classInoutToPointer() {
   var c = C()
   // CHECK: [[VAR:%.*]] = alloc_box ${ var C }
-  // CHECK: [[PB:%.*]] = project_box [[VAR]]
+  // CHECK: [[B_VAR:%.*]] = begin_borrow [[VAR]]
+  // CHECK: [[PB:%.*]] = project_box [[B_VAR]]
   takesPlusOnePointer(&c)
   // CHECK: [[WRITE:%.*]] = begin_access [modify] [unknown] [[PB]]
   // CHECK: [[POINTER:%.*]] = address_to_pointer [[WRITE]]
   // CHECK: [[CONVERT:%.*]] = function_ref @$ss30_convertInOutToPointerArgument{{[_0-9a-zA-Z]*}}F
   // CHECK: apply [[CONVERT]]<UnsafeMutablePointer<C>>({{%.*}}, [[POINTER]])
   // CHECK: [[TAKES_PLUS_ONE:%.*]] = function_ref @$s18pointer_conversion19takesPlusOnePointer{{[_0-9a-zA-Z]*}}F
-  // CHECK: apply [[TAKES_PLUS_ONE]]
+  // CHECK: apply [[TAKES_PLUS_ONE]](
 
   takesPlusZeroPointer(&c)
+  // CHECK: [[WRITE:%.*]] = begin_access [modify] [unknown] [[PB]]
   // CHECK: [[WRITEBACK:%.*]] = alloc_stack $@sil_unmanaged C
-  // CHECK: [[OWNED:%.*]] = load_borrow [[PB]]
+  // CHECK: [[OWNED:%.*]] = load_borrow [[WRITE]]
   // CHECK: [[UNOWNED:%.*]] = ref_to_unmanaged [[OWNED]]
   // CHECK: store [[UNOWNED]] to [trivial] [[WRITEBACK]]
   // CHECK: [[POINTER:%.*]] = address_to_pointer [[WRITEBACK]]
   // CHECK: [[CONVERT:%.*]] = function_ref @$ss30_convertInOutToPointerArgument{{[_0-9a-zA-Z]*}}F
   // CHECK: apply [[CONVERT]]<AutoreleasingUnsafeMutablePointer<C>>({{%.*}}, [[POINTER]])
   // CHECK: [[TAKES_PLUS_ZERO:%.*]] = function_ref @$s18pointer_conversion20takesPlusZeroPointeryySAyAA1CCGF
-  // CHECK: apply [[TAKES_PLUS_ZERO]]
+  // CHECK: apply [[TAKES_PLUS_ZERO]](
   // CHECK: [[UNOWNED_OUT:%.*]] = load [trivial] [[WRITEBACK]]
   // CHECK: [[OWNED_OUT:%.*]] = unmanaged_to_ref [[UNOWNED_OUT]]
   // CHECK: [[OWNED_OUT_COPY:%.*]] = copy_value [[OWNED_OUT]]
-  // CHECK: assign [[OWNED_OUT_COPY]] to [[PB]]
+  // CHECK: assign [[OWNED_OUT_COPY]] to [[WRITE]]
 
   var cq: C? = C()
   takesPlusZeroOptionalPointer(&cq)
@@ -277,7 +280,8 @@ func functionInoutToPointer() {
 // CHECK-LABEL: sil hidden [ossa] @$s18pointer_conversion20inoutPointerOrderingyyF
 func inoutPointerOrdering() {
   // CHECK: [[ARRAY_BOX:%.*]] = alloc_box ${ var Array<Int> }
-  // CHECK: [[ARRAY:%.*]] = project_box [[ARRAY_BOX]] :
+  // CHECK: [[B_ARRAY_BOX:%.*]] = begin_borrow [[ARRAY_BOX]]
+  // CHECK: [[ARRAY:%.*]] = project_box [[B_ARRAY_BOX]] :
   // CHECK: store {{.*}} to [init] [[ARRAY]]
   var array = [Int]()
 

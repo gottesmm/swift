@@ -39,7 +39,8 @@ func inOutFunc(_ f: inout ((Int) -> Int)) { }
 // CHECK-LABEL: sil hidden [ossa] @$s20property_abstraction6inOutF{{[_0-9a-zA-Z]*}}F : 
 // CHECK: bb0([[ARG:%.*]] : @guaranteed $Foo<Int, Int>):
 // CHECK:   [[XBOX:%.*]] = alloc_box ${ var Foo<Int, Int> }, var, name "x"
-// CHECK:   [[XBOX_PB:%.*]] = project_box [[XBOX]] : ${ var Foo<Int, Int> }, 0
+// CHECK:   [[B_XBOX:%.*]] = begin_borrow [[XBOX]]
+// CHECK:   [[XBOX_PB:%.*]] = project_box [[B_XBOX]] : ${ var Foo<Int, Int> }, 0
 // CHECK:   [[ARG_COPY:%.*]] = copy_value [[ARG]]
 // CHECK:   store [[ARG_COPY]] to [init] [[XBOX_PB]]
 // CHECK:   [[WRITE:%.*]] = begin_access [modify] [unknown] [[XBOX_PB]] : $*Foo<Int, Int>

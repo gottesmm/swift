@@ -21,13 +21,14 @@
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/Module.h"
 #include "swift/AST/NameLookup.h"
-#include "swift/AST/ProtocolConformance.h"
 #include "swift/AST/PropertyWrappers.h"
+#include "swift/AST/ProtocolConformance.h"
 #include "swift/Basic/ProfileCounter.h"
 #include "swift/SIL/FormalLinkage.h"
 #include "swift/SIL/PrettyStackTrace.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILDebuggerClient.h"
+#include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILType.h"
 #include "swift/SIL/TypeLowering.h"
 #include "llvm/ADT/SmallString.h"
@@ -1671,7 +1672,7 @@ void SILGenFunction::destroyLocalVariable(SILLocation silLoc, VarDecl *vd) {
     // for our actual box.
     if (auto *bbi = dyn_cast<BeginBorrowInst>(box)) {
       box = bbi->getOperand();
-      assert(isa<AllocBoxInst>(box));
+      assert(isa<AllocBoxInst>(box) || isa<MarkUninitializedInst>(box));
       B.emitEndBorrowOperation(silLoc, bbi);
     }
     B.emitDestroyValueOperation(silLoc, box);
@@ -1697,5 +1698,12 @@ void SILGenFunction::deallocateUninitializedLocalVariable(SILLocation silLoc,
   if (!loc.value->getType().isAddress()) return;
 
   assert(loc.box && "captured var should have been given a box");
-  B.createDeallocBox(silLoc, loc.box);
+  SILValue box = loc.box;
+
+  if (auto *bbi = dyn_cast<BeginBorrowInst>(box)) {
+    box = bbi->getOperand();
+    assert(isa<AllocBoxInst>(box) || isa<MarkUninitializedInst>(box));
+    B.emitEndBorrowOperation(silLoc, bbi);
+  }
+  B.createDeallocBox(silLoc, box);
 }

@@ -233,7 +233,8 @@ struct WeirdPropertyTest {
 func test_weird_property(_ v : WeirdPropertyTest, i : Int) -> Int {
   var v = v
   // CHECK: [[VBOX:%[0-9]+]] = alloc_box ${ var WeirdPropertyTest }
-  // CHECK: [[PB:%.*]] = project_box [[VBOX]]
+  // CHECK: [[B_VBOX:%.*]] = begin_borrow [[VBOX]]
+  // CHECK: [[PB:%.*]] = project_box [[B_VBOX]]
   // CHECK: store %0 to [trivial] [[PB]]
 
   // The setter isn't mutating, so we need to load the box.
@@ -467,7 +468,8 @@ struct LetPropertyStruct {
 // CHECK-LABEL: sil hidden [ossa] @{{.*}}testLetPropertyAccessOnLValueBase
 // CHECK: bb0(%0 : $LetPropertyStruct):
 // CHECK:  [[ABOX:%[0-9]+]] = alloc_box ${ var LetPropertyStruct }
-// CHECK:  [[A:%[0-9]+]] = project_box [[ABOX]]
+// CHECK:  [[B_ABOX:%.*]] = begin_borrow [[ABOX]]
+// CHECK:  [[A:%[0-9]+]] = project_box [[B_ABOX]]
 // CHECK:   store %0 to [trivial] [[A]] : $*LetPropertyStruct
 // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[A]]
 // CHECK:   [[STRUCT:%[0-9]+]] = load [trivial] [[READ]] : $*LetPropertyStruct

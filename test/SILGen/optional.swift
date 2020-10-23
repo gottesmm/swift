@@ -32,11 +32,13 @@ func testAddrOnlyCallResult<T>(_ f: (() -> T)?) {
 // CHECK-LABEL: sil hidden [ossa] @{{.*}}testAddrOnlyCallResult{{.*}} :
 // CHECK:    bb0([[T0:%.*]] : @guaranteed $Optional<@callee_guaranteed @substituted <τ_0_0> () -> @out τ_0_0 for <T>>):
 // CHECK: [[F:%.*]] = alloc_box $<τ_0_0> { var Optional<@callee_guaranteed @substituted <τ_0_0> () -> @out τ_0_0 for <τ_0_0>> } <T>, var, name "f"
-// CHECK-NEXT: [[PBF:%.*]] = project_box [[F]]
+// CHECK-NEXT: [[B_F:%.*]] = begin_borrow [[F]]
+// CHECK-NEXT: [[PBF:%.*]] = project_box [[B_F]]
 // CHECK: [[T0_COPY:%.*]] = copy_value [[T0]]
 // CHECK: store [[T0_COPY]] to [init] [[PBF]]
 // CHECK-NEXT: [[X:%.*]] = alloc_box $<τ_0_0> { var Optional<τ_0_0> } <T>, var, name "x"
-// CHECK-NEXT: [[PBX:%.*]] = project_box [[X]]
+// CHECK-NEXT: [[B_X:%.*]] = begin_borrow [[X]]
+// CHECK-NEXT: [[PBX:%.*]] = project_box [[B_X]]
 // CHECK-NEXT: [[TEMP:%.*]] = init_enum_data_addr [[PBX]]
 // CHECK-NEXT: [[READ:%.*]] = begin_access [read] [unknown] [[PBF]]
 //   Check whether 'f' holds a value.
@@ -56,7 +58,9 @@ func testAddrOnlyCallResult<T>(_ f: (() -> T)?) {
 // CHECK-NEXT: br bb2
 //   Continuation block.
 // CHECK:    bb2
+// CHECK-NEXT: end_borrow [[B_X]]
 // CHECK-NEXT: destroy_value [[X]]
+// CHECK-NEXT: end_borrow [[B_F]]
 // CHECK-NEXT: destroy_value [[F]]
 // CHECK-NOT: destroy_value %0
 // CHECK-NEXT: [[T0:%.*]] = tuple ()

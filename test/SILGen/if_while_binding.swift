@@ -172,7 +172,8 @@ func if_multi() {
   // CHECK: [[CHECKBUF2]]([[A:%[0-9]+]] : @owned $String):
   // CHECK:   debug_value [[A]] : $String, let, name "a"
   // CHECK:   [[B:%[0-9]+]] = alloc_box ${ var String }, var, name "b"
-  // CHECK:   [[PB:%[0-9]+]] = project_box [[B]]
+  // CHECK:   [[B_B:%.*]] = begin_borrow [[B]]
+  // CHECK:   [[PB:%[0-9]+]] = project_box [[B_B]]
   // CHECK:   switch_enum {{.*}}, case #Optional.some!enumelt: [[IF_BODY:bb.*]], case #Optional.none!enumelt: [[IF_EXIT1a:bb[0-9]+]]
 
   // CHECK: [[IF_EXIT1a]]:
@@ -203,7 +204,8 @@ func if_multi_else() {
   // CHECK: [[CHECKBUF2]]([[A:%[0-9]+]] : @owned $String):
   // CHECK:   debug_value [[A]] : $String, let, name "a"
   // CHECK:   [[B:%[0-9]+]] = alloc_box ${ var String }, var, name "b"
-  // CHECK:   [[PB:%[0-9]+]] = project_box [[B]]
+  // CHECK:   [[B_B:%.*]] = begin_borrow [[B]]
+  // CHECK:   [[PB:%[0-9]+]] = project_box [[B_B]]
   // CHECK:   switch_enum {{.*}}, case #Optional.some!enumelt: [[IF_BODY:bb.*]], case #Optional.none!enumelt: [[IF_EXIT1a:bb[0-9]+]]
   
     // CHECK: [[IF_EXIT1a]]:
@@ -239,7 +241,8 @@ func if_multi_where() {
   // CHECK: [[CHECKBUF2]]([[A:%[0-9]+]] : @owned $String):
   // CHECK:   debug_value [[A]] : $String, let, name "a"
   // CHECK:   [[BBOX:%[0-9]+]] = alloc_box ${ var String }, var, name "b"
-  // CHECK:   [[PB:%[0-9]+]] = project_box [[BBOX]]
+  // CHECK:   [[B_BBOX:%.*]] = begin_borrow [[BBOX]]
+  // CHECK:   [[PB:%[0-9]+]] = project_box [[B_BBOX]]
   // CHECK:   switch_enum {{.*}}, case #Optional.some!enumelt: [[CHECK_WHERE:bb.*]], case #Optional.none!enumelt: [[IF_EXIT1a:bb[0-9]+]]
   // CHECK: [[IF_EXIT1a]]:
   // CHECK:   dealloc_box {{.*}} ${ var String }

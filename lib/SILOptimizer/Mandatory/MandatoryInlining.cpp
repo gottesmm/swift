@@ -268,7 +268,10 @@ static SILValue cleanupLoadedCalleeValue(SILValue calleeValue, LoadInst *li) {
   auto *pbi = dyn_cast<ProjectBoxInst>(li->getOperand());
   if (!pbi)
     return SILValue();
-  auto *abi = dyn_cast<AllocBoxInst>(pbi->getOperand());
+  auto *bbi = dyn_cast<BeginBorrowInst>(pbi->getOperand());
+  if (!bbi)
+    return SILValue();
+  auto *abi = dyn_cast<AllocBoxInst>(bbi->getOperand());
   if (!abi)
     return SILValue();
 
@@ -346,6 +349,8 @@ static SILValue cleanupLoadedCalleeValue(SILValue calleeValue, LoadInst *li) {
 
   assert(pbi->use_empty());
   pbi->eraseFromParent();
+  assert(bbi->use_empty());
+  bbi->eraseFromParent();
   assert(abi->use_empty());
   abi->eraseFromParent();
 
@@ -533,8 +538,10 @@ static SILValue getLoadedCalleeValue(LoadInst *li) {
   auto *pbi = dyn_cast<ProjectBoxInst>(li->getOperand());
   if (!pbi)
     return SILValue();
-
-  auto *abi = dyn_cast<AllocBoxInst>(pbi->getOperand());
+  auto *bbi = dyn_cast<BeginBorrowInst>(pbi->getOperand());
+  if (!bbi)
+    return SILValue();
+  auto *abi = dyn_cast<AllocBoxInst>(bbi->getOperand());
   if (!abi)
     return SILValue();
 

@@ -103,11 +103,14 @@ func calls(_ i:Int, j:Int, k:Int) {
   var k = k
   // CHECK: bb0(%0 : $Builtin.Int64, %1 : $Builtin.Int64, %2 : $Builtin.Int64):
   // CHECK: [[IBOX:%[0-9]+]] = alloc_box ${ var Builtin.Int64 }
-  // CHECK: [[IADDR:%.*]] = project_box [[IBOX]]
+  // CHECK: [[B_IBOX:%.*]] = begin_borrow [[IBOX]]
+  // CHECK: [[IADDR:%.*]] = project_box [[B_IBOX]]
   // CHECK: [[JBOX:%[0-9]+]] = alloc_box ${ var Builtin.Int64 }
-  // CHECK: [[JADDR:%.*]] = project_box [[JBOX]]
+  // CHECK: [[B_JBOX:%.*]] = begin_borrow [[JBOX]]
+  // CHECK: [[JADDR:%.*]] = project_box [[B_JBOX]]
   // CHECK: [[KBOX:%[0-9]+]] = alloc_box ${ var Builtin.Int64 }
-  // CHECK: [[KADDR:%.*]] = project_box [[KBOX]]
+  // CHECK: [[B_KBOX:%.*]] = begin_borrow [[KBOX]]
+  // CHECK: [[KADDR:%.*]] = project_box [[B_KBOX]]
 
   // CHECK: [[READI:%.*]] = begin_access [read] [unknown] [[IADDR]]
   // CHECK: [[I:%[0-9]+]] = load [trivial] [[READI]]
@@ -138,7 +141,8 @@ func calls(_ i:Int, j:Int, k:Int) {
   // -- Curry 'self' onto method argument lists dispatched using class_method.
 
   // CHECK: [[CBOX:%[0-9]+]] = alloc_box ${ var SomeClass }
-  // CHECK: [[CADDR:%.*]] = project_box [[CBOX]]
+  // CHECK: [[B_CBOX:%.*]] = begin_borrow [[CBOX]]
+  // CHECK: [[CADDR:%.*]] = project_box [[B_CBOX]]
   // CHECK: [[META:%[0-9]+]] = metatype $@thick SomeClass.Type
   // CHECK: [[READI:%.*]] = begin_access [read] [unknown] [[IADDR]]
   // CHECK: [[I:%[0-9]+]] = load [trivial] [[READI]]
@@ -229,7 +233,8 @@ func calls(_ i:Int, j:Int, k:Int) {
   // -- onto protocol type methods dispatched using protocol_method.
 
   // CHECK: [[PBOX:%[0-9]+]] = alloc_box ${ var SomeProtocol }
-  // CHECK: [[PADDR:%.*]] = project_box [[PBOX]]
+  // CHECK: [[B_PBOX:%.*]] = begin_borrow [[PBOX]]
+  // CHECK: [[PADDR:%.*]] = project_box [[B_PBOX]]
   var p : SomeProtocol = ConformsToSomeProtocol()
 
   // CHECK: [[READ:%.*]] = begin_access [read] [unknown] [[PADDR]]
@@ -261,7 +266,8 @@ func calls(_ i:Int, j:Int, k:Int) {
   // -- Use an apply or partial_apply instruction to bind type parameters of a generic.
 
   // CHECK: [[GBOX:%[0-9]+]] = alloc_box ${ var SomeGeneric<Builtin.Int64> }
-  // CHECK: [[GADDR:%.*]] = project_box [[GBOX]]
+  // CHECK: [[B_GBOX:%.*]] = begin_borrow [[GBOX]]
+  // CHECK: [[GADDR:%.*]] = project_box [[B_GBOX]]
   // CHECK: [[META:%[0-9]+]] = metatype $@thick SomeGeneric<Builtin.Int64>.Type
   // CHECK: [[CTOR_GEN:%[0-9]+]] = function_ref @$s9functions11SomeGenericC{{[_0-9a-zA-Z]*}}fC : $@convention(method) <τ_0_0> (@thick SomeGeneric<τ_0_0>.Type) -> @owned SomeGeneric<τ_0_0>
   // CHECK: apply [[CTOR_GEN]]<Builtin.Int64>([[META]])
@@ -308,7 +314,8 @@ func calls(_ i:Int, j:Int, k:Int) {
   // "thick" function values when stored, returned, or passed as arguments.
 
   // CHECK: [[FBOX:%[0-9]+]] = alloc_box ${ var @callee_guaranteed (Builtin.Int64, Builtin.Int64) -> Builtin.Int64 }
-  // CHECK: [[FADDR:%.*]] = project_box [[FBOX]]
+  // CHECK: [[B_FBOX:%.*]] = begin_borrow [[FBOX]]
+  // CHECK: [[FADDR:%.*]] = project_box [[B_FBOX]]
   // CHECK: [[FUNC_THIN:%[0-9]+]] = function_ref @$s9functions19standalone_function{{[_0-9a-zA-Z]*}}F : $@convention(thin) (Builtin.Int64, Builtin.Int64) -> Builtin.Int64
   // CHECK: [[FUNC_THICK:%[0-9]+]] = thin_to_thick_function [[FUNC_THIN]]
   // CHECK: store [[FUNC_THICK]] to [init] [[FADDR]]

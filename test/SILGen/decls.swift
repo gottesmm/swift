@@ -33,27 +33,34 @@ func tuple_patterns() {
   var (a, b) : (Int, Float)
   // CHECK: [[ABOX:%[0-9]+]] = alloc_box ${ var Int }
   // CHECK: [[AADDR:%[0-9]+]] = mark_uninitialized [var] [[ABOX]]
-  // CHECK: [[PBA:%.*]] = project_box [[AADDR]]
+  // CHECK: [[B_AADDR:%.*]] = begin_borrow [[AADDR]]
+  // CHECK: [[PBA:%.*]] = project_box [[B_AADDR]]
   // CHECK: [[BBOX:%[0-9]+]] = alloc_box ${ var Float }
   // CHECK: [[BADDR:%[0-9]+]] = mark_uninitialized [var] [[BBOX]]
-  // CHECK: [[PBB:%.*]] = project_box [[BADDR]]
+  // CHECK: [[B_BADDR:%.*]] = begin_borrow [[BADDR]]
+  // CHECK: [[PBB:%.*]] = project_box [[B_BADDR]]
 
   var (c, d) = (a, b)
   // CHECK: [[CADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[PBC:%.*]] = project_box [[CADDR]]
+  // CHECK: [[B_CADDR:%.*]] = begin_borrow [[CADDR]]
+  // CHECK: [[PBC:%.*]] = project_box [[B_CADDR]]
   // CHECK: [[DADDR:%[0-9]+]] = alloc_box ${ var Float }
-  // CHECK: [[PBD:%.*]] = project_box [[DADDR]]
+  // CHECK: [[B_DADDR:%.*]] = begin_borrow [[DADDR]]
+  // CHECK: [[PBD:%.*]] = project_box [[B_DADDR]]
   // CHECK: [[READA:%.*]] = begin_access [read] [unknown] [[PBA]] : $*Int
   // CHECK: copy_addr [[READA]] to [initialization] [[PBC]]
   // CHECK: [[READB:%.*]] = begin_access [read] [unknown] [[PBB]] : $*Float
   // CHECK: copy_addr [[READB]] to [initialization] [[PBD]]
   // CHECK: [[EADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[PBE:%.*]] = project_box [[EADDR]]
+  // CHECK: [[B_EADDR:%.*]] = begin_borrow [[EADDR]]
+  // CHECK: [[PBE:%.*]] = project_box [[B_EADDR]]
   // CHECK: [[FADDR:%[0-9]+]] = alloc_box ${ var Float }
-  // CHECK: [[PBF:%.*]] = project_box [[FADDR]]
+  // CHECK: [[B_FADDR:%.*]] = begin_borrow [[FADDR]]
+  // CHECK: [[PBF:%.*]] = project_box [[B_FADDR]]
   // CHECK: [[GADDR:%[0-9]+]] = alloc_box ${ var () }
   // CHECK: [[HADDR:%[0-9]+]] = alloc_box ${ var Double }
-  // CHECK: [[PBH:%.*]] = project_box [[HADDR]]
+  // CHECK: [[B_HADDR:%.*]] = begin_borrow [[HADDR]]
+  // CHECK: [[PBH:%.*]] = project_box [[B_HADDR]]
   // CHECK: [[EFGH:%[0-9]+]] = apply
   // CHECK: ([[E:%[0-9]+]], [[F:%[0-9]+]], [[H:%[0-9]+]]) = destructure_tuple
   // CHECK: store [[E]] to [trivial] [[PBE]]
@@ -62,7 +69,8 @@ func tuple_patterns() {
   var (e,f,g,h) : (Int, Float, (), Double) = MRV()
 
   // CHECK: [[IADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[PBI:%.*]] = project_box [[IADDR]]
+  // CHECK: [[B_IADDR:%.*]] = begin_borrow [[IADDR]]
+  // CHECK: [[PBI:%.*]] = project_box [[B_IADDR]]
   // CHECK-NOT: alloc_box ${ var Float }
   // CHECK: [[READA:%.*]] = begin_access [read] [unknown] [[PBA]] : $*Int
   // CHECK: copy_addr [[READA]] to [initialization] [[PBI]]
@@ -72,7 +80,8 @@ func tuple_patterns() {
   var (i,_) = (a, b)
 
   // CHECK: [[JADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[PBJ:%.*]] = project_box [[JADDR]]
+  // CHECK: [[B_JADDR:%.*]] = begin_borrow [[JADDR]]
+  // CHECK: [[PBJ:%.*]] = project_box [[B_JADDR]]
   // CHECK-NOT: alloc_box ${ var Float }
   // CHECK: [[KADDR:%[0-9]+]] = alloc_box ${ var () }
   // CHECK-NOT: alloc_box ${ var Double }
@@ -85,10 +94,12 @@ func tuple_patterns() {
 // CHECK-LABEL: sil hidden [ossa] @$s5decls16simple_arguments{{[_0-9a-zA-Z]*}}F
 // CHECK: bb0(%0 : $Int, %1 : $Int):
 // CHECK: [[X:%[0-9]+]] = alloc_box ${ var Int }
-// CHECK-NEXT: [[PBX:%.*]] = project_box [[X]]
+// CHECK-NEXT: [[B_X:%.*]] = begin_borrow [[X]]
+// CHECK-NEXT: [[PBX:%.*]] = project_box [[B_X]]
 // CHECK-NEXT: store %0 to [trivial] [[PBX]]
 // CHECK-NEXT: [[Y:%[0-9]+]] = alloc_box ${ var Int }
-// CHECK-NEXT: [[PBY:%[0-9]+]] = project_box [[Y]]
+// CHECK-NEXT: [[B_Y:%.*]] = begin_borrow [[Y]]
+// CHECK-NEXT: [[PBY:%[0-9]+]] = project_box [[B_Y]]
 // CHECK-NEXT: store %1 to [trivial] [[PBY]]
 func simple_arguments(x: Int, y: Int) -> Int {
   var x = x
@@ -106,7 +117,8 @@ func tuple_argument(x: (Int, Float, ())) {
 // CHECK-LABEL: sil hidden [ossa] @$s5decls14inout_argument{{[_0-9a-zA-Z]*}}F
 // CHECK: bb0(%0 : $*Int, %1 : $Int):
 // CHECK: [[X_LOCAL:%[0-9]+]] = alloc_box ${ var Int }
-// CHECK: [[PBX:%.*]] = project_box [[X_LOCAL]]
+// CHECK: [[B_X_LOCAL:%.*]] = begin_borrow [[X_LOCAL]]
+// CHECK: [[PBX:%.*]] = project_box [[B_X_LOCAL]]
 func inout_argument(x: inout Int, y: Int) {
   var y = y
   x = y
@@ -130,7 +142,8 @@ func store_to_global(x: Int) {
   var x = x
   global = x
   // CHECK: [[XADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[PBX:%.*]] = project_box [[XADDR]]
+  // CHECK: [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+  // CHECK: [[PBX:%.*]] = project_box [[B_XADDR]]
   // CHECK: [[ACCESSOR:%[0-9]+]] = function_ref @$s5decls6globalSivau
   // CHECK: [[PTR:%[0-9]+]] = apply [[ACCESSOR]]()
   // CHECK: [[ADDR:%[0-9]+]] = pointer_to_address [[PTR]]

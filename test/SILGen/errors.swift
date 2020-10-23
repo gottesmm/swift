@@ -690,7 +690,8 @@ class BaseThrowingInit : HasThrowingInit {
 // CHECK: sil hidden [ossa] @$s6errors16BaseThrowingInit{{.*}}c : $@convention(method) (Int, Int, @owned BaseThrowingInit) -> (@owned BaseThrowingInit, @error Error)
 // CHECK:      [[BOX:%.*]] = alloc_box ${ var BaseThrowingInit }
 // CHECK:      [[MARKED_BOX:%.*]] = mark_uninitialized [derivedself] [[BOX]]
-// CHECK:      [[PB:%.*]] = project_box [[MARKED_BOX]]
+// CHECK:      [[B_MARKED_BOX:%.*]] = begin_borrow [[MARKED_BOX]]
+// CHECK:      [[PB:%.*]] = project_box [[B_MARKED_BOX]]
 //   Initialize subField.
 // CHECK:      [[T0:%.*]] = load_borrow [[PB]]
 // CHECK-NEXT: [[T1:%.*]] = ref_element_addr [[T0]] : $BaseThrowingInit, #BaseThrowingInit.subField
@@ -859,7 +860,8 @@ func testOptionalTryThatNeverThrows() {
 // CHECK-LABEL: sil hidden [ossa] @$s6errors18testOptionalTryVaryyF
 // CHECK-NEXT: bb0:
 // CHECK-NEXT: [[BOX:%.+]] = alloc_box ${ var Optional<Cat> }
-// CHECK-NEXT: [[PB:%.*]] = project_box [[BOX]]
+// CHECK-NEXT: [[B_BOX:%.*]] = begin_borrow [[BOX]]
+// CHECK-NEXT: [[PB:%.*]] = project_box [[B_BOX]]
 // CHECK: [[FN:%.+]] = function_ref @$s6errors10make_a_catAA3CatCyKF
 // CHECK-NEXT: try_apply [[FN]]() : $@convention(thin) () -> (@owned Cat, @error Error), normal [[SUCCESS:[^ ]+]], error [[CLEANUPS:[^ ]+]],
 // CHECK: [[SUCCESS]]([[VALUE:%.+]] : @owned $Cat)
@@ -867,6 +869,7 @@ func testOptionalTryThatNeverThrows() {
 // CHECK-NEXT: store [[CAT_ENUM]] to [init] [[PB]] : $*Optional<Cat>
 // CHECK-NEXT: br [[DONE:[^ ]+]],
 // CHECK: [[DONE]]:
+// CHECK-NEXT: end_borrow [[B_BOX]]
 // CHECK-NEXT: destroy_value [[BOX]] : ${ var Optional<Cat> }
 // CHECK-NEXT: [[VOID:%.+]] = tuple ()
 // CHECK-NEXT: return [[VOID]] : $()
@@ -906,7 +909,8 @@ func testOptionalTryAddressOnly<T>(_ obj: T) {
 // CHECK-LABEL: sil hidden [ossa] @$s6errors29testOptionalTryAddressOnlyVar{{.*}}F
 // CHECK: bb0(%0 : $*T):
 // CHECK: [[BOX:%.+]] = alloc_box $<τ_0_0> { var Optional<τ_0_0> } <T>
-// CHECK-NEXT: [[PB:%.*]] = project_box [[BOX]]
+// CHECK-NEXT: [[B_BOX:%.*]] = begin_borrow [[BOX]]
+// CHECK-NEXT: [[PB:%.*]] = project_box [[B_BOX]]
 // CHECK-NEXT: [[BOX_DATA:%.+]] = init_enum_data_addr [[PB]] : $*Optional<T>, #Optional.some!enumelt
 // CHECK: [[FN:%.+]] = function_ref @$s6errors11dont_return{{.*}}F
 // CHECK-NEXT: try_apply [[FN]]<T>([[BOX_DATA]], %0) : $@convention(thin) <τ_0_0> (@in_guaranteed τ_0_0) -> (@out τ_0_0, @error Error), normal [[SUCCESS:[^ ]+]], error [[CLEANUPS:[^ ]+]],
@@ -914,6 +918,7 @@ func testOptionalTryAddressOnly<T>(_ obj: T) {
 // CHECK-NEXT: inject_enum_addr [[PB]] : $*Optional<T>, #Optional.some!enumelt
 // CHECK-NEXT: br [[DONE:[^ ]+]],
 // CHECK: [[DONE]]:
+// CHECK-NEXT: end_borrow [[B_BOX]]
 // CHECK-NEXT: destroy_value [[BOX]] : $<τ_0_0> { var Optional<τ_0_0> } <T>
 // CHECK-NOT: destroy_addr %0 : $*T
 // CHECK-NEXT: [[VOID:%.+]] = tuple ()
@@ -970,10 +975,12 @@ func testOptionalTryNeverFails() {
 // CHECK-LABEL: sil hidden [ossa] @$s6errors28testOptionalTryNeverFailsVaryyF
 // CHECK: bb0:
 // CHECK-NEXT:   [[BOX:%.+]] = alloc_box ${ var Optional<()> }
-// CHECK-NEXT:   [[PB:%.*]] = project_box [[BOX]]
+// CHECK-NEXT:   [[B_BOX:%.*]] = begin_borrow [[BOX]]
+// CHECK-NEXT:   [[PB:%.*]] = project_box [[B_BOX]]
 // CHECK-NEXT:   [[VALUE:%.+]] = tuple ()
 // CHECK-NEXT:   [[ENUM:%.+]] = enum $Optional<()>, #Optional.some!enumelt, [[VALUE]]
 // CHECK-NEXT:   store [[ENUM]] to [trivial] [[PB]] :
+// CHECK-NEXT:   end_borrow [[B_BOX]]
 // CHECK-NEXT:   destroy_value [[BOX]] : ${ var Optional<()> }
 // CHECK-NEXT:   [[VOID:%.+]] = tuple ()
 // CHECK-NEXT:   return [[VOID]] : $()
@@ -1001,10 +1008,12 @@ func testOptionalTryNeverFailsAddressOnly<T>(_ obj: T) {
 // CHECK-LABEL: sil hidden [ossa] @$s6errors39testOptionalTryNeverFailsAddressOnlyVar{{.*}}F
 // CHECK: bb0(%0 : $*T):
 // CHECK:   [[BOX:%.+]] = alloc_box $<τ_0_0> { var Optional<τ_0_0> } <T>
-// CHECK-NEXT:   [[PB:%.*]] = project_box [[BOX]]
+// CHECK:   [[B_BOX:%.*]] = begin_borrow [[BOX]]
+// CHECK-NEXT:   [[PB:%.*]] = project_box [[B_BOX]]
 // CHECK-NEXT:   [[BOX_DATA:%.+]] = init_enum_data_addr [[PB]] : $*Optional<T>, #Optional.some!enumelt
 // CHECK-NEXT:   copy_addr %0 to [initialization] [[BOX_DATA]] : $*T
 // CHECK-NEXT:   inject_enum_addr [[PB]] : $*Optional<T>, #Optional.some!enumelt
+// CHECK-NEXT:   end_borrow [[B_BOX]]
 // CHECK-NEXT:   destroy_value [[BOX]] : $<τ_0_0> { var Optional<τ_0_0> } <T>
 // CHECK-NEXT:   [[VOID:%.+]] = tuple ()
 // CHECK-NEXT:   return [[VOID]] : $()

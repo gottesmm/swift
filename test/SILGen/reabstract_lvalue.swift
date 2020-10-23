@@ -14,7 +14,8 @@ func transform(_ i: Int) -> Double {
 // CHECK-LABEL: sil hidden [ossa] @$s17reabstract_lvalue0A13FunctionInOutyyF : $@convention(thin) () -> ()
 func reabstractFunctionInOut() {
   // CHECK: [[BOX:%.*]] = alloc_box ${ var @callee_guaranteed (Int) -> Double }
-  // CHECK: [[PB:%.*]] = project_box [[BOX]]
+  // CHECK: [[B_BOX:%.*]] = begin_borrow [[BOX]]
+  // CHECK: [[PB:%.*]] = project_box [[B_BOX]]
   // CHECK: [[ARG:%.*]] = function_ref @$s17reabstract_lvalue9transformySdSiF
   // CHECK: [[THICK_ARG:%.*]] = thin_to_thick_function [[ARG]]
   // CHECK: store [[THICK_ARG:%.*]] to [init] [[PB]]

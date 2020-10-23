@@ -3466,15 +3466,13 @@ public:
 } // end anonymous namespace
 
 CleanupHandle SILGenFunction::enterDeallocBoxCleanup(SILValue box) {
-  assert(
-      box.getOwnershipKind().isCompatibleWith(ValueOwnershipKind::Guaranteed));
+  assert(box.getOwnershipKind().isCompatibleWith(OwnershipKind::Guaranteed));
   Cleanups.pushCleanup<DeallocateUninitializedBox>(box);
   return Cleanups.getTopCleanup();
 }
 
 CleanupHandle SILGenFunction::enterDestroyBoxCleanup(SILValue box) {
-  assert(
-      box.getOwnershipKind().isCompatibleWith(ValueOwnershipKind::Guaranteed));
+  assert(box.getOwnershipKind().isCompatibleWith(OwnershipKind::Guaranteed));
   Cleanups.pushCleanup<DestroyInitializedBox>(box);
   return Cleanups.getTopCleanup();
 }

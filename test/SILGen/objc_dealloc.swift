@@ -20,7 +20,8 @@ class SwiftGizmo : Gizmo {
   override init() {
     // CHECK:   [[SELF_BOX:%.*]] = alloc_box ${ var SwiftGizmo }, let, name "self"
     // CHECK:   [[SELF_UNINIT:%.*]] = mark_uninitialized [derivedselfonly] [[SELF_BOX]] : ${ var SwiftGizmo }
-    // CHECK:   [[SELF_ADDR:%.*]] = project_box [[SELF_UNINIT]]
+    // CHECK:   [[B_SELF_UNINIT:%.*]] = begin_borrow [[SELF_UNINIT]]
+    // CHECK:   [[SELF_ADDR:%.*]] = project_box [[B_SELF_UNINIT]]
     // CHECK-NOT: ref_element_addr
     // CHECK:   [[SELF:%.*]] = load [take] [[SELF_ADDR]]
     // CHECK-NEXT:   [[UPCAST_SELF:%.*]] = upcast [[SELF]] : $SwiftGizmo to $Gizmo

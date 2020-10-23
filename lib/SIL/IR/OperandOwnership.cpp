@@ -217,7 +217,6 @@ OPERAND_OWNERSHIP(UnownedInstantaneousUse, UnmanagedAutoreleaseValue)
 // Instructions that currently violate structural ownership requirements,
 // and therefore completely defeat canonicalization and optimization of any
 // OSSA value that they use.
-OPERAND_OWNERSHIP(PointerEscape, ProjectBox) // The result is a T*.
 OPERAND_OWNERSHIP(PointerEscape, ProjectExistentialBox)
 OPERAND_OWNERSHIP(PointerEscape, UncheckedOwnershipConversion)
 OPERAND_OWNERSHIP(PointerEscape, ConvertEscapeToNoEscape)
@@ -254,6 +253,7 @@ OPERAND_OWNERSHIP(InteriorPointer, RefTailAddr)
 OPERAND_OWNERSHIP(InteriorPointer, OpenExistentialBox)
 // FIXME: HopToExecutorInst should be an instantaneous use.
 OPERAND_OWNERSHIP(InteriorPointer, HopToExecutor)
+OPERAND_OWNERSHIP(InteriorPointer, ProjectBox) // The result is a T*.
 
 // Instructions that propagate a value value within a borrow scope.
 OPERAND_OWNERSHIP(ForwardingBorrow, TupleExtract)

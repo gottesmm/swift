@@ -227,8 +227,13 @@ void SelectEnforcement::analyzeUsesOfBox(SingleValueInstruction *source) {
   for (auto use : source->getUses()) {
     auto user = use->getUser();
 
-    if (auto MUI = dyn_cast<MarkUninitializedInst>(user)) {
-      analyzeUsesOfBox(MUI);
+    if (auto *mui = dyn_cast<MarkUninitializedInst>(user)) {
+      analyzeUsesOfBox(mui);
+      continue;
+    }
+
+    if (auto *bbi = dyn_cast<BeginBorrowInst>(user)) {
+      analyzeUsesOfBox(bbi);
       continue;
     }
 
@@ -667,8 +672,10 @@ void AccessEnforcementSelection::processFunction(SILFunction *F) {
 SourceAccess
 AccessEnforcementSelection::getAccessKindForBox(ProjectBoxInst *projection) {
   SILValue source = projection->getOperand();
-  if (auto *MUI = dyn_cast<MarkUninitializedInst>(source))
-    source = MUI->getOperand();
+  if (auto *bbi = dyn_cast<BeginBorrowInst>(source))
+    source = bbi->getOperand();
+  if (auto *mui = dyn_cast<MarkUninitializedInst>(source))
+    source = mui->getOperand();
 
   // If we didn't allocate the box, assume that we need to use
   // dynamic enforcement.
@@ -681,9 +688,13 @@ AccessEnforcementSelection::getAccessKindForBox(ProjectBoxInst *projection) {
 }
 
 SourceAccess AccessEnforcementSelection::getSourceAccess(SILValue address) {
+  // Recurse through begin_borrow
+  if (auto *bbi = dyn_cast<BeginBorrowInst>(address))
+    return getSourceAccess(bbi->getOperand());
+
   // Recurse through MarkUninitializedInst.
-  if (auto *MUI = dyn_cast<MarkUninitializedInst>(address))
-    return getSourceAccess(MUI->getOperand());
+  if (auto *mui = dyn_cast<MarkUninitializedInst>(address))
+    return getSourceAccess(mui->getOperand());
 
   if (auto box = dyn_cast<ProjectBoxInst>(address))
     return getAccessKindForBox(box);

@@ -186,6 +186,7 @@ SILCombiner::optimizeBuiltinCOWBufferForReadingOSSA(BuiltinInst *bi) {
             return;
           case InteriorPointerOperandKind::OpenExistentialBox:
           case InteriorPointerOperandKind::StoreBorrow:
+          case InteriorPointerOperandKind::ProjectBox:
             // Can not mark this immutable.
             return;
           }

@@ -527,7 +527,8 @@ func defer_mutable(_ x: Int) {
   var x = x
   // expected-warning@-1 {{variable 'x' was never mutated; consider changing to 'let' constant}}
   // CHECK: [[BOX:%.*]] = alloc_box ${ var Int }
-  // CHECK-NEXT: project_box [[BOX]]
+  // CHECK: [[B_BOX:%.*]] = begin_borrow [[BOX]]
+  // CHECK-NEXT: project_box [[B_BOX]]
   // CHECK-NOT: [[BOX]]
   // CHECK: function_ref @$s10statements13defer_mutableyySiF6$deferL_yyF : $@convention(thin) (@inout_aliasable Int) -> ()
   // CHECK-NOT: [[BOX]]

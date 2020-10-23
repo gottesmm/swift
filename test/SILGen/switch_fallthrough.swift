@@ -139,7 +139,8 @@ func test5() {
   case (var n, foo()):
     // Check that the var is boxed and unboxed and the final value is the one that falls through into the next case
     // CHECK:   [[BOX:%.*]] = alloc_box ${ var Int }, var, name "n"
-    // CHECK:   [[N_BOX:%.*]] = project_box [[BOX]] : ${ var Int }, 0
+    // CHECK:   [[B_BOX:%.*]] = begin_borrow [[BOX]]
+    // CHECK:   [[N_BOX:%.*]] = project_box [[B_BOX]] : ${ var Int }, 0
     // CHECK:   function_ref @$s18switch_fallthrough1ayyF
     // CHECK:   [[N:%.*]] = load [trivial] [[N_BOX]] : $*Int
     // CHECK:   destroy_value [[BOX]] : ${ var Int }

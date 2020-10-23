@@ -25,7 +25,8 @@ extension Hive {
   // CHECK: bb0([[QUEEN:%.*]] : @owned $Bee, [[META:%.*]] : $@thick Hive.Type):
   // CHECK:   [[SELF_BOX:%.*]] = alloc_box ${ var Hive }, let, name "self"
   // CHECK:   [[MU:%.*]] = mark_uninitialized [delegatingself] [[SELF_BOX]]
-  // CHECK:   [[PB_BOX:%.*]] = project_box [[MU]] : ${ var Hive }, 0
+  // CHECK:   [[B_MU:%.*]] = begin_borrow [[MU]]
+  // CHECK:   [[PB_BOX:%.*]] = project_box [[B_MU]] : ${ var Hive }, 0
   // CHECK:   [[OBJC_META:%[0-9]+]] = thick_to_objc_metatype [[META]] : $@thick Hive.Type to $@objc_metatype Hive.Type
   // CHECK:   [[BORROWED_QUEEN:%.*]] = begin_borrow [[QUEEN]]
   // CHECK:   [[COPIED_BORROWED_QUEEN:%.*]] = copy_value [[BORROWED_QUEEN]]
@@ -43,22 +44,23 @@ extension Hive {
     self.init(queen: other)
   }
 
-  // CHECK-LABEL: sil hidden [ossa] @$sSo4HiveC17objc_factory_initE15otherFlakyQueenABSo3BeeC_tKcfC
+  // CHECK-LABEL: sil hidden [ossa] @$sSo4HiveC17objc_factory_initE15otherFlakyQueenABSo3BeeC_tKcfC :
   // CHECK: bb0([[QUEEN:%.*]] : @owned $Bee, [[META:%.*]] : $@thick Hive.Type):
   // CHECK:   [[SELF_BOX:%.*]] = alloc_box ${ var Hive }, let, name "self"
   // CHECK:   [[MU:%.*]] = mark_uninitialized [delegatingself] [[SELF_BOX]]
-  // CHECK:   [[PB_BOX:%.*]] = project_box [[MU]] : ${ var Hive }, 0
+  // CHECK:   [[B_MU:%.*]] = begin_borrow [[MU]]
+  // CHECK:   [[PB_BOX:%.*]] = project_box [[B_MU]] : ${ var Hive }, 0
   // CHECK:   [[FOREIGN_ERROR_STACK:%.*]] = alloc_stack [dynamic_lifetime] $Optional<NSError>
   // CHECK:   [[OBJC_META:%[0-9]+]] = thick_to_objc_metatype [[META]] : $@thick Hive.Type to $@objc_metatype Hive.Type
   // CHECK:   [[BORROWED_QUEEN:%.*]] = begin_borrow [[QUEEN]]
   // CHECK:   [[COPIED_BORROWED_QUEEN:%.*]] = copy_value [[BORROWED_QUEEN]]
   // CHECK:   [[OPT_COPIED_BORROWED_QUEEN:%.*]] = enum $Optional<Bee>, #Optional.some!enumelt, [[COPIED_BORROWED_QUEEN]]
-  // CHECK:   [[FACTORY:%[0-9]+]] = objc_method [[OBJC_META]] : $@objc_metatype Hive.Type, #Hive.init!allocator.foreign : (Hive.Type) -> (Bee?) throws -> Hive, $@convention(objc_method) (Optional<Bee>, Optional<AutoreleasingUnsafeMutablePointer<Optional<NSError>>>, @objc_metatype Hive.Type) -> @autoreleased Optional<Hive> // user: %25
+  // CHECK:   [[FACTORY:%[0-9]+]] = objc_method [[OBJC_META]] : $@objc_metatype Hive.Type, #Hive.init!allocator.foreign : (Hive.Type) -> (Bee?) throws -> Hive, $@convention(objc_method) (Optional<Bee>, Optional<AutoreleasingUnsafeMutablePointer<Optional<NSError>>>, @objc_metatype Hive.Type) -> @autoreleased Optional<Hive>
   // CHECK:   [[ERROR_PTR_STACK:%.*]] = alloc_stack $AutoreleasingUnsafeMutablePointer<Optional<NSError>>
   // CHECK:   [[ERROR_PTR:%.*]] = load [trivial] [[ERROR_PTR_STACK]]
   // CHECK:   [[OPT_ERROR_PTR:%.*]] = enum $Optional<AutoreleasingUnsafeMutablePointer<Optional<NSError>>>, #Optional.some!enumelt, [[ERROR_PTR]]
   // CHECK:   [[OPT_NEW_HIVE:%.*]] = apply [[FACTORY]]([[OPT_COPIED_BORROWED_QUEEN]], [[OPT_ERROR_PTR]], [[OBJC_META]]) : $@convention(objc_method) (Optional<Bee>, Optional<AutoreleasingUnsafeMutablePointer<Optional<NSError>>>, @objc_metatype Hive.Type) -> @autoreleased Optional<Hive>
-  // CHECK:   switch_enum [[OPT_NEW_HIVE]] : $Optional<Hive>, case #Optional.some!enumelt: [[NORMAL_BB:bb[0-9]+]], case #Optional.none!enumelt: [[ERROR_BB:bb[0-9]+]] // id: %34
+  // CHECK:   switch_enum [[OPT_NEW_HIVE]] : $Optional<Hive>, case #Optional.some!enumelt: [[NORMAL_BB:bb[0-9]+]], case #Optional.none!enumelt: [[ERROR_BB:bb[0-9]+]]
   //
   // CHECK: bb1([[HIVE:%.*]] : @owned $Hive):
   // CHECK:   assign [[HIVE]] to [[PB_BOX]]
@@ -94,7 +96,8 @@ class SubHive : Hive {
   // CHECK: bb0([[METATYPE:%.*]] : $@thick SubHive.Type):
   // CHECK:   [[SELF_BOX:%.*]] = alloc_box ${ var SubHive }, let, name "self"
   // CHECK:   [[MU:%.*]] = mark_uninitialized [delegatingself] [[SELF_BOX]] : ${ var SubHive }
-  // CHECK:   [[PB_BOX:%.*]] = project_box [[MU]] : ${ var SubHive }, 0
+  // CHECK:   [[B_MU:%.*]] = begin_borrow [[MU]]
+  // CHECK:   [[PB_BOX:%.*]] = project_box [[B_MU]] : ${ var SubHive }, 0
   // CHECK:   [[UP_METATYPE:%.*]] = upcast [[METATYPE]]
   // CHECK:   [[OBJC_METATYPE:%.*]] = thick_to_objc_metatype [[UP_METATYPE]]
   // CHECK:   [[QUEEN:%.*]] = unchecked_ref_cast {{.*}} : $Bee to $Optional<Bee>

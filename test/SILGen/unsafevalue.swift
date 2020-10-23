@@ -29,7 +29,8 @@ public struct UnsafeValue<Element: AnyObject> {
   // CHECK: bb0([[INPUT_ELEMENT:%.*]] : @guaranteed $Element,
   // CHECK:   [[BOX:%.*]] = alloc_box
   // CHECK:   [[UNINIT_BOX:%.*]] = mark_uninitialized [rootself] [[BOX]]
-  // CHECK:   [[PROJECT_UNINIT_BOX:%.*]] = project_box [[UNINIT_BOX]]
+  // CHECK:   [[B_UNINIT_BOX:%.*]] = begin_borrow [[UNINIT_BOX]]
+  // CHECK:   [[PROJECT_UNINIT_BOX:%.*]] = project_box [[B_UNINIT_BOX]]
   // CHECK:   [[COPY_INPUT_ELEMENT:%.*]] = copy_value [[INPUT_ELEMENT]]
   // CHECK:   [[ACCESS:%.*]] = begin_access [modify] [unknown] [[PROJECT_UNINIT_BOX]]
   // CHECK:   [[STRUCT_ACCESS:%.*]] = struct_element_addr [[ACCESS]]
@@ -70,7 +71,8 @@ public struct UnsafeValue<Element: AnyObject> {
   // CHECK-LABEL: sil [transparent] [serialized] [ossa] @$s11unsafevalue11UnsafeValueV20withGuaranteeingBase4base_qd_0_qd___qd_0_xXEtr0_lF :
   // CHECK: bb0([[RESULT:%.*]] : $*Result, [[BASE:%.*]] : $*Base, [[CLOSURE:%.*]] : $@noescape @callee_guaranteed {{.*}}, [[UNSAFE_VALUE:%.*]] : $UnsafeValue<Element>):
   // CHECK:  [[COPY_BOX:%.*]] = alloc_box
-  // CHECK:  [[COPY_PROJ:%.*]] = project_box [[COPY_BOX]]
+  // CHECK:  [[B_COPY_BOX:%.*]] = begin_borrow [[COPY_BOX]]
+  // CHECK:  [[COPY_PROJ:%.*]] = project_box [[B_COPY_BOX]]
   // CHECK:  store [[UNSAFE_VALUE]] to [trivial] [[COPY_PROJ]]
   // CHECK:  [[VALUE_ADDR:%.*]] = begin_access [read] [unknown] [[COPY_PROJ]]
   // CHECK:  [[STR_VALUE_ADDR:%.*]] = struct_element_addr [[VALUE_ADDR]]

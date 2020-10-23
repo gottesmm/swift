@@ -10,7 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "swift/SIL/InstructionUtils.h"
 #define DEBUG_TYPE "allocbox-to-stack"
+
 #include "swift/AST/DiagnosticsSIL.h"
 #include "swift/Basic/BlotMapVector.h"
 #include "swift/SIL/ApplySite.h"
@@ -33,6 +35,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+
 using namespace swift;
 
 STATISTIC(NumStackPromoted, "Number of alloc_box's promoted to the stack");
@@ -53,11 +56,20 @@ static llvm::cl::opt<bool> AllocBoxToStackAnalyzeApply(
 //                 SIL Utilities for alloc_box Promotion
 //===----------------------------------------------------------------------===//
 
-static SILValue stripOffCopyValue(SILValue V) {
-  while (auto *CVI = dyn_cast<CopyValueInst>(V)) {
-    V = CVI->getOperand();
+static SILValue stripOffOwnershipInsts(SILValue v) {
+  while (true) {
+    if (auto *cvi = dyn_cast<CopyValueInst>(v)) {
+      v = cvi->getOperand();
+      continue;
+    }
+
+    if (auto *bbi = dyn_cast<BeginBorrowInst>(v)) {
+      v = bbi->getOperand();
+      continue;
+    }
+
+    return v;
   }
-  return V;
 }
 
 /// Returns True if the operand or one of its users is captured.
@@ -127,7 +139,7 @@ static bool addLastRelease(SILValue V, SILBasicBlock *BB,
   for (auto I = BB->rbegin(); I != BB->rend(); ++I) {
     if (isa<StrongReleaseInst>(*I) || isa<DeallocBoxInst>(*I) ||
         isa<DestroyValueInst>(*I)) {
-      if (stripOffCopyValue(I->getOperand(0)) != V)
+      if (stripOffOwnershipInsts(I->getOperand(0)) != V)
         continue;
 
       Releases.push_back(&*I);
@@ -163,6 +175,8 @@ static bool getFinalReleases(SILValue Box,
 
     if (isa<ProjectBoxInst>(User))
       continue;
+    if (isa<EndBorrowInst>(User))
+      continue;
 
     if (BB != DefBB)
       LiveIn.insert(BB);
@@ -170,9 +184,10 @@ static bool getFinalReleases(SILValue Box,
     // Also keep track of the blocks with uses.
     UseBlocks.insert(BB);
 
-    // If we have a copy value or a mark_uninitialized, add its uses to the work
-    // list and continue.
-    if (isa<MarkUninitializedInst>(User) || isa<CopyValueInst>(User)) {
+    // If we have a copy value, a mark_uninitialized, or a begin_borrow, add its
+    // uses to the work list and continue.
+    if (isa<MarkUninitializedInst>(User) || isa<CopyValueInst>(User) ||
+        isa<BeginBorrowInst>(User)) {
       llvm::copy(cast<SingleValueInstruction>(User)->getUses(),
                  std::back_inserter(Worklist));
       continue;
@@ -252,6 +267,10 @@ static bool partialApplyEscapes(SILValue V, bool examineApply) {
     // continue.
     if (auto CVI = dyn_cast<CopyValueInst>(User)) {
       llvm::copy(CVI->getUses(), std::back_inserter(Worklist));
+      continue;
+    }
+    if (auto *BBI = dyn_cast<BeginBorrowInst>(User)) {
+      llvm::copy(BBI->getUses(), std::back_inserter(Worklist));
       continue;
     }
 
@@ -385,12 +404,14 @@ static SILInstruction *recursivelyFindBoxOperandsPromotableToAddress(
     // Projections are fine as well.
     if (isa<StrongRetainInst>(User) || isa<StrongReleaseInst>(User) ||
         isa<ProjectBoxInst>(User) || isa<DestroyValueInst>(User) ||
+        isa<EndBorrowInst>(User) ||
         (!inAppliedFunction && isa<DeallocBoxInst>(User)))
       continue;
 
     // If our user instruction is a copy_value or a mark_uninitialized, visit
     // the users recursively.
-    if (isa<MarkUninitializedInst>(User) || isa<CopyValueInst>(User)) {
+    if (isa<MarkUninitializedInst>(User) || isa<CopyValueInst>(User) ||
+        isa<BeginBorrowInst>(User)) {
       llvm::copy(cast<SingleValueInstruction>(User)->getUses(),
                  std::back_inserter(Worklist));
       continue;
@@ -492,20 +513,25 @@ struct AllocBoxToStackState {
 };
 } // anonymous namespace
 
-static void replaceProjectBoxUsers(SILValue HeapBox, SILValue StackBox) {
-  SmallVector<Operand *, 8> Worklist(HeapBox->use_begin(), HeapBox->use_end());
-  while (!Worklist.empty()) {
-    auto *Op = Worklist.pop_back_val();
-    if (auto *PBI = dyn_cast<ProjectBoxInst>(Op->getUser())) {
+static void replaceProjectBoxUsers(SILValue heapBox, SILValue stackBox) {
+  SmallVector<Operand *, 8> worklist(heapBox->getUses());
+  while (!worklist.empty()) {
+    auto *op = worklist.pop_back_val();
+    if (auto *pbi = dyn_cast<ProjectBoxInst>(op->getUser())) {
       // This may result in an alloc_stack being used by begin_access [dynamic].
-      PBI->replaceAllUsesWith(StackBox);
+      pbi->replaceAllUsesWith(stackBox);
       continue;
     }
 
-    auto *CVI = dyn_cast<CopyValueInst>(Op->getUser());
-    if (!CVI)
+    if (auto *cvi = dyn_cast<CopyValueInst>(op->getUser())) {
+      llvm::copy(cvi->getUses(), std::back_inserter(worklist));
       continue;
-    llvm::copy(CVI->getUses(), std::back_inserter(Worklist));
+    }
+
+    if (auto *bbi = dyn_cast<BeginBorrowInst>(op->getUser())) {
+      llvm::copy(bbi->getUses(), std::back_inserter(worklist));
+      continue;
+    }
   }
 }
 
@@ -576,8 +602,9 @@ static bool rewriteAllocBoxAsAllocStack(AllocBoxInst *ABI) {
   while (!Worklist.empty()) {
     auto *User = Worklist.pop_back_val();
 
-    // Look through any mark_uninitialized, copy_values.
-    if (isa<MarkUninitializedInst>(User) || isa<CopyValueInst>(User)) {
+    // Look through any mark_uninitialized, copy_values, begin_borrow.
+    if (isa<MarkUninitializedInst>(User) || isa<CopyValueInst>(User) ||
+        isa<BeginBorrowInst>(User)) {
       auto Inst = cast<SingleValueInstruction>(User);
       llvm::transform(Inst->getUses(), std::back_inserter(Worklist),
                       [](Operand *Op) -> SILInstruction * {
@@ -590,7 +617,7 @@ static bool rewriteAllocBoxAsAllocStack(AllocBoxInst *ABI) {
 
     assert(isa<StrongReleaseInst>(User) || isa<StrongRetainInst>(User) ||
            isa<DeallocBoxInst>(User) || isa<ProjectBoxInst>(User) ||
-           isa<DestroyValueInst>(User));
+           isa<DestroyValueInst>(User) || isa<EndBorrowInst>(User));
 
     User->eraseFromParent();
   }
@@ -634,6 +661,7 @@ private:
   void visitStrongRetainInst(StrongRetainInst *Inst);
   void visitCopyValueInst(CopyValueInst *Inst);
   void visitProjectBoxInst(ProjectBoxInst *Inst);
+  void visitBeginBorrowInst(BeginBorrowInst *Inst);
   void checkNoPromotedBoxInApply(ApplySite Apply);
 #define APPLYSITE_INST(Name, Parent) void visit##Name(Name *Inst);
 #include "swift/SIL/SILNodes.def"
@@ -799,13 +827,8 @@ PromotedParamCloner::visitStrongReleaseInst(StrongReleaseInst *Inst) {
 /// normally.
 void PromotedParamCloner::visitDestroyValueInst(DestroyValueInst *Inst) {
   // If we are a destroy of a promoted parameter, just drop the instruction. We
-  // look through copy_value to preserve current behavior.
-  SILInstruction *Tmp = Inst;
-  while (auto *CopyOp = dyn_cast<CopyValueInst>(Tmp->getOperand(0))) {
-    Tmp = CopyOp;
-  }
-
-  if (OrigPromotedParameters.count(Tmp->getOperand(0)))
+  // look through copy_value, begin_borrow to preserve current behavior.
+  if (OrigPromotedParameters.count(stripOffOwnershipInsts(Inst->getOperand())))
     return;
 
   SILCloner<PromotedParamCloner>::visitDestroyValueInst(Inst);
@@ -822,26 +845,26 @@ PromotedParamCloner::visitStrongRetainInst(StrongRetainInst *Inst) {
 
 void PromotedParamCloner::visitCopyValueInst(CopyValueInst *cvi) {
   // If it's a copy of a promoted parameter, just drop the instruction.
-  auto *tmp = cvi;
-  while (auto *copyOp = dyn_cast<CopyValueInst>(tmp->getOperand())) {
-    tmp = copyOp;
-  }
-  if (OrigPromotedParameters.count(tmp->getOperand()))
+  if (OrigPromotedParameters.count(lookThroughOwnershipInsts(cvi)))
     return;
 
   SILCloner<PromotedParamCloner>::visitCopyValueInst(cvi);
 }
 
+void PromotedParamCloner::visitBeginBorrowInst(BeginBorrowInst *BBI) {
+  // If it's a borrow of a promoted parameter, just drop the instruction.
+  if (OrigPromotedParameters.count(stripOffOwnershipInsts(BBI->getOperand())))
+    return;
+
+  SILCloner<PromotedParamCloner>::visitBeginBorrowInst(BBI);
+}
+
 void PromotedParamCloner::visitProjectBoxInst(ProjectBoxInst *pbi) {
-  // If it's a projection of a promoted parameter (or a copy_value of a promoted
-  // parameter), drop the instruction.  Its uses will be replaced by the
-  // promoted address.
-  SILValue box = pbi->getOperand();
-  while (auto *copyOp = dyn_cast<CopyValueInst>(box)) {
-    box = copyOp->getOperand();
-  }
-  if (OrigPromotedParameters.count(box)) {
-    auto *origArg = cast<SILFunctionArgument>(box);
+  // If it's a projection of a promoted parameter, drop the instruction.
+  // Its uses will be replaced by the promoted address.
+  if (OrigPromotedParameters.count(
+          lookThroughOwnershipInsts(pbi->getOperand()))) {
+    auto *origArg = cast<SILFunctionArgument>(pbi->getOperand());
     recordFoldedValue(pbi, NewPromotedArgs[origArg->getIndex()]);
     return;
   }
@@ -927,10 +950,10 @@ specializeApplySite(SILOptFunctionBuilder &FuncBuilder, ApplySite Apply,
       continue;
     }
 
-    SILValue Box = O.get();
-    assert((isa<SingleValueInstruction>(Box) && isa<AllocBoxInst>(Box) ||
-            isa<CopyValueInst>(Box) ||
-            isa<SILFunctionArgument>(Box)) &&
+    auto Box = O.get();
+    assert(((isa<SingleValueInstruction>(Box) && isa<AllocBoxInst>(Box) ||
+             isa<CopyValueInst>(Box) || isa<BeginBorrowInst>(Box) ||
+             isa<SILFunctionArgument>(Box))) &&
            "Expected either an alloc box or a copy of an alloc box or a "
            "function argument");
     SILBuilderWithScope::insertAfter(Box, [&](SILBuilder &B) {

@@ -47,7 +47,8 @@ func test_var_1() {
   // CHECK:   function_ref @$s10switch_var3fooSiyF
   switch foo() {
   // CHECK:   [[XADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[X:%.*]] = project_box [[XADDR]]
+  // CHECK:   [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+  // CHECK:   [[X:%.*]] = project_box [[B_XADDR]]
   // CHECK-NOT: br bb
   case var x:
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[X]]
@@ -60,12 +61,13 @@ func test_var_1() {
   b()
 }
 
-// CHECK-LABEL: sil hidden [ossa] @$s10switch_var05test_B2_2yyF
+// CHECK-LABEL: sil hidden [ossa] @$s10switch_var05test_B2_2yyF :
 func test_var_2() {
-  // CHECK:   function_ref @$s10switch_var3fooSiyF
+  // CHECK:   function_ref @$s10switch_var3fooSiyF :
   switch foo() {
   // CHECK:   [[XADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[X:%.*]] = project_box [[XADDR]]
+  // CHECK:   [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+  // CHECK:   [[X:%.*]] = project_box [[B_XADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[X]]
   // CHECK:   load [trivial] [[READ]]
   // CHECK:   function_ref @$s10switch_var6runced1xSbSi_tF
@@ -81,7 +83,8 @@ func test_var_2() {
     a(x: x)
   // CHECK: [[NO_CASE1]]:
   // CHECK:   [[YADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[Y:%.*]] = project_box [[YADDR]]
+  // CHECK:   [[B_YADDR:%.*]] = begin_borrow [[YADDR]]
+  // CHECK:   [[Y:%.*]] = project_box [[B_YADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[Y]]
   // CHECK:   load [trivial] [[READ]]
   // CHECK:   function_ref @$s10switch_var6funged1xSbSi_tF
@@ -97,7 +100,8 @@ func test_var_2() {
   case var z:
   // CHECK: [[NO_CASE2]]:
   // CHECK:   [[ZADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[Z:%.*]] = project_box [[ZADDR]]
+  // CHECK:   [[B_ZADDR:%.*]] = begin_borrow [[ZADDR]]
+  // CHECK:   [[Z:%.*]] = project_box [[B_ZADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[Z]]
   // CHECK:   load [trivial] [[READ]]
   // CHECK:   function_ref @$s10switch_var1c1xySi_tF
@@ -116,7 +120,8 @@ func test_var_3() {
   // CHECK:   function_ref @$s10switch_var3barSiyF
   switch (foo(), bar()) {
   // CHECK:   [[XADDR:%.*]] = alloc_box ${ var (Int, Int) }
-  // CHECK:   [[X:%.*]] = project_box [[XADDR]]
+  // CHECK:   [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+  // CHECK:   [[X:%.*]] = project_box [[B_XADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[X]]
   // CHECK:   tuple_element_addr [[READ]] : {{.*}}, 0
   // CHECK:   function_ref @$s10switch_var6runced1xSbSi_tF
@@ -132,9 +137,11 @@ func test_var_3() {
 
   // CHECK: [[NO_CASE1]]:
   // CHECK:   [[YADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[Y:%.*]] = project_box [[YADDR]]
+  // CHECK:   [[B_YADDR:%.*]] = begin_borrow [[YADDR]]
+  // CHECK:   [[Y:%.*]] = project_box [[B_YADDR]]
   // CHECK:   [[ZADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[Z:%.*]] = project_box [[ZADDR]]
+  // CHECK:   [[B_ZADDR:%.*]] = begin_borrow [[ZADDR]]
+  // CHECK:   [[Z:%.*]] = project_box [[B_ZADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[Y]]
   // CHECK:   load [trivial] [[READ]]
   // CHECK:   function_ref @$s10switch_var6funged1xSbSi_tF
@@ -154,7 +161,8 @@ func test_var_3() {
     b(x: z)
   // CHECK: [[NO_CASE2]]:
   // CHECK:   [[WADDR:%.*]] = alloc_box ${ var (Int, Int) }
-  // CHECK:   [[W:%.*]] = project_box [[WADDR]]
+  // CHECK:   [[B_WADDR:%.*]] = begin_borrow [[WADDR]]
+  // CHECK:   [[W:%.*]] = project_box [[B_WADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[W]]
   // CHECK:   tuple_element_addr [[READ]] : {{.*}}, 0
   // CHECK:   function_ref @$s10switch_var5ansed1xSbSi_tF
@@ -170,7 +178,8 @@ func test_var_3() {
   // CHECK:   destroy_value [[WADDR]]
   case var v:
   // CHECK:   [[VADDR:%.*]] = alloc_box ${ var (Int, Int) } 
-  // CHECK:   [[V:%.*]] = project_box [[VADDR]]
+  // CHECK:   [[B_VADDR:%.*]] = begin_borrow [[VADDR]]
+  // CHECK:   [[V:%.*]] = project_box [[B_VADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[V]]
   // CHECK:   load [trivial] [[READ]]
   // CHECK:   function_ref @$s10switch_var2cc1xySi_Sit_tF
@@ -204,7 +213,8 @@ func test_var_4(p p: P) {
   // CHECK: [[IS_X]]:
   // CHECK:   [[T0:%.*]] = load [trivial] [[TMP]] : $*X
   // CHECK:   [[XADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[X:%.*]] = project_box [[XADDR]]
+  // CHECK:   [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+  // CHECK:   [[X:%.*]] = project_box [[B_XADDR]]
   // CHECK:   store [[PAIR_1]] to [trivial] [[X]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[X]]
   // CHECK:   load [trivial] [[READ]]
@@ -235,7 +245,8 @@ func test_var_4(p p: P) {
   // CHECK: [[IS_Y]]:
   // CHECK:   [[T0:%.*]] = load [trivial] [[TMP]] : $*Y
   // CHECK:   [[YADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[Y:%.*]] = project_box [[YADDR]]
+  // CHECK:   [[B_YADDR:%.*]] = begin_borrow [[YADDR]]
+  // CHECK:   [[Y:%.*]] = project_box [[B_YADDR]]
   // CHECK:   store [[PAIR_1]] to [trivial] [[Y]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[Y]]
   // CHECK:   load [trivial] [[READ]]
@@ -264,7 +275,8 @@ func test_var_4(p p: P) {
 
   // CHECK: [[NEXT]]:
   // CHECK:   [[ZADDR:%.*]] = alloc_box ${ var (P, Int) }
-  // CHECK:   [[Z:%.*]] = project_box [[ZADDR]]
+  // CHECK:   [[B_ZADDR:%.*]] = begin_borrow [[ZADDR]]
+  // CHECK:   [[Z:%.*]] = project_box [[B_ZADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[Z]]
   // CHECK:   tuple_element_addr [[READ]] : {{.*}}, 1
   // CHECK:   function_ref @$s10switch_var5ansed1xSbSi_tF
@@ -281,12 +293,14 @@ func test_var_4(p p: P) {
     c(x: z.1)
 
   // CHECK: [[DFLT_NO_CASE3]]:
+  // CHECK-NEXT:   end_borrow [[B_ZADDR]]
   // CHECK-NEXT:   destroy_value [[ZADDR]]
   // CHECK-NOT: destroy_addr
   case (_, var w):
   // CHECK:   [[PAIR_0:%.*]] = tuple_element_addr [[PAIR]] : $*(P, Int), 0
   // CHECK:   [[WADDR:%.*]] = alloc_box ${ var Int }
-  // CHECK:   [[W:%.*]] = project_box [[WADDR]]
+  // CHECK:   [[B_WADDR:%.*]] = begin_borrow [[WADDR]]
+  // CHECK:   [[W:%.*]] = project_box [[B_WADDR]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[W]]
   // CHECK:   load [trivial] [[READ]]
   // CHECK:   function_ref @$s10switch_var1d1xySi_tF
@@ -306,7 +320,8 @@ func test_var_5() {
   // CHECK:   function_ref @$s10switch_var3barSiyF
   switch (foo(), bar()) {
   // CHECK:   [[XADDR:%.*]] = alloc_box ${ var (Int, Int) }
-  // CHECK:   [[X:%.*]] = project_box [[XADDR]]
+  // CHECK:   [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+  // CHECK:   [[X:%.*]] = project_box [[B_XADDR]]
   // CHECK:   cond_br {{%.*}}, [[CASE1:bb[0-9]+]], [[NO_CASE1:bb[0-9]+]]
   case var x where runced(x: x.0):
   // CHECK: [[CASE1]]:
@@ -314,9 +329,11 @@ func test_var_5() {
     a()
   // CHECK: [[NO_CASE1]]:
   // CHECK:   [[YADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK:   [[Y:%[0-9]+]] = project_box [[YADDR]]
+  // CHECK:   [[B_YADDR:%.*]] = begin_borrow [[YADDR]]
+  // CHECK:   [[Y:%[0-9]+]] = project_box [[B_YADDR]]
   // CHECK:   [[ZADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK:   [[Z:%[0-9]+]] = project_box [[ZADDR]]
+  // CHECK:   [[B_ZADDR:%.*]] = begin_borrow [[ZADDR]]
+  // CHECK:   [[Z:%[0-9]+]] = project_box [[B_ZADDR]]
   // CHECK:   cond_br {{%.*}}, [[CASE2:bb[0-9]+]], [[NO_CASE2:bb[0-9]+]]
   case (var y, var z) where funged(x: y):
   // CHECK: [[CASE2]]:
@@ -346,16 +363,19 @@ func test_var_return() {
   switch (foo(), bar()) {
   case var x where runced():
     // CHECK: [[XADDR:%[0-9]+]] = alloc_box ${ var (Int, Int) }
-    // CHECK: [[X:%[0-9]+]] = project_box [[XADDR]]
+    // CHECK: [[B_XADDR:%.*]] = begin_borrow [[XADDR]]
+    // CHECK: [[X:%[0-9]+]] = project_box [[B_XADDR]]
     // CHECK: function_ref @$s10switch_var1ayyF
     // CHECK: destroy_value [[XADDR]]
     // CHECK: br [[EPILOG:bb[0-9]+]]
     a()
     return
   // CHECK: [[YADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[Y:%[0-9]+]] = project_box [[YADDR]]
+  // CHECK: [[B_YADDR:%.*]] = begin_borrow [[YADDR]]
+  // CHECK: [[Y:%[0-9]+]] = project_box [[B_YADDR]]
   // CHECK: [[ZADDR:%[0-9]+]] = alloc_box ${ var Int }
-  // CHECK: [[Z:%[0-9]+]] = project_box [[ZADDR]]
+  // CHECK: [[B_ZADDR:%.*]] = begin_borrow [[ZADDR]]
+  // CHECK: [[Z:%[0-9]+]] = project_box [[B_ZADDR]]
   case (var y, var z) where funged():
     // CHECK: function_ref @$s10switch_var1byyF
     // CHECK: destroy_value [[ZADDR]]
@@ -365,7 +385,8 @@ func test_var_return() {
     return
   case var w where ansed():
     // CHECK: [[WADDR:%[0-9]+]] = alloc_box ${ var (Int, Int) }
-    // CHECK: [[W:%[0-9]+]] = project_box [[WADDR]]
+    // CHECK: [[B_WADDR:%.*]] = begin_borrow [[WADDR]]
+    // CHECK: [[W:%[0-9]+]] = project_box [[B_WADDR]]
     // CHECK: function_ref @$s10switch_var1cyyF
     // CHECK-NOT: destroy_value [[ZADDR]]
     // CHECK-NOT: destroy_value [[YADDR]]
@@ -375,7 +396,8 @@ func test_var_return() {
     return
   case var v:
     // CHECK: [[VADDR:%[0-9]+]] = alloc_box ${ var (Int, Int) }
-    // CHECK: [[V:%[0-9]+]] = project_box [[VADDR]]
+    // CHECK: [[B_VADDR:%.*]] = begin_borrow [[VADDR]]
+    // CHECK: [[V:%[0-9]+]] = project_box [[B_VADDR]]
     // CHECK: function_ref @$s10switch_var1dyyF
     // CHECK-NOT: destroy_value [[ZADDR]]
     // CHECK-NOT: destroy_value [[YADDR]]
@@ -464,7 +486,8 @@ func test_mixed_let_var() {
 
   // First pattern.
   // CHECK:   [[BOX:%.*]] = alloc_box ${ var String }, var, name "x"
-  // CHECK:   [[PBOX:%.*]] = project_box [[BOX]]
+  // CHECK:   [[B_BOX:%.*]] = begin_borrow [[BOX]]
+  // CHECK:   [[PBOX:%.*]] = project_box [[B_BOX]]
   // CHECK:   [[VAL_COPY:%.*]] = copy_value [[BORROWED_VAL]]
   // CHECK:   store [[VAL_COPY]] to [init] [[PBOX]]
   // CHECK:   cond_br {{.*}}, [[CASE1:bb[0-9]+]], [[NOCASE1:bb[0-9]+]]

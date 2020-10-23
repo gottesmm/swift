@@ -33,7 +33,8 @@ func test5(_ g: Gizmo) {
   Gizmo.inspect(g)
   // CHECK: bb0([[ARG:%.*]] : @guaranteed $Gizmo):
   // CHECK:   [[GIZMO_BOX:%.*]] = alloc_box ${ var Gizmo }
-  // CHECK:   [[GIZMO_BOX_PB:%.*]] = project_box [[GIZMO_BOX]]
+  // CHECK:   [[B_GIZMO_BOX:%.*]] = begin_borrow [[GIZMO_BOX]]
+  // CHECK:   [[GIZMO_BOX_PB:%.*]] = project_box [[B_GIZMO_BOX]]
   // CHECK:   [[ARG_COPY:%.*]] = copy_value [[ARG]]
   // CHECK:   store [[ARG_COPY]] to [init] [[GIZMO_BOX_PB]]
   // CHECK:   [[CLASS:%.*]] = metatype $@objc_metatype Gizmo.Type
@@ -55,7 +56,8 @@ func test6(_ g: Gizmo) {
   Gizmo.consume(g)
   // CHECK: bb0([[ARG:%.*]] : @guaranteed $Gizmo):
   // CHECK:   [[GIZMO_BOX:%.*]] = alloc_box ${ var Gizmo }
-  // CHECK:   [[GIZMO_BOX_PB:%.*]] = project_box [[GIZMO_BOX]]
+  // CHECK:   [[B_GIZMO_BOX:%.*]] = begin_borrow [[GIZMO_BOX]]
+  // CHECK:   [[GIZMO_BOX_PB:%.*]] = project_box [[B_GIZMO_BOX]]
   // CHECK:   [[ARG_COPY:%.*]] = copy_value [[ARG]]
   // CHECK:   store [[ARG_COPY]] to [init] [[GIZMO_BOX_PB]]
   // CHECK:   [[CLASS:%.*]] = metatype $@objc_metatype Gizmo.Type
@@ -79,7 +81,8 @@ func test7(_ g: Gizmo) {
   g.fork()
   // CHECK: bb0([[ARG:%.*]] : @guaranteed $Gizmo):
   // CHECK:   [[GIZMO_BOX:%.*]] = alloc_box ${ var Gizmo }
-  // CHECK:   [[GIZMO_BOX_PB:%.*]] = project_box [[GIZMO_BOX]]
+  // CHECK:   [[B_GIZMO_BOX:%.*]] = begin_borrow [[GIZMO_BOX]]
+  // CHECK:   [[GIZMO_BOX_PB:%.*]] = project_box [[B_GIZMO_BOX]]
   // CHECK:   [[ARG_COPY:%.*]] = copy_value [[ARG]]
   // CHECK:   store [[ARG_COPY]] to [init] [[GIZMO_BOX_PB]]
   // CHECK:   [[READ:%.*]] = begin_access [read] [unknown] [[GIZMO_BOX_PB]] : $*Gizmo

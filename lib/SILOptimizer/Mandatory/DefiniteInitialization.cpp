@@ -1065,7 +1065,8 @@ void LifetimeChecker::handleStoreUse(unsigned UseID) {
     if (auto *access = dyn_cast<BeginAccessInst>(addr))
       addr = access->getSource();
     if (auto *projection = dyn_cast<ProjectBoxInst>(addr))
-      addr = projection->getOperand();
+      if (auto *bbi = dyn_cast<BeginBorrowInst>(projection->getOperand()))
+        addr = bbi->getOperand();
 
     return addr == TheMemory.getUninitializedValue();
   };
@@ -2081,7 +2082,8 @@ void LifetimeChecker::processUninitializedRelease(SILInstruction *Release,
   auto *MUI = dyn_cast<MarkUninitializedInst>(Release->getOperand(0));
 
   if (MUI && isa<AllocBoxInst>(MUI->getOperand())) {
-    Pointer = MUI->getSingleUserOfType<ProjectBoxInst>();
+    Pointer = MUI->getSingleUserOfType<BeginBorrowInst>();
+    Pointer = Pointer->getSingleUserOfType<ProjectBoxInst>();
     assert(Pointer);
   } else {
     MUI = nullptr;

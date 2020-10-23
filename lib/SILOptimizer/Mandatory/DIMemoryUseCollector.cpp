@@ -51,7 +51,8 @@ static void gatherDestroysOfContainer(const DIMemoryObjectInfo &memoryInfo,
   // TODO: This should really be tracked separately from other destroys so that
   // we distinguish the lifetime of the container from the value itself.
   assert(isa<ProjectBoxInst>(uninitMemory));
-  auto *mui = cast<MarkUninitializedInst>(uninitMemory->getOperand(0));
+  auto *bbi = cast<BeginBorrowInst>(uninitMemory->getOperand(0));
+  auto *mui = cast<MarkUninitializedInst>(bbi->getOperand());
   for (auto *user : mui->getUsersOfType<DestroyValueInst>()) {
     useInfo.trackDestroy(user);
   }
@@ -97,6 +98,9 @@ computeMemorySILType(MarkUninitializedInst *MemoryInst) {
   // Compute the type of the memory object.
   auto *MUI = MemoryInst;
   SILValue Address = MUI;
+  if (auto *BBI = Address->getSingleUserOfType<BeginBorrowInst>()) {
+    Address = BBI;
+  }
   if (auto *PBI = Address->getSingleUserOfType<ProjectBoxInst>()) {
     Address = PBI;
   }
@@ -1680,7 +1684,8 @@ void ClassInitElementUseCollector::collectClassInitSelfUses() {
 
 void ClassInitElementUseCollector::collectClassInitSelfLoadUses(
     SingleValueInstruction *MUI, SingleValueInstruction *LI) {
-  assert(isa<ProjectBoxInst>(MUI) || isa<MarkUninitializedInst>(MUI));
+  assert(isa<ProjectBoxInst>(MUI) || isa<MarkUninitializedInst>(MUI) ||
+         isa<BeginBorrowInst>(MUI));
   assert(isa<LoadBorrowInst>(LI) || isa<LoadInst>(LI));
 
   // If we have a load, then this is a use of the box.  Look at the uses of

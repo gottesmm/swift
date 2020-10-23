@@ -44,11 +44,13 @@ func test0(c c: C) {
   var a: A
   // CHECK:   [[A1:%.*]] = alloc_box ${ var A }, var, name "a"
   // CHECK:   [[MARKED_A1:%.*]] = mark_uninitialized [var] [[A1]]
-  // CHECK:   [[PBA:%.*]] = project_box [[MARKED_A1]]
+  // CHECK:   [[B_MARKED_A1:%.*]] = begin_borrow [[MARKED_A1]]
+  // CHECK:   [[PBA:%.*]] = project_box [[B_MARKED_A1]]
 
   unowned var x = c
   // CHECK:   [[X:%.*]] = alloc_box ${ var @sil_unowned C }
-  // CHECK:   [[PBX:%.*]] = project_box [[X]]
+  // CHECK:   [[B_X:%.*]] = begin_borrow [[X]]
+  // CHECK:   [[PBX:%.*]] = project_box [[B_X]]
   // CHECK:   [[ARG_COPY:%.*]] = copy_value [[ARG]]
   // CHECK:   [[T2:%.*]] = ref_to_unowned [[ARG_COPY]] : $C  to $@sil_unowned C
   // CHECK:   [[T2_COPY:%.*]] = copy_value [[T2]] : $@sil_unowned C
@@ -86,7 +88,8 @@ func testunowned_local() -> C {
   let c = C()
 
   // CHECK: [[UC:%.*]] = alloc_box ${ var @sil_unowned C }, let, name "uc"
-  // CHECK: [[PB_UC:%.*]] = project_box [[UC]]
+  // CHECK: [[B_UC:%.*]] = begin_borrow [[UC]]
+  // CHECK: [[PB_UC:%.*]] = project_box [[B_UC]]
   // CHECK: [[BORROWED_C:%.*]] = begin_borrow [[C]]
   // CHECK: [[C_COPY:%.*]] = copy_value [[BORROWED_C]]
   // CHECK: [[tmp1:%.*]] = ref_to_unowned [[C_COPY]] : $C to $@sil_unowned C

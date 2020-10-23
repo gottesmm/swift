@@ -132,7 +132,8 @@ func methodCalls(
   // CHECK: store_borrow [[PAYLOAD]] to [[SELF_BOX]] : $*@opened("{{.*}}") Base<Int> & P
   // CHECK: [[METHOD:%.*]] = witness_method $@opened("{{.*}}") Base<Int> & P, #P.protocolSelfReturn : <Self where Self : P> (Self) -> () -> Self, [[PAYLOAD]] : $@opened("{{.*}}") Base<Int> & P : $@convention(witness_method: P) <τ_0_0 where τ_0_0 : P> (@in_guaranteed τ_0_0) -> @out τ_0_0
   // CHECK: [[RESULT_BOX:%.*]] = alloc_box
-  // CHECK: [[RESULT_BUF:%.*]] = project_box [[RESULT_BOX]]
+  // CHECK: [[B_RESULT_BOX:%.*]] = begin_borrow [[RESULT_BOX]]
+  // CHECK: [[RESULT_BUF:%.*]] = project_box [[B_RESULT_BOX]]
   // CHECK: apply [[METHOD]]<@opened("{{.*}}") Base<Int> & P>([[RESULT_BUF]], [[SELF_BOX]]) : $@convention(witness_method: P) <τ_0_0 where τ_0_0 : P> (@in_guaranteed τ_0_0) -> @out τ_0_0
   // CHECK: dealloc_stack [[SELF_BOX]] : $*@opened("{{.*}}") Base<Int> & P
   // CHECK: [[RESULT_REF:%.*]] = load [take] [[RESULT_BUF]] : $*@opened("{{.*}}") Base<Int> & P

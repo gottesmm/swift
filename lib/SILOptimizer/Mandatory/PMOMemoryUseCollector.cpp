@@ -215,6 +215,14 @@ bool ElementUseCollector::collectContainerUses(SILValue boxValue) {
       continue;
     }
 
+    if (auto *bbi = dyn_cast<BeginBorrowInst>(user)) {
+      if (auto *p = bbi->getSingleUserOfType<ProjectBoxInst>()) {
+        if (!collectUses(p))
+          return false;
+        continue;
+      }
+    }
+
     if (auto *p = dyn_cast<ProjectBoxInst>(user)) {
       if (!collectUses(p))
         return false;

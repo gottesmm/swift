@@ -157,20 +157,22 @@ const ParamDecl *getParamDeclFromOperand(SILValue value) {
 
 bool isUseOfSelfInInitializer(Operand *oper) {
   if (auto *PBI = dyn_cast<ProjectBoxInst>(oper->get())) {
-    if (auto *MUI = dyn_cast<MarkUninitializedInst>(PBI->getOperand())) {
-      switch (MUI->getMarkUninitializedKind()) {
-      case MarkUninitializedInst::Kind::Var:
-        return false;
-      case MarkUninitializedInst::Kind::RootSelf:
-      case MarkUninitializedInst::Kind::CrossModuleRootSelf:
-      case MarkUninitializedInst::Kind::DerivedSelf:
-      case MarkUninitializedInst::Kind::DerivedSelfOnly:
-      case MarkUninitializedInst::Kind::DelegatingSelf:
-      case MarkUninitializedInst::Kind::DelegatingSelfAllocated:
-        return true;
-      }
+    if (auto *BBI = dyn_cast<BeginBorrowInst>(PBI->getOperand())) {
+      if (auto *MUI = dyn_cast<MarkUninitializedInst>(BBI->getOperand())) {
+        switch (MUI->getMarkUninitializedKind()) {
+        case MarkUninitializedInst::Kind::Var:
+          return false;
+        case MarkUninitializedInst::Kind::RootSelf:
+        case MarkUninitializedInst::Kind::CrossModuleRootSelf:
+        case MarkUninitializedInst::Kind::DerivedSelf:
+        case MarkUninitializedInst::Kind::DerivedSelfOnly:
+        case MarkUninitializedInst::Kind::DelegatingSelf:
+        case MarkUninitializedInst::Kind::DelegatingSelfAllocated:
+          return true;
+        }
 
-      llvm_unreachable("Bad MarkUninitializedInst::Kind");
+        llvm_unreachable("Bad MarkUninitializedInst::Kind");
+      }
     }
   }
 

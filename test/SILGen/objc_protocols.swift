@@ -239,7 +239,8 @@ extension InformallyFunging: NSFunging { }
 func testInitializableExistential(_ im: Initializable.Type, i: Int) -> Initializable {
   // CHECK: bb0([[META:%[0-9]+]] : $@thick Initializable.Type, [[I:%[0-9]+]] : $Int):
   // CHECK:   [[I2_BOX:%[0-9]+]] = alloc_box ${ var Initializable }
-  // CHECK:   [[PB:%.*]] = project_box [[I2_BOX]]
+  // CHECK:   [[B_I2_BOX:%.*]] = begin_borrow [[I2_BOX]]
+  // CHECK:   [[PB:%.*]] = project_box [[B_I2_BOX]]
   // CHECK:   [[ARCHETYPE_META:%[0-9]+]] = open_existential_metatype [[META]] : $@thick Initializable.Type to $@thick (@opened([[N:".*"]]) Initializable).Type
   // CHECK:   [[ARCHETYPE_META_OBJC:%[0-9]+]] = thick_to_objc_metatype [[ARCHETYPE_META]] : $@thick (@opened([[N]]) Initializable).Type to $@objc_metatype (@opened([[N]]) Initializable).Type
   // CHECK:   [[I2_ALLOC:%[0-9]+]] = alloc_ref_dynamic [objc] [[ARCHETYPE_META_OBJC]] : $@objc_metatype (@opened([[N]]) Initializable).Type, $@opened([[N]]) Initializable

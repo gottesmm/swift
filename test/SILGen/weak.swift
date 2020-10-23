@@ -16,16 +16,19 @@ func test0(c c: C) {
   var c = c
 // CHECK:    bb0(%0 : @guaranteed $C):
 // CHECK:      [[C:%.*]] = alloc_box ${ var C }
-// CHECK-NEXT: [[PBC:%.*]] = project_box [[C]]
+// CHECK:      [[B_C:%.*]] = begin_borrow [[C]]
+// CHECK-NEXT: [[PBC:%.*]] = project_box [[B_C]]
 
   var a: A
 // CHECK:      [[A1:%.*]] = alloc_box ${ var A }
 // CHECK:      [[MARKED_A1:%.*]] = mark_uninitialized [var] [[A1]]
-// CHECK-NEXT: [[PBA:%.*]] = project_box [[MARKED_A1]]
+// CHECK:      [[B_MARKED_A1:%.*]] = begin_borrow [[MARKED_A1]]
+// CHECK-NEXT: [[PBA:%.*]] = project_box [[B_MARKED_A1]]
 
   weak var x = c
 // CHECK:      [[X:%.*]] = alloc_box ${ var @sil_weak Optional<C> }, var, name "x"
-// CHECK-NEXT: [[PBX:%.*]] = project_box [[X]]
+// CHECK:      [[B_X:%.*]] = begin_borrow [[X]]
+// CHECK-NEXT: [[PBX:%.*]] = project_box [[B_X]]
 //   Implicit conversion
 // CHECK-NEXT: [[READ:%.*]] = begin_access [read] [unknown] [[PBC]]
 // CHECK-NEXT: [[TMP:%.*]] = load [copy] [[READ]] : $*C
@@ -71,7 +74,8 @@ class CC {
   // CHECK:  bb0([[SELF:%.*]] : @owned $CC):
   // CHECK:    [[UNINIT_SELF:%.*]] = mark_uninitialized [rootself] [[SELF]] : $CC
   // CHECK:    [[FOO:%.*]] = alloc_box ${ var Optional<CC> }, var, name "foo"
-  // CHECK:    [[PB:%.*]] = project_box [[FOO]]
+  // CHECK:    [[B_FOO:%.*]] = begin_borrow [[FOO]]
+  // CHECK:    [[PB:%.*]] = project_box [[B_FOO]]
   // CHECK:    [[BORROWED_UNINIT_SELF:%.*]] = begin_borrow [[UNINIT_SELF]]
   // CHECK:    [[X:%.*]] = ref_element_addr [[BORROWED_UNINIT_SELF]] : $CC, #CC.x
   // CHECK:    [[READ:%.*]] = begin_access [read] [dynamic] [[X]] : $*@sil_weak Optional<CC>

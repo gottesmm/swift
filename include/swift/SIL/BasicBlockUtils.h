@@ -10,11 +10,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_SIL_DEADENDBLOCKS_H
-#define SWIFT_SIL_DEADENDBLOCKS_H
+#ifndef SWIFT_SIL_BASICBLOCKUTILS_H
+#define SWIFT_SIL_BASICBLOCKUTILS_H
 
 #include "swift/SIL/SILValue.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace swift {
@@ -88,6 +89,71 @@ public:
     }
     return ReachableBlocks.empty();
   }
+};
+
+/// A struct that contains the intermediate state used in computing
+/// joint-dominance sets. Enables a pass to easily reuse the same small data
+/// structures with clearing (noting that clearing our internal state does not
+/// cause us to shrink meaning that once we malloc, we keep the malloced
+/// memory).
+struct JointPostDominanceSetComputer {
+  SmallVector<SILBasicBlock *, 32> worklist;
+  SmallPtrSet<SILBasicBlock *, 32> visitedBlocks;
+  SmallPtrSet<SILBasicBlock *, 8> initialBlocks;
+
+  /// As we process the worklist, any successors that we see that have not been
+  /// visited yet are placed in here. At the end of our worklist, any blocks
+  /// that remain here are "leaking blocks" that together with our initial set
+  /// would provide a jointly-postdominating set of our dominating value.
+  SmallSetVector<SILBasicBlock *, 8> blocksThatLeakIfNeverVisited;
+
+  DeadEndBlocks &deadEndBlocks;
+
+  JointPostDominanceSetComputer(DeadEndBlocks &deadEndBlocks)
+      : deadEndBlocks(deadEndBlocks) {}
+
+  void clear() {
+    worklist.clear();
+    visitedBlocks.clear();
+    initialBlocks.clear();
+    blocksThatLeakIfNeverVisited.clear();
+  }
+
+  /// Let \p dominatingBlock be a dominating block and \p
+  /// partialPostDominatingSet a set of blocks, dominated by dominating block,
+  /// that partially post-dominate \p dominating block. Given those inputs, this
+  /// function attempts to compute a valid set of blocks that
+  /// jointly-postdominate \p dominatingBlock and also jointly post-dominate our
+  /// \p partialPostDominatingSet blocks.
+  ///
+  /// To do this we handle two cases based off of whether or not the blocks in
+  /// \p partialPostDomSet are all in the same level of the loop nest.
+  ///
+  /// 1. (Different Loop Nest Level). If while walking backwards we run into any
+  ///    of our partial post dominating set elements, then we know that we have
+  ///    found a backedge of some sort and some of our partial post dominating
+  ///    set elements are in different loops within the loop nest. In such a
+  ///    case, we pass to \p foundPostDomBlockCallback instead the loop exit
+  ///    blocks and pass to \p foundLoopBlockCallback the block that was found
+  ///    to be reachable from one of the other blocks. The key thing to note
+  ///    here is that we are not "completing" the partial post dom set.
+  //
+  /// 2. (Same Loop Nest Level) If all elements of \p partialPostDominatingSet
+  /// are
+  ///    in the same loop (that is we don't find any backedges while processing)
+  ///    then this returns the set of blocks that combined with \p
+  ///    partialPostDominatingSet post-dominate \p dominatingBlock. These are
+  ///    returned by calling foundPostDomBlockCallback.
+  ///
+  /// The way to work with the two cases is to see if one gathered any
+  /// foundLoopBlockCallback.
+  ///
+  /// NOTE: We ignore paths through dead end blocks.
+  void findJointPostDominatingSet(
+      SILBasicBlock *dominatingBlock,
+      ArrayRef<SILBasicBlock *> partialPostDomSet,
+      function_ref<void(SILBasicBlock *foundPostDomBlock)> resultCallback,
+      function_ref<void(SILBasicBlock *foundLoopBlock)> foundLoopBlockCallback);
 };
 
 } // namespace swift

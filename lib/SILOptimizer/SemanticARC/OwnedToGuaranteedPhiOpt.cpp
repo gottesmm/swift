@@ -24,7 +24,7 @@ using namespace swift;
 using namespace swift::semanticarc;
 
 static bool canEliminatePhi(
-    Context::FrozenMultiMapRange optimizableIntroducerRange,
+    ArrayRef<Operand *> optimizableIntroducerRange,
     ArrayRef<OwnershipPhiOperand> incomingValueOperandList,
     SmallVectorImpl<OwnedValueIntroducer> &ownedValueIntroducerAccumulator) {
   for (auto incomingValueOperand : incomingValueOperandList) {
@@ -161,9 +161,20 @@ bool swift::semanticarc::tryConvertOwnedPhisToGuaranteedPhis(Context &ctx) {
     // eliminated if it was not for the given phi. If all of them are, we can
     // optimize!
     {
-      auto rawFoundOptimizableIntroducerArray = pair.second;
-      if (!canEliminatePhi(rawFoundOptimizableIntroducerArray,
-                           incomingValueOperandList, ownedValueIntroducers)) {
+      // TODO: Eliminate intermediate array, not needed!
+      SmallVector<Operand *, 8> operandsTransformed;
+      transform(pair.second, std::back_inserter(operandsTransformed),
+                [&](const Context::ConsumingOperandState &state) {
+                  unsigned opNum = state.operandNumber;
+                  if (state.parent.is<SILBasicBlock *>()) {
+                    auto *block = state.parent.get<SILBasicBlock *>();
+                    return &block->getTerminator()->getAllOperands()[opNum];
+                  }
+                  auto *inst = state.parent.get<SILInstruction *>();
+                  return &inst->getAllOperands()[opNum];
+                });
+      if (!canEliminatePhi(operandsTransformed, incomingValueOperandList,
+                           ownedValueIntroducers)) {
         continue;
       }
     }

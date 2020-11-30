@@ -110,6 +110,14 @@
    ;; Function Application
    `(,(regexp-opt '("apply" "partial_apply" "builtin" "try_apply")
                   'words) . font-lock-keyword-face)
+
+   ;; Differentiable Programming
+   `(,(regexp-opt '("differentiable_function" "linear_function"
+                    "differentiable_function_extract"
+                    "linear_function_extract"
+                    "differentiability_witness_function")
+                  'words) . font-lock-keyword-face)
+
    ;; Metatypes
    `(,(regexp-opt '("metatype" "value_metatype"
                     "existential_metatype" "init_existential_metatype"

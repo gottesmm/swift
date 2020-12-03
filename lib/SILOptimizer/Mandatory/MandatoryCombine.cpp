@@ -32,6 +32,7 @@
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
 #include "swift/SILOptimizer/Utils/CanonicalizeInstruction.h"
+#include "swift/SIL/BasicBlockUtils.h"
 #include "swift/SILOptimizer/Utils/InstOptUtils.h"
 #include "swift/SILOptimizer/Utils/StackNesting.h"
 #include "llvm/ADT/STLExtras.h"
@@ -66,11 +67,12 @@ public:
 
 private:
   Worklist &worklist;
+  DeadEndBlocks &deadEndBlocks;
   bool changed = false;
 
 public:
-  MandatoryCombineCanonicalize(Worklist &worklist)
-      : CanonicalizeInstruction(DEBUG_TYPE), worklist(worklist) {}
+  MandatoryCombineCanonicalize(Worklist &worklist, DeadEndBlocks &deadEndBlocks)
+      : CanonicalizeInstruction(DEBUG_TYPE), worklist(worklist), deadEndBlocks(deadEndBlocks) {}
 
   void notifyNewInstruction(SILInstruction *inst) override {
     worklist.add(inst);
@@ -95,7 +97,7 @@ public:
 
   bool tryCanonicalize(SILInstruction *inst) {
     changed = false;
-    canonicalize(inst);
+    canonicalize(inst, deadEndBlocks);
     return changed;
   }
 };
@@ -116,6 +118,9 @@ class MandatoryCombiner final
   /// The list of instructions remaining to visit, perhaps to combine.
   Worklist worklist;
 
+  /// A cache of dead end blocks that we can leak ARC down.
+  DeadEndBlocks &deadEndBlocks;
+
   /// Whether any changes have been made.
   bool madeChange;
 
@@ -131,8 +136,9 @@ class MandatoryCombiner final
   SmallVector<SILInstruction *, 16> instructionsPendingDeletion;
 
 public:
-  MandatoryCombiner(SmallVectorImpl<SILInstruction *> &createdInstructions)
-      : worklist("MC"), madeChange(false), iteration(0),
+  MandatoryCombiner(SmallVectorImpl<SILInstruction *> &createdInstructions,
+                    DeadEndBlocks &deadEndBlocks)
+      : worklist("MC"), deadEndBlocks(deadEndBlocks), madeChange(false), iteration(0),
         instModCallbacks(
             [&](SILInstruction *instruction) {
               worklist.erase(instruction);
@@ -226,7 +232,7 @@ bool MandatoryCombiner::doOneIteration(SILFunction &function,
   madeChange = false;
 
   addReachableCodeToWorklist(function);
-  MandatoryCombineCanonicalize mcCanonicialize(worklist);
+  MandatoryCombineCanonicalize mcCanonicialize(worklist, deadEndBlocks);
 
   while (!worklist.isEmpty()) {
     auto *instruction = worklist.pop_back_val();
@@ -361,7 +367,8 @@ class MandatoryCombine final : public SILFunctionTransform {
       return;
     }
 
-    MandatoryCombiner combiner(createdInstructions);
+    DeadEndBlocks deadEndBlocks(function);
+    MandatoryCombiner combiner(createdInstructions, deadEndBlocks);
     bool madeChange = combiner.runOnFunction(*function);
 
     if (madeChange) {

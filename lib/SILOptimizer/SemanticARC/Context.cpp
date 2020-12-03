@@ -15,6 +15,7 @@
 #include "Context.h"
 #include "swift/SIL/MemAccessUtils.h"
 #include "swift/SIL/Projection.h"
+#include "swift/SILOptimizer/Utils/CFGOptUtils.h"
 #include "llvm/Support/Debug.h"
 
 using namespace swift;
@@ -162,5 +163,32 @@ bool Context::constructCacheValue(
   }
 
   // Ok, we finished our worklist and this address is not being written to.
+  return true;
+}
+
+bool Context::eraseDeadPhiArguments() {
+  if (deadGuaranteedArgs.empty())
+    return false;
+
+  do {
+    auto *phiArg = deadGuaranteedArgs.pop_back_val();
+
+    // All other uses should be end_borrows.
+    while (!phiArg->use_empty()) {
+      Operand *use = *phiArg->use_begin();
+      auto *user = use->getUser();
+      if (user->isDebugInstruction()) {
+        user->eraseFromParent();
+        continue;
+      }
+      auto *ebi = cast<EndBorrowInst>(use->getUser());
+      ebi->eraseFromParent();
+    }
+
+    unsigned index = phiArg->getIndex();
+    auto *block = phiArg->getParent();
+    erasePhiArgument(block, index);
+  } while (!deadGuaranteedArgs.empty());
+
   return true;
 }

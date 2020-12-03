@@ -16,8 +16,9 @@
 #include "SemanticARCOptVisitor.h"
 #include "Transforms.h"
 
+#include "swift/SIL/DebugUtils.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
-
+#include "swift/SILOptimizer/Utils/CFGOptUtils.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace swift;
@@ -77,6 +78,7 @@ struct SemanticARCOpts : SILFunctionTransform {
       case ARCTransformKind::RedundantCopyValueElimPeephole:
       case ARCTransformKind::RedundantBorrowScopeElimPeephole:
       case ARCTransformKind::LoadCopyToLoadBorrowPeephole:
+      case ARCTransformKind::GuaranteedPhiArgElimPeephole:
       case ARCTransformKind::AllPeepholes:
         // We never assume we are at fixed point when running these transforms.
         if (performPeepholesWithoutFixedPoint(visitor)) {
@@ -97,10 +99,15 @@ struct SemanticARCOpts : SILFunctionTransform {
   }
 #endif
 
-  bool performPeepholesWithoutFixedPoint(SemanticARCOptVisitor &visitor) {
+  void seedWorklist(SemanticARCOptVisitor &visitor) {
     // Add all the results of all instructions that we want to visit to the
     // worklist.
     for (auto &block : *getFunction()) {
+      for (auto *arg : block.getArguments()) {
+        if (SemanticARCOptVisitor::shouldVisitArgument(arg)) {
+          visitor.worklist.insert(arg);
+        }
+      }
       for (auto &inst : block) {
         if (SemanticARCOptVisitor::shouldVisitInst(&inst)) {
           for (SILValue v : inst.getResults()) {
@@ -109,22 +116,16 @@ struct SemanticARCOpts : SILFunctionTransform {
         }
       }
     }
+  }
+
+  bool performPeepholesWithoutFixedPoint(SemanticARCOptVisitor &visitor) {
+    seedWorklist(visitor);
     // Then process the worklist, performing peepholes.
     return visitor.optimizeWithoutFixedPoint();
   }
 
   bool performPeepholes(SemanticARCOptVisitor &visitor) {
-    // Add all the results of all instructions that we want to visit to the
-    // worklist.
-    for (auto &block : *getFunction()) {
-      for (auto &inst : block) {
-        if (SemanticARCOptVisitor::shouldVisitInst(&inst)) {
-          for (SILValue v : inst.getResults()) {
-            visitor.worklist.insert(v);
-          }
-        }
-      }
-    }
+    seedWorklist(visitor);
     // Then process the worklist, performing peepholes.
     return visitor.optimize();
   }
@@ -159,11 +160,36 @@ struct SemanticARCOpts : SILFunctionTransform {
     // Now that we have seeded the map of phis to incoming values that could be
     // converted to guaranteed, ignoring the phi, try convert those phis to be
     // guaranteed.
+    bool shouldRerunPeepholes = false;
     if (tryConvertOwnedPhisToGuaranteedPhis(visitor.ctx)) {
+      shouldRerunPeepholes = true;
       // We return here early to save a little compile time so we do not
       // invalidate analyses redundantly.
-      return invalidateAnalysis(
+      invalidateAnalysis(
           SILAnalysis::InvalidationKind::BranchesAndInstructions);
+    }
+
+    // Go through and eliminate any dead guaranteed phi arguments that we
+    // found. This generally happens due to passes relying on SemanticARCOpts to
+    // clean up such things.
+    if (visitor.ctx.eraseDeadPhiArguments()) {
+      shouldRerunPeepholes = true;
+      // Since we performed at least one round, invalidate branches and
+      // instructions.
+      invalidateAnalysis(
+          SILAnalysis::InvalidationKind::BranchesAndInstructions);
+    }
+
+    if (shouldRerunPeepholes) {
+      didEliminateARCInsts |= performPeepholes(visitor);
+
+      // Rerun the dead phi argument elimination after running peepholes.
+      if (visitor.ctx.eraseDeadPhiArguments()) {
+        // Since we performed at least one round, invalidate branches and
+        // instructions.
+        invalidateAnalysis(
+            SILAnalysis::InvalidationKind::BranchesAndInstructions);
+      }
     }
 
     // Otherwise, we only deleted instructions and did not touch phis.

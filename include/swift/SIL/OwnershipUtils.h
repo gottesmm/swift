@@ -15,6 +15,7 @@
 
 #include "swift/Basic/Debug.h"
 #include "swift/Basic/LLVM.h"
+#include "swift/SIL/BasicBlockUtils.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILValue.h"
@@ -28,6 +29,21 @@ class SILInstruction;
 class SILModule;
 class SILValue;
 class DeadEndBlocks;
+
+#ifndef NDEBUG
+namespace ownership {
+/// LLVM option to enable exhaustive ownership checks in APIs that assume that
+/// OSSA is properly formed upon invocation.
+extern bool PerformExhaustiveOwnershipChecking;
+} // namespace ownership
+
+static inline void
+performExhaustiveOwnershipChecks(SILFunction *f) LLVM_ATTRIBUTE_UNUSED;
+static inline void performExhaustiveOwnershipChecks(SILFunction *f) {
+  if (ownership::PerformExhaustiveOwnershipChecking)
+    f->verify();
+}
+#endif
 
 /// Returns true if v is an address or trivial.
 bool isValueAddressOrTrivial(SILValue v);
@@ -98,6 +114,11 @@ public:
   /// otherwise.
   SILValue getSingleForwardedValue() const;
 };
+
+void gatherAllGuaranteedUses(
+    SILValue value, SmallVectorImpl<Operand *> *foundUses,
+    SmallVectorImpl<ForwardingOperand> *foundForwardingUses,
+    SmallVectorImpl<Operand *> *foundLifetimeEndingUses);
 
 /// Returns true if the instruction is a 'reborrow'.
 bool isReborrowInstruction(const SILInstruction *inst);
@@ -170,6 +191,11 @@ struct BorrowingOperand {
     return *this;
   }
 
+  operator const Operand *() const { return op; }
+  operator Operand *() { return op; }
+  Operand *operator->() { return op; }
+  const Operand *operator->() const { return op; }
+
   /// If \p op is a borrow introducing operand return it after doing some
   /// checks.
   static Optional<BorrowingOperand> get(Operand *op) {
@@ -203,6 +229,22 @@ struct BorrowingOperand {
   ///
   /// TODO: tuple, struct, destructure_tuple, destructure_struct.
   bool isReborrow() const {
+    switch (kind) {
+    case BorrowingOperandKind::BeginBorrow:
+    case BorrowingOperandKind::BeginApply:
+    case BorrowingOperandKind::Apply:
+    case BorrowingOperandKind::TryApply:
+    case BorrowingOperandKind::Yield:
+      return false;
+    case BorrowingOperandKind::Branch:
+      return true;
+    }
+    llvm_unreachable("Covered switch isn't covered?!");
+  }
+
+  /// Returns true if this a reborrow that allows for multiple base values to be
+  /// phied together loosening the requirement for dominance.
+  bool isNonDominatingRequiringReborrow() const {
     switch (kind) {
     case BorrowingOperandKind::BeginBorrow:
     case BorrowingOperandKind::BeginApply:
@@ -365,6 +407,36 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, BorrowedValueKind kind);
 
 struct InteriorPointerOperand;
 
+/// Represents a base value of a borrowed value.
+///
+/// Can be either a cfg edge (signified by its storing of an operand) or a value
+/// otherwise.
+struct BaseValue {
+  PointerUnion<Operand *, SILValue> state;
+
+  SILValue getValue() const {
+    if (!state)
+      return SILValue();
+    return state.get<SILValue>();
+  }
+
+  bool isFunctionLevel() const { return !bool(state); }
+
+  /// Returns a base value that means that the value has liveness over the
+  /// entire function.
+  static BaseValue getFunctionLevelBaseValue() { return {nullptr}; }
+
+  static BaseValue getEdgeBaseValue(BorrowingOperand op) { return {op.op}; }
+
+  bool isEdge() const { return state.is<Operand *>(); }
+
+  Optional<BorrowingOperand> getEdge() const {
+    if (!state || !state.is<Operand *>())
+      return None;
+    return BorrowingOperand(state.get<Operand *>());
+  }
+};
+
 /// A higher level construct for working with values that act as a "borrow
 /// introducer" for a new borrow scope.
 ///
@@ -396,6 +468,12 @@ struct BorrowedValue {
     return BorrowedValue(*kind, value);
   }
 
+  operator SILValue() { return value; }
+  operator SILValue() const { return value; }
+  SILValue operator*() const { return value; }
+  ValueBase *operator->() { return value; }
+  const ValueBase *operator->() const { return value; }
+
   /// If this value is introducing a local scope, gather all local end scope
   /// instructions and append them to \p scopeEndingInsts. Asserts if this is
   /// called with a scope that is not local.
@@ -425,7 +503,7 @@ struct BorrowedValue {
   ///
   /// NOTE: Scratch space is used internally to this method to store the end
   /// borrow scopes if needed.
-  bool areUsesWithinScope(ArrayRef<Operand *> instructions,
+  bool areUsesWithinScope(ArrayRef<Operand *> uses,
                           SmallVectorImpl<Operand *> &scratchSpace,
                           SmallPtrSetImpl<SILBasicBlock *> &visitedBlocks,
                           DeadEndBlocks &deadEndBlocks) const;
@@ -446,6 +524,36 @@ struct BorrowedValue {
   /// interior pointer uses. Returns false otherwise.
   bool visitInteriorPointerOperands(
       function_ref<void(const InteriorPointerOperand &)> func) const;
+
+  /// Pass the non-transitive base values of this BorrowedValue to \p
+  /// visitor. The first element Operand * contains a pointer to the actual
+  /// operand in question in a previous block if this is a multi-block base
+  /// value. The second is the actual base value.
+  ///
+  /// This means that if visitor is called with a nullptr operand passed in, we
+  /// must have that we are describing a base value relationship along a CFG
+  /// edge. SILValue() in contrast
+  void visitBaseValues(function_ref<void(BaseValue)> visitor) const;
+
+  void visitTransitiveBaseValues(function_ref<void(BaseValue)> visitor) const;
+
+  /// Visit all immediate uses of this borrowed value and if any of them are
+  /// reborrows, place them in BorrowingOperand form into \p
+  /// foundReborrows. Returns true if we appended any such reborrows to
+  /// foundReborrows... false otherwise.
+  bool
+  gatherReborrows(SmallVectorImpl<BorrowingOperand> &foundReborrows) const {
+    bool foundAnyReborrows = false;
+    for (auto *op : value->getUses()) {
+      if (auto borrowingOperand = BorrowingOperand::get(op)) {
+        if (borrowingOperand->isReborrow()) {
+          foundReborrows.push_back(*borrowingOperand);
+          foundAnyReborrows = true;
+        }
+      }
+    }
+    return foundAnyReborrows;
+  }
 
 private:
   /// Internal constructor for failable static constructor. Please do not expand

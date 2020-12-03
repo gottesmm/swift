@@ -1493,3 +1493,62 @@ bb3:
   return %9999 : $()
 }
 
+sil @$klass_create_myint : $@convention(method) (@owned Klass) -> MyInt
+sil @$test_myint : $@convention(method) (MyInt, MyInt) -> Builtin.Int1
+
+sil [ossa] @dont_crash_test : $@convention(thin) (@guaranteed FakeOptional<Klass>, @guaranteed FakeOptional<Klass>) -> Builtin.Int1 {
+bb0(%0 : @guaranteed $FakeOptional<Klass>, %1 : @guaranteed $FakeOptional<Klass>):
+  %4 = copy_value %0 : $FakeOptional<Klass>
+  %5 = copy_value %1 : $FakeOptional<Klass>
+  %6 = tuple (%4 : $FakeOptional<Klass>, %5 : $FakeOptional<Klass>)
+  %7 = begin_borrow %6 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  (%8, %9) = destructure_tuple %7 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  switch_enum %8 : $FakeOptional<Klass>, case #FakeOptional.some!enumelt: bb1, case #FakeOptional.none!enumelt: bb4
+
+bb1(%11 : @guaranteed $Klass):
+  switch_enum %9 : $FakeOptional<Klass>, case #FakeOptional.some!enumelt: bb2, default bb3
+
+bb2(%13 : @guaranteed $Klass):
+  %14 = copy_value %11 : $Klass
+  %15 = copy_value %13 : $Klass
+  %20 = copy_value %14 : $Klass
+  %21 = function_ref @$klass_create_myint : $@convention(method) (@owned Klass) -> MyInt
+  %22 = apply %21(%20) : $@convention(method) (@owned Klass) -> MyInt
+  %24 = copy_value %15 : $Klass
+  %25 = function_ref @$klass_create_myint : $@convention(method) (@owned Klass) -> MyInt
+  %26 = apply %25(%24) : $@convention(method) (@owned Klass) -> MyInt
+  %27 = function_ref @$test_myint : $@convention(method) (MyInt, MyInt) -> Builtin.Int1
+  %28 = apply %27(%22, %26) : $@convention(method) (MyInt, MyInt) -> Builtin.Int1
+  destroy_value %15 : $Klass
+  destroy_value %14 : $Klass
+  end_borrow %7 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  destroy_value %6 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  br bb8(%28 : $Builtin.Int1)
+
+bb3(%34 : @guaranteed $FakeOptional<Klass>):
+  end_borrow %7 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  br bb7
+
+bb4:
+  switch_enum %9 : $FakeOptional<Klass>, case #FakeOptional.none!enumelt: bb5, default bb6
+
+bb5:
+  %38 = integer_literal $Builtin.Int1, -1
+  end_borrow %7 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  destroy_value %6 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  br bb8(%38 : $Builtin.Int1)
+
+bb6(%43 : @guaranteed $FakeOptional<Klass>):
+  end_borrow %7 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  br bb7
+
+bb7:
+  %46 = integer_literal $Builtin.Int1, 0
+  destroy_value %6 : $(FakeOptional<Klass>, FakeOptional<Klass>)
+  br bb8(%46 : $Builtin.Int1)
+
+
+bb8(%50 : $Builtin.Int1):
+  return %50 : $Builtin.Int1
+}
+

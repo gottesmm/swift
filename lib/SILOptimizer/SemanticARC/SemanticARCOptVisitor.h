@@ -36,7 +36,7 @@ namespace semanticarc {
 /// visitors do, we maintain a visitedSinceLastMutation list to ensure that we
 /// revisit all interesting instructions in between mutations.
 struct LLVM_LIBRARY_VISIBILITY SemanticARCOptVisitor
-    : SILInstructionVisitor<SemanticARCOptVisitor, bool> {
+    : SILValueVisitor<SemanticARCOptVisitor, bool> {
   /// Our main worklist. We use this after an initial run through.
   SmallBlotSetVector<SILValue, 32> worklist;
 
@@ -135,9 +135,25 @@ struct LLVM_LIBRARY_VISIBILITY SemanticARCOptVisitor
     return false;
   }
 
+  /// The default visitor.
+  bool visitValueBase(ValueBase *valueBase) { return false; }
+
   bool visitCopyValueInst(CopyValueInst *cvi);
   bool visitBeginBorrowInst(BeginBorrowInst *bbi);
   bool visitLoadInst(LoadInst *li);
+  // bool
+  // visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst
+  // *uoci);
+  bool visitSILPhiArgument(SILPhiArgument *arg);
+  bool visitEndBorrowInst(EndBorrowInst *ebi) {
+    if (ebi->getOperand().getOwnershipKind() == OwnershipKind::None) {
+      eraseInstruction(ebi);
+      return true;
+    }
+
+    return false;
+  }
+
   static bool shouldVisitInst(SILInstruction *i) {
     switch (i->getKind()) {
     default:
@@ -145,8 +161,15 @@ struct LLVM_LIBRARY_VISIBILITY SemanticARCOptVisitor
     case SILInstructionKind::CopyValueInst:
     case SILInstructionKind::BeginBorrowInst:
     case SILInstructionKind::LoadInst:
+      // case SILInstructionKind::UncheckedOwnershipConversionInst:
+    case SILInstructionKind::EndBorrowInst:
       return true;
     }
+  }
+
+  static bool shouldVisitArgument(SILArgument *arg) {
+    return arg->isPhiArgument() &&
+           arg->getOwnershipKind() == OwnershipKind::Guaranteed;
   }
 
 #define FORWARDING_INST(NAME)                                                  \
@@ -202,13 +225,21 @@ struct LLVM_LIBRARY_VISIBILITY SemanticARCOptVisitor
 #undef FORWARDING_TERM
 
   bool processWorklist();
-  bool optimize();
+  bool optimize(bool seedForOwnedToGuaranteedPhi = true);
   bool optimizeWithoutFixedPoint();
 
   bool performGuaranteedCopyValueOptimization(CopyValueInst *cvi);
   bool eliminateDeadLiveRangeCopyValue(CopyValueInst *cvi);
   bool tryJoiningCopyValueLiveRangeWithOperand(CopyValueInst *cvi);
   bool tryPerformOwnedCopyValueOptimization(CopyValueInst *cvi);
+
+  /// Returns false if we could not eliminate all reborrows. Sets also
+  /// didMakeChange as an out parameter in order to allow for knowledge of
+  /// whether or not a change was made (albeit not enough to remove the entire
+  /// web).
+  bool eliminateReborrows(BeginBorrowInst *bbi,
+                          SmallVectorImpl<BorrowingOperand> &foundReborrows,
+                          bool *didMakeChange = nullptr);
 };
 
 } // namespace semanticarc

@@ -1,22 +1,9 @@
-// RUN: %target-sil-opt -silgen-cleanup %s | %FileCheck %s
+// RUN: %target-sil-opt -silgen-cleanup -enable-sil-verify-all %s | %FileCheck %s
+// RUN: %target-sil-opt -silgen-cleanup -semantic-arc-opts -enable-sil-verify-all %s | %FileCheck -check-prefix=CHECK-CLEANUP %s
 
 import Builtin
 
-sil_stage raw
-
-class Klass {}
-class SubKlass : Klass {}
-
-sil @use_klass_guaranteed : $@convention(thin) (@guaranteed Klass) -> ()
-sil @use_klass_owned : $@convention(thin) (@owned Klass) -> ()
-sil @use_klass_unowned : $@convention(thin) (Klass) -> ()
-
-enum FakeOptional<T> {
-case none
-case some(T)
-}
-
-sil @use_fakeoptional_klass_guaranteed : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> ()
+sil_stage canonical
 
 struct Int {
   var _value : Builtin.Int32
@@ -25,6 +12,26 @@ struct Int {
 struct UInt8 {
   var _value : Builtin.Int8
 }
+
+//////////////////
+// Declarations //
+//////////////////
+
+class Klass {}
+class SubKlass : Klass {}
+enum FakeOptional<T> {
+case none
+case some(T)
+}
+
+sil @use_klass_unowned : $@convention(thin) (Klass) -> ()
+sil @use_klass_guaranteed : $@convention(thin) (@guaranteed Klass) -> ()
+sil @use_klass_owned : $@convention(thin) (@owned Klass) -> ()
+sil @use_fakeoptional_klass_guaranteed : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> ()
+
+///////////
+// Tests //
+///////////
 
 // CHECK-LABEL: sil [ossa] @struct_extract_load_to_load_struct_element_addr
 // CHECK: bb0([[IN:%[0-9]+]] : $*UInt8):
@@ -182,4 +189,93 @@ bb0(%0 : $*X3, %1 : @guaranteed $Builtin.NativeObject):
   end_access %5 : $*X3
   %12 = tuple ()
   return %12 : $()
+}
+
+// CHECK-LABEL: sil [ossa] @eliminateUnneededARC : $@convention(thin) (@guaranteed Klass) -> () {
+// CHECK: bb0(
+// CHECK-NEXT: tuple
+// CHECK-NEXT: return
+// CHECK: } // end sil function 'eliminateUnneededARC'
+sil [ossa] @eliminateUnneededARC : $@convention(thin) (@guaranteed Klass) -> () {
+bb0(%0 : @guaranteed $Klass):
+  %1 = copy_value %0 : $Klass
+  debug_value %1 : $Klass, let, name "l"
+  %2 = begin_borrow %1 : $Klass
+  debug_value %2 : $Klass, let, name "r"
+  end_borrow %2 : $Klass
+  destroy_value %1 : $Klass
+  %9999 = tuple()
+  return %9999 : $()
+}
+
+// CHECK-LABEL: sil [ossa] @eliminateUnneededARCNegative : $@convention(thin) (@guaranteed Klass) -> () {
+//
+// In this case, we can't eliminate the copy_value, destroy_value since this
+// simple optimization does not reason about the lifetimes of a copy_value's
+// operand (which may not be live to all of the copy_value's uses). We do, do
+// this optimization in semantic-arc-opts.
+//
+// CHECK: bb0([[ARG:%.*]] :
+// CHECK:   [[ARG_COPY:%.*]] = copy_value [[ARG]]
+// CHECK:   apply {{%.*}}([[ARG_COPY]])
+// CHECK:   destroy_value [[ARG_COPY]]
+// CHECK: } // end sil function 'eliminateUnneededARCNegative'
+sil [ossa] @eliminateUnneededARCNegative : $@convention(thin) (@guaranteed Klass) -> () {
+bb0(%0 : @guaranteed $Klass):
+  %f = function_ref @use_klass_guaranteed : $@convention(thin) (@guaranteed Klass) -> ()
+  %1 = copy_value %0 : $Klass
+  debug_value %1 : $Klass, let, name "l"
+  %2 = begin_borrow %1 : $Klass
+  debug_value %2 : $Klass, let, name "r"
+  apply %f(%2) : $@convention(thin) (@guaranteed Klass) -> ()
+  end_borrow %2 : $Klass
+  destroy_value %1 : $Klass
+
+  %f2 = function_ref @use_klass_owned : $@convention(thin) (@owned Klass) -> ()
+  %other = copy_value %0 : $Klass
+  apply %f2(%other) : $@convention(thin) (@owned Klass) -> ()
+  %9999 = tuple()
+  return %9999 : $()
+}
+
+// CHECK-LABEL: sil [ossa] @eliminateUnneededARCNegative2 : $@convention(thin) (@guaranteed Klass) -> () {
+// CHECK: bb0([[ARG:%.*]] : @guaranteed $Klass):
+// CHECK:   [[COPY_1:%.*]] = copy_value [[ARG]]
+// CHECK:   apply {{%.*}}([[COPY_1]])
+// CHECK:   destroy_value [[COPY_1]]
+// CHECK:   [[COPY_1:%.*]] = copy_value [[ARG]]
+// CHECK:   apply {{%.*}}([[COPY_1]]) : $@convention(thin) (@owned Klass) -> ()
+// CHECK: } // end sil function 'eliminateUnneededARCNegative2'
+sil [ossa] @eliminateUnneededARCNegative2 : $@convention(thin) (@guaranteed Klass) -> () {
+bb0(%0 : @guaranteed $Klass):
+  %f = function_ref @use_klass_guaranteed : $@convention(thin) (@guaranteed Klass) -> ()
+  %1 = copy_value %0 : $Klass
+  debug_value %1 : $Klass, let, name "l"
+  %2 = begin_borrow %1 : $Klass
+  debug_value %2 : $Klass, let, name "r"
+  apply %f(%2) : $@convention(thin) (@guaranteed Klass) -> ()
+  end_borrow %2 : $Klass
+  destroy_value %1 : $Klass
+
+  %f2 = function_ref @use_klass_owned : $@convention(thin) (@owned Klass) -> ()
+  %other = copy_value %0 : $Klass
+  apply %f2(%other) : $@convention(thin) (@owned Klass) -> ()
+
+  %9999 = tuple()
+  return %9999 : $()
+}
+
+// For now we do not support eliminating unnecessary consuming borrows.
+// CHECK-LABEL: sil [ossa] @eliminateUnneededARC_consuming_borrow : $@convention(thin) (@guaranteed Klass) -> () {
+// CHECK: begin_borrow
+// CHECK: } // end sil function 'eliminateUnneededARC_consuming_borrow'
+sil [ossa] @eliminateUnneededARC_consuming_borrow : $@convention(thin) (@guaranteed Klass) -> () {
+bb0(%0 : @guaranteed $Klass):
+  %1 = begin_borrow %0 : $Klass
+  br bb1(%1 : $Klass)
+
+bb1(%2 : @guaranteed $Klass):
+  end_borrow %2 : $Klass
+  %9999 = tuple()
+  return %9999 : $()
 }

@@ -63,7 +63,8 @@ struct CanonicalizeInstruction {
   ///
   /// Warning: If the \p inst argument is killed and the client immediately
   /// erases \p inst, then it may be an invalid pointer upon return.
-  SILBasicBlock::iterator canonicalize(SILInstruction *inst);
+  SILBasicBlock::iterator canonicalize(SILInstruction *inst,
+                                       DeadEndBlocks &deadEndBlocks);
 
   /// Record a newly generated instruction.
   virtual void notifyNewInstruction(SILInstruction *inst) = 0;

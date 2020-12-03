@@ -109,12 +109,14 @@ void SILCombiner::addReachableCodeToWorklist(SILBasicBlock *BB) {
 // Define a CanonicalizeInstruction subclass for use in SILCombine.
 class SILCombineCanonicalize final : CanonicalizeInstruction {
   SmallSILInstructionWorklist<256> &Worklist;
+  DeadEndBlocks &deadEndBlocks;
   bool changed = false;
 
 public:
-  SILCombineCanonicalize(
-      SmallSILInstructionWorklist<256> &Worklist)
-      : CanonicalizeInstruction(DEBUG_TYPE), Worklist(Worklist) {}
+  SILCombineCanonicalize(SmallSILInstructionWorklist<256> &Worklist,
+                         DeadEndBlocks &deadEndBlocks)
+      : CanonicalizeInstruction(DEBUG_TYPE), Worklist(Worklist),
+        deadEndBlocks(deadEndBlocks) {}
 
   void notifyNewInstruction(SILInstruction *inst) override {
     Worklist.add(inst);
@@ -139,7 +141,7 @@ public:
 
   bool tryCanonicalize(SILInstruction *inst) {
     changed = false;
-    canonicalize(inst);
+    canonicalize(inst, deadEndBlocks);
     return changed;
   }
 };
@@ -153,7 +155,7 @@ bool SILCombiner::doOneIteration(SILFunction &F, unsigned Iteration) {
   // Add reachable instructions to our worklist.
   addReachableCodeToWorklist(&*F.begin());
 
-  SILCombineCanonicalize scCanonicalize(Worklist);
+  SILCombineCanonicalize scCanonicalize(Worklist, deadEndBlocks);
 
   // Process until we run out of items in our worklist.
   while (!Worklist.isEmpty()) {

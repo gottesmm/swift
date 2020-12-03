@@ -12,10 +12,12 @@
 
 #include "swift/SIL/OwnershipUtils.h"
 #include "swift/Basic/Defer.h"
+#include "swift/SIL/BasicBlockUtils.h"
 #include "swift/SIL/InstructionUtils.h"
 #include "swift/SIL/LinearLifetimeChecker.h"
 #include "swift/SIL/Projection.h"
 #include "swift/SIL/SILArgument.h"
+#include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILInstruction.h"
 
 using namespace swift;
@@ -221,9 +223,17 @@ bool BorrowingOperand::visitLocalEndScopeUses(
   case BorrowingOperandKind::TryApply:
   case BorrowingOperandKind::Yield:
     return true;
-  case BorrowingOperandKind::Branch:
+  case BorrowingOperandKind::Branch: {
+    auto *br = cast<BranchInst>(op->getUser());
+    for (auto *use : br->getArgForOperand(op)->getUses())
+      if (use->isLifetimeEnding())
+        if (!func(use))
+          return false;
     return true;
   }
+  }
+
+  llvm_unreachable("Covered switch isn't covered");
 }
 
 void BorrowingOperand::visitBorrowIntroducingUserResults(
@@ -311,7 +321,7 @@ void BorrowingOperand::getImplicitUses(
 }
 
 //===----------------------------------------------------------------------===//
-//                             Borrow Introducers
+//                              Borrowed Values
 //===----------------------------------------------------------------------===//
 
 void BorrowedValueKind::print(llvm::raw_ostream &os) const {
@@ -442,6 +452,7 @@ bool BorrowedValue::visitLocalScopeTransitiveEndingUses(
       continue;
     }
 
+    // Otherwise, we need to look through all
     scopeOperand->visitConsumingUsesOfBorrowIntroducingUserResults(
         [&](Operand *op) {
           assert(op->isLifetimeEnding() && "Expected only consuming uses");
@@ -501,6 +512,74 @@ bool BorrowedValue::visitInteriorPointerOperands(
   }
 
   return true;
+}
+
+void BorrowedValue::visitBaseValues(
+    function_ref<void(BaseValue)> visitor) const {
+  switch (kind) {
+  case BorrowedValueKind::SILFunctionArgument:
+    return visitor(BaseValue::getFunctionLevelBaseValue());
+  case BorrowedValueKind::BeginBorrow: {
+    auto *bbi = cast<BeginBorrowInst>(value);
+    return visitor({bbi->getOperand()});
+  }
+  case BorrowedValueKind::LoadBorrow: {
+    auto *lbi = cast<LoadBorrowInst>(value);
+    return visitor({lbi->getOperand()});
+  }
+  case BorrowedValueKind::Phi: {
+    auto *phi = cast<SILPhiArgument>(value);
+    phi->visitIncomingPhiOperands([&](Operand *incomingValueOperand) {
+      // If we have an incoming value that is none, then we do not have any base
+      // value to visit.
+      auto incomingOwnershipKind =
+          incomingValueOperand->get().getOwnershipKind();
+      if (incomingOwnershipKind == OwnershipKind::None) {
+        visitor(BaseValue::getFunctionLevelBaseValue());
+        return true;
+      }
+
+      // Otherwise, we must have a guaranteed value that our phi (the reborrow)
+      // is invalidating. In that case, we know that the operand of the branch
+      // must be our BorrowedValue which will give us our local scope base
+      // value.
+      assert(incomingOwnershipKind == OwnershipKind::Guaranteed);
+      auto borrowingOp = *BorrowingOperand::get(incomingValueOperand);
+      visitor(BaseValue::getEdgeBaseValue(borrowingOp));
+      return true;
+    });
+  }
+  }
+}
+
+void BorrowedValue::visitTransitiveBaseValues(
+    function_ref<void(BaseValue)> visitor) const {
+  SmallVector<BorrowingOperand, 32> worklist;
+
+  visitBaseValues([&](BaseValue bv) {
+    if (auto edge = bv.getEdge()) {
+      worklist.push_back(*edge);
+      return;
+    }
+    visitor(bv);
+  });
+
+  while (!worklist.empty()) {
+    auto borrowingOperand = worklist.pop_back_val();
+
+    // We know that this is going to be a borrowing operand from a phi, so we
+    // know that it must be lifetime ending. Since it is lifetime ending, we
+    // know that this borrowing operand must have as its value the borrow
+    // introducer of our phi.
+    auto borrowedValue = *BorrowedValue::get(borrowingOperand.op->get());
+    borrowedValue.visitBaseValues([&](BaseValue bv) {
+      if (auto edge = bv.getEdge()) {
+        worklist.push_back(*edge);
+        return;
+      }
+      visitor(bv);
+    });
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1060,3 +1139,56 @@ bool ForwardingOperand::visitForwardedValues(
     return visitor(args[0]);
   });
 }
+
+#ifndef NDEBUG
+bool swift::ownership::PerformExhaustiveOwnershipChecking;
+
+static llvm::cl::opt<bool, true> PerformExhaustiveOwnershipCheckingOpt(
+    "sil-ossa-enable-exhaustive-checks", llvm::cl::Hidden,
+    llvm::cl::location(swift::ownership::PerformExhaustiveOwnershipChecking),
+    llvm::cl::init(false));
+#endif
+
+#if 0
+void swift::gatherAllGuaranteedUses(
+    SILValue value, SmallVectorImpl<Operand *> &foundNonLifetimeEndingUses,
+    SmallVectorImpl<ForwardingOperand> &foundForwardingUses,
+    SmallVectorImpl<Operand *> &foundLifetimeEndingUses) {
+  SmallVector<ForwardingOperand, 32> worklist;
+
+  for (auto *use : value->getUses()) {
+    if (auto fOperand = ForwardingOperand::get(use)) {
+      worklist.push_back(*fOperand);
+      foundForwardingUses.push_back(*fOperand);
+      continue;
+    }
+
+    if (use->isLifetimeEnding()) {
+      foundLifetimeEndingUses.push_back(use);
+      continue;
+    }
+
+    foundNonLifetimeEndingUses.push_back(use);
+  }
+
+  while (!worklist.empty()) {
+    auto fOperand = worklist.pop_back_val();
+    fOperand.visitTransitiveValues([&](SILValue value) {
+      for (auto *use : value->getUses()) {
+        if (auto fOperand = ForwardingOperand::get(use)) {
+          worklist.push_back(*fOperand);
+          foundForwardingUses.push_back(*fOperand);
+          continue;
+        }
+
+        if (use->isLifetimeEnding()) {
+          foundLifetimeEndingUses.push_back(use);
+          continue;
+        }
+
+        foundNonLifetimeEndingUses.push_back(use);
+      }
+    });
+  }
+}
+#endif

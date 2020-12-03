@@ -99,6 +99,13 @@ public:
     propagateLiveness();
   }
 
+  ValueLifetimeAnalysis(SILInstruction *def, ArrayRef<Operand *> useRange)
+      : defValue(def), userSet() {
+    for (Operand *use : useRange)
+      userSet.insert(use->getUser());
+    propagateLiveness();
+  }
+
   enum Mode {
     /// Don't split critical edges if the frontier instructions are located on
     /// a critical edges. Instead fail.

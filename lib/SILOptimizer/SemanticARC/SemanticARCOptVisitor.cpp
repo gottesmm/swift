@@ -32,16 +32,20 @@ bool SemanticARCOptVisitor::optimizeWithoutFixedPoint() {
   return madeChange;
 }
 
-bool SemanticARCOptVisitor::optimize() {
+bool SemanticARCOptVisitor::optimize(bool seedForOwnedToGuaranteedPhi) {
   bool madeChange = false;
 
   // First process the worklist until we reach a fixed point.
   madeChange |= processWorklist();
 
+  // If we aren't going to seed the owned to guaranteed phi map, just return map
+  // change early.
+  if (!seedForOwnedToGuaranteedPhi)
+    return madeChange;
+
   {
     // If we made a change, set that we assume we are at fixed point and then
-    // re-run the worklist so that we can
-    // properly seeded the ARC peephole map.
+    // re-run the worklist so that we can properly seed the ARC peephole map.
     ctx.assumingAtFixedPoint = true;
     SWIFT_DEFER { ctx.assumingAtFixedPoint = false; };
 
@@ -107,6 +111,18 @@ bool SemanticARCOptVisitor::processWorklist() {
     // perhaps), try to visit that value recursively.
     if (auto *svi = dyn_cast<SingleValueInstruction>(next)) {
       bool madeSingleChange = visit(svi);
+      assert((!madeSingleChange || !ctx.assumingAtFixedPoint) &&
+             "Assumed was at fixed point and modified state?!");
+      madeChange |= madeSingleChange;
+      if (madeSingleChange) {
+        ctx.verify();
+      }
+      continue;
+    }
+
+    // See if have a SILArgument that is interesting. If so, visit it.
+    if (auto *arg = dyn_cast<SILPhiArgument>(next)) {
+      bool madeSingleChange = visit(arg);
       assert((!madeSingleChange || !ctx.assumingAtFixedPoint) &&
              "Assumed was at fixed point and modified state?!");
       madeChange |= madeSingleChange;

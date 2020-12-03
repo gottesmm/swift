@@ -24,6 +24,7 @@
 #include "swift/SIL/Projection.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILFunction.h"
+#include "swift/SIL/SILInstruction.h"
 #include "swift/SILOptimizer/Analysis/SimplifyInstruction.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Debug.h"
@@ -79,12 +80,8 @@ killInstAndIncidentalUses(SingleValueInstruction *inst,
 // If simplification is successful, return a valid iterator to the next
 // intruction that wasn't erased.
 static Optional<SILBasicBlock::iterator>
-simplifyAndReplace(SILInstruction *inst, CanonicalizeInstruction &pass) {
-  // FIXME: temporarily bypass simplification untill all simplifications
-  // preserve ownership SIL.
-  if (inst->getFunction()->hasOwnership())
-    return None;
-
+simplifyAndReplace(SILInstruction *inst, CanonicalizeInstruction &pass,
+                   DeadEndBlocks &deadEndBlocks) {
   SILValue result = simplifyInstruction(inst);
   if (!result)
     return None;
@@ -99,7 +96,9 @@ simplifyAndReplace(SILInstruction *inst, CanonicalizeInstruction &pass) {
   // because the instruction and all non-replaced users will be deleted.
   auto nextII = replaceAllSimplifiedUsesAndErase(
       inst, result,
-      [&pass](SILInstruction *deleted) { pass.killInstruction(deleted); });
+      [&pass](SILInstruction *deleted) { pass.killInstruction(deleted); },
+      [&pass](SILInstruction *newInst) { pass.notifyNewInstruction(newInst); },
+      &deadEndBlocks);
 
   // Push the new instruction and any users onto the worklist.
   pass.notifyHasNewUsers(result);
@@ -447,8 +446,9 @@ eliminateSimpleBorrows(BeginBorrowInst *bbi, CanonicalizeInstruction &pass) {
 //===----------------------------------------------------------------------===//
 
 SILBasicBlock::iterator
-CanonicalizeInstruction::canonicalize(SILInstruction *inst) {
-  if (auto nextII = simplifyAndReplace(inst, *this))
+CanonicalizeInstruction::canonicalize(SILInstruction *inst,
+                                      DeadEndBlocks &deadEndBlocks) {
+  if (auto nextII = simplifyAndReplace(inst, *this, deadEndBlocks))
     return nextII.getValue();
 
   if (auto *loadInst = dyn_cast<LoadInst>(inst))

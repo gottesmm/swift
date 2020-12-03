@@ -35,6 +35,7 @@ struct LLVM_LIBRARY_VISIBILITY Context {
   Optional<DeadEndBlocks> deadEndBlocks;
   ValueLifetimeAnalysis::Frontier lifetimeFrontier;
   SmallMultiMapCache<SILValue, Operand *> addressToExhaustiveWriteListCache;
+  SmallVector<SILPhiArgument *, 8> deadGuaranteedArgs;
 
   /// Are we assuming that we reached a fix point and are re-processing to
   /// prepare to use the phiToIncomingValueMultiMap.
@@ -130,6 +131,13 @@ struct LLVM_LIBRARY_VISIBILITY Context {
     addressToExhaustiveWriteListCache.clear();
     joinedOwnedIntroducerToConsumedOperands.reset();
   }
+
+  /// Erases all current dead phi arguments being tracked by the context.
+  ///
+  /// A dead phi argument is a phi argument with guaranteed ownership but that
+  /// only has undef incoming values. We do this in two stages to avoid
+  /// invalidation problems.
+  bool eraseDeadPhiArguments();
 
 private:
   static bool

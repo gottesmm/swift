@@ -21,6 +21,7 @@
 
 #include "swift/SIL/OwnershipUtils.h"
 #include "swift/SIL/SILModule.h"
+#include "swift/SILOptimizer/Utils/InstOptUtils.h"
 
 namespace swift {
 
@@ -36,6 +37,13 @@ struct OwnershipFixupContext {
   SILBasicBlock::iterator
   replaceAllUsesFixingOwnership(SingleValueInstruction *oldValue,
                                 SILValue newValue);
+
+  InstModCallbacks getCallbacks() const {
+    std::function<void(SILValue, SILValue)> RAUWFail = [](SILValue, SILValue) {
+      llvm_unreachable("Should never perform RAUW");
+    };
+    return {eraseNotify, newInstNotify, RAUWFail};
+  }
 
   /// We can not RAUW all old values with new values.
   ///

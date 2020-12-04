@@ -1,4 +1,4 @@
-// RUN: %target-sil-opt -mandatory-combine -semantic-arc-opts %s | %FileCheck %s
+// RUN: %target-sil-opt -enable-sil-verify-all -mandatory-combine -semantic-arc-opts %s | %FileCheck %s
 
 // Make sure that we can perform all of these RAUW without producing ARC traffic
 // that semantic arc opts can't eliminate.
@@ -97,14 +97,33 @@ sil @use_fakeoptional_klass_guaranteed : $@convention(thin) (@guaranteed FakeOpt
 // Tests //
 ///////////
 
-// Ownership RAUW tests. During normal running make sure we don't
-// crash. Otherwise, make sure we can eliminate all ARC traffic that were
-// inserted by the pass.
+//===---
+// None Tests
+//
 
-// CHECK-CLEANUP-LABEL: sil [ossa] @owned_to_owned_rauw : $@convention(thin) (@owned Klass) -> @owned Klass {
-// CHECK-CLEANUP: bb0(
-// CHECK-CLEANUP-NEXT: return
-// CHECK-CLEANUP: } // end sil function 'owned_to_owned_rauw'
+// CHECK-LABEL: sil [ossa] @none_to_none_rauw : $@convention(thin) (MyInt) -> MyInt {
+// CHECK: bb0
+// CHECK: return %0
+// CHECK: } // end sil function 'none_to_none_rauw'
+sil [ossa] @none_to_none_rauw : $@convention(thin) (MyInt) -> MyInt {
+bb0(%0 : $MyInt):
+  %1 = unchecked_bitwise_cast %0 : $MyInt to $Builtin.Int64
+  %2 = unchecked_bitwise_cast %1 : $Builtin.Int64 to $MyInt
+  return %2 : $MyInt
+}
+
+// We do not support replacing .none with non-trivial ownerships. This can only
+// occur with enum cases without payloads or with trivial payload. That requires
+// more infrastructure than we have currently.
+
+//===---
+// Owned Tests
+//
+
+// CHECK-LABEL: sil [ossa] @owned_to_owned_rauw : $@convention(thin) (@owned Klass) -> @owned Klass {
+// CHECK: bb0(
+// CHECK-NEXT: return
+// CHECK: } // end sil function 'owned_to_owned_rauw'
 sil [ossa] @owned_to_owned_rauw : $@convention(thin) (@owned Klass) -> @owned Klass {
 bb0(%0 : @owned $Klass):
   %1 = unchecked_ref_cast %0 : $Klass to $SubKlass
@@ -112,10 +131,41 @@ bb0(%0 : @owned $Klass):
   return %2 : $Klass
 }
 
-// CHECK-CLEANUP-LABEL: sil [ossa] @unowned_to_owned_rauw : $@convention(thin) (@owned Klass) -> @owned Klass {
-// CHECK-CLEANUP: bb0(
-// CHECK-CLEANUP-NEXT: return
-// CHECK-CLEANUP: } // end sil function 'unowned_to_owned_rauw'
+// We introduce a single copy in this case. SemanticARCOpt should improve to be
+// able to hit this pattern.
+//
+// CHECK-LABEL: sil [ossa] @owned_to_owned_conditional : $@convention(thin) (@owned FakeOptional<Klass>) -> () {
+// CHECK: copy_value
+// CHECK-NOT: enum $FakeOptional<Klass>, #FakeOptional.some!enumelt
+// CHECK-NOT: copy_value
+// CHECK: } // end sil function 'owned_to_owned_conditional'
+sil [ossa] @owned_to_owned_conditional : $@convention(thin) (@owned FakeOptional<Klass>) -> () {
+bb0(%0 : @owned $FakeOptional<Klass>):
+  switch_enum %0 : $FakeOptional<Klass>, case #FakeOptional.some: bb1, case #FakeOptional.none: bb2
+
+bb1(%0a : @owned $Klass):
+  // We are replacing %1 with %0.
+  %1 = enum $FakeOptional<Klass>, #FakeOptional.some!enumelt, %0a : $Klass
+  br bb3(%1 : $FakeOptional<Klass>)
+
+bb2:
+  %3 = enum $FakeOptional<Klass>, #FakeOptional.none!enumelt
+  br bb3(%3 : $FakeOptional<Klass>)
+
+bb3(%4 : @owned $FakeOptional<Klass>):
+  destroy_value %4 : $FakeOptional<Klass>
+  %9999 = tuple()
+  return %9999 : $()
+}
+
+//===---
+// Unowned Tests
+//
+
+// CHECK-LABEL: sil [ossa] @unowned_to_owned_rauw : $@convention(thin) (@owned Klass) -> @owned Klass {
+// CHECK: bb0(
+// CHECK-NEXT: return
+// CHECK: } // end sil function 'unowned_to_owned_rauw'
 sil [ossa] @unowned_to_owned_rauw : $@convention(thin) (@owned Klass) -> @owned Klass {
 bb0(%0 : @owned $Klass):
   %1 = unchecked_bitwise_cast %0 : $Klass to $SubKlass
@@ -125,11 +175,67 @@ bb0(%0 : @owned $Klass):
   return %3 : $Klass
 }
 
-// CHECK-CLEANUP-LABEL: sil [ossa] @unowned_to_guaranteed_rauw : $@convention(thin) (@guaranteed Klass) -> @owned Klass {
-// CHECK-CLEANUP: bb0(
-// CHECK-CLEANUP-NEXT: copy_value
-// CHECK-CLEANUP-NEXT: return
-// CHECK-CLEANUP: } // end sil function 'unowned_to_guaranteed_rauw'
+// CHECK-LABEL: sil [ossa] @unowned_to_owned_rauw_loop : $@convention(thin) (@owned Klass) -> @owned FakeOptional<Klass> {
+// CHECK: bb0([[ARG:%.*]] : @owned $Klass):
+// CHECK-NOT: unchecked_bitwise_cast
+// CHECK-NOT: copy_value
+// CHECK-NOT: destroy_value
+//
+// CHECK: bb2:
+// CHECK-NEXT: [[COPY:%.*]] = copy_value [[ARG]]
+// CHECK-NEXT: cond_br undef, bb3, bb4
+//
+// CHECK: bb3:
+// CHECK-NEXT: destroy_value [[COPY]]
+// CHECK-NEXT: br bb2
+//
+// CHECK: bb4:
+// CHECK-NEXT: [[ENUM_SOME_RESULT:%.*]] = enum $FakeOptional<Klass>, #FakeOptional.some!enumelt, [[COPY]]
+// CHECK-NEXT: br bb6([[ENUM_SOME_RESULT]] : $FakeOptional<Klass>)
+//
+// CHECK: bb5:
+// CHECK-NEXT: [[ENUM_NONE_RESULT:%.*]] = enum $FakeOptional<Klass>, #FakeOptional.none!enumelt
+// CHECK-NEXT: br bb6([[ENUM_NONE_RESULT]] :
+//
+// CHECK: bb6([[RESULT:%.*]] : @owned $FakeOptional<Klass>):
+// CHECK-NEXT: destroy_value [[ARG]]
+// CHECK-NEXT: return [[RESULT]]
+// CHECK: } // end sil function 'unowned_to_owned_rauw_loop'
+sil [ossa] @unowned_to_owned_rauw_loop : $@convention(thin) (@owned Klass) -> @owned FakeOptional<Klass> {
+bb0(%0 : @owned $Klass):
+  cond_br undef, bbLoopPreHeader, bbEarlyExit
+
+bbLoopPreHeader:
+  br bbLoopHeader
+
+bbLoopHeader:
+  %1 = unchecked_bitwise_cast %0 : $Klass to $SubKlass
+  %2 = unchecked_bitwise_cast %1 : $SubKlass to $Klass
+  %3 = copy_value %2 : $Klass
+  cond_br undef, bbBackEdge, bbExitingBlock
+
+bbBackEdge:
+  destroy_value %3 : $Klass
+  br bbLoopHeader
+
+bbExitingBlock:
+  %4 = enum $FakeOptional<Klass>, #FakeOptional.some!enumelt, %3 : $Klass
+  br bbExitBlock(%4 : $FakeOptional<Klass>)
+
+bbEarlyExit:
+  %5 = enum $FakeOptional<Klass>, #FakeOptional.none!enumelt
+  br bbExitBlock(%5 : $FakeOptional<Klass>)
+
+bbExitBlock(%result : @owned $FakeOptional<Klass>):
+  destroy_value %0 : $Klass
+  return %result : $FakeOptional<Klass>
+}
+
+// CHECK-LABEL: sil [ossa] @unowned_to_guaranteed_rauw : $@convention(thin) (@guaranteed Klass) -> @owned Klass {
+// CHECK: bb0(
+// CHECK-NEXT: copy_value
+// CHECK-NEXT: return
+// CHECK: } // end sil function 'unowned_to_guaranteed_rauw'
 sil [ossa] @unowned_to_guaranteed_rauw : $@convention(thin) (@guaranteed Klass) -> @owned Klass {
 bb0(%0 : @guaranteed $Klass):
   %1 = unchecked_bitwise_cast %0 : $Klass to $SubKlass
@@ -138,12 +244,66 @@ bb0(%0 : @guaranteed $Klass):
   return %3 : $Klass
 }
 
-// CHECK-CLEANUP-LABEL: sil [ossa] @unowned_to_guaranteed_rauw_2 : $@convention(thin) (@guaranteed Klass) -> (Klass, Klass) {
-// CHECK-CLEANUP: bb0(
-// CHECK-CLEANUP-NEXT: unchecked_ownership_conversion
-// CHECK-CLEANUP-NEXT: tuple
-// CHECK-CLEANUP-NEXT: return
-// CHECK-CLEANUP: } // end sil function 'unowned_to_guaranteed_rauw_2'
+// CHECK-LABEL: sil [ossa] @unowned_to_guaranteed_rauw_loop : $@convention(thin) (@guaranteed Klass) -> @owned FakeOptional<Klass> {
+// CHECK: bb0([[ARG:%.*]] : @guaranteed $Klass):
+// CHECK-NOT: unchecked_bitwise_cast
+// CHECK-NOT: copy_value
+// CHECK-NOT: destroy_value
+//
+// CHECK: bb2:
+// CHECK-NEXT: [[COPY:%.*]] = copy_value [[ARG]]
+// CHECK-NEXT: cond_br undef, bb3, bb4
+//
+// CHECK: bb3:
+// CHECK-NEXT: destroy_value [[COPY]]
+// CHECK-NEXT: br bb2
+//
+// CHECK: bb4:
+// CHECK-NEXT: [[ENUM_SOME_RESULT:%.*]] = enum $FakeOptional<Klass>, #FakeOptional.some!enumelt, [[COPY]]
+// CHECK-NEXT: br bb6([[ENUM_SOME_RESULT]] : $FakeOptional<Klass>)
+//
+// CHECK: bb5:
+// CHECK-NEXT: [[ENUM_NONE_RESULT:%.*]] = enum $FakeOptional<Klass>, #FakeOptional.none!enumelt // user: %10
+// CHECK-NEXT: br bb6([[ENUM_NONE_RESULT]] :
+//
+// CHECK: bb6([[RESULT:%.*]] : @owned $FakeOptional<Klass>):
+// CHECK-NEXT: return [[RESULT]]
+// CHECK: } // end sil function 'unowned_to_guaranteed_rauw_loop'
+sil [ossa] @unowned_to_guaranteed_rauw_loop : $@convention(thin) (@guaranteed Klass) -> @owned FakeOptional<Klass> {
+bb0(%0 : @guaranteed $Klass):
+  cond_br undef, bbLoopPreHeader, bbEarlyExit
+
+bbLoopPreHeader:
+  br bbLoopHeader
+
+bbLoopHeader:
+  %1 = unchecked_bitwise_cast %0 : $Klass to $SubKlass
+  %2 = unchecked_bitwise_cast %1 : $SubKlass to $Klass
+  %3 = copy_value %2 : $Klass
+  cond_br undef, bbBackEdge, bbExitingBlock
+
+bbBackEdge:
+  destroy_value %3 : $Klass
+  br bbLoopHeader
+
+bbExitingBlock:
+  %4 = enum $FakeOptional<Klass>, #FakeOptional.some!enumelt, %3 : $Klass
+  br bbExitBlock(%4 : $FakeOptional<Klass>)
+
+bbEarlyExit:
+  %5 = enum $FakeOptional<Klass>, #FakeOptional.none!enumelt
+  br bbExitBlock(%5 : $FakeOptional<Klass>)
+
+bbExitBlock(%result : @owned $FakeOptional<Klass>):
+  return %result : $FakeOptional<Klass>
+}
+
+// CHECK-LABEL: sil [ossa] @unowned_to_guaranteed_rauw_2 : $@convention(thin) (@guaranteed Klass) -> (Klass, Klass) {
+// CHECK: bb0(
+// CHECK-NEXT: unchecked_ownership_conversion
+// CHECK-NEXT: tuple
+// CHECK-NEXT: return
+// CHECK: } // end sil function 'unowned_to_guaranteed_rauw_2'
 sil [ossa] @unowned_to_guaranteed_rauw_2 : $@convention(thin) (@guaranteed Klass) -> (Klass, Klass) {
 bb0(%0 : @guaranteed $Klass):
   %1 = unchecked_bitwise_cast %0 : $Klass to $SubKlass
@@ -152,11 +312,68 @@ bb0(%0 : @guaranteed $Klass):
   return %3 : $(Klass, Klass)
 }
 
-// CHECK-CLEANUP-LABEL: sil [ossa] @unowned_to_guaranteed_rauw_3 : $@convention(thin) (@guaranteed Klass) -> Klass {
-// CHECK-CLEANUP: bb0(
-// CHECK-CLEANUP-NEXT: unchecked_ownership_conversion
-// CHECK-CLEANUP-NEXT: return
-// CHECK-CLEANUP: } // end sil function 'unowned_to_guaranteed_rauw_3'
+// CHECK-LABEL: sil [ossa] @unowned_to_guaranteed_rauw_2_loop : $@convention(thin) (@guaranteed Klass) -> @owned FakeOptional<(Klass, Klass)> {
+// CHECK: bb0([[ARG:%.*]] : @guaranteed $Klass):
+// CHECK-NOT: unchecked_bitwise_cast
+// CHECK-NOT: copy_value
+// CHECK-NOT: destroy_value
+//
+// CHECK: bb2:
+// CHECK-NEXT: [[ARG_CONVERT:%.*]] = unchecked_ownership_conversion [[ARG]]
+// CHECK-NEXT: [[TUP:%.*]] = tuple ([[ARG_CONVERT]] : $Klass, [[ARG_CONVERT]] : $Klass)
+// CHECK-NEXT: [[COPY:%.*]] = copy_value [[TUP]]
+// CHECK-NEXT: cond_br undef, bb3, bb4
+//
+// CHECK: bb3:
+// CHECK-NEXT: destroy_value [[COPY]]
+// CHECK-NEXT: br bb2
+//
+// CHECK: bb4:
+// CHECK-NEXT: [[ENUM_SOME_RESULT:%.*]] = enum $FakeOptional<{{.*}}>, #FakeOptional.some!enumelt, [[COPY]]
+// CHECK-NEXT: br bb6([[ENUM_SOME_RESULT]] : $FakeOptional<{{.*}}>)
+//
+// CHECK: bb5:
+// CHECK-NEXT: [[ENUM_NONE_RESULT:%.*]] = enum $FakeOptional<{{.*}}>, #FakeOptional.none!enumelt
+// CHECK-NEXT: br bb6([[ENUM_NONE_RESULT]] :
+//
+// CHECK: bb6([[RESULT:%.*]] : @owned $FakeOptional<{{.*}}>):
+// CHECK-NEXT: return [[RESULT]]
+// CHECK: } // end sil function 'unowned_to_guaranteed_rauw_2_loop'
+sil [ossa] @unowned_to_guaranteed_rauw_2_loop : $@convention(thin) (@guaranteed Klass) -> @owned FakeOptional<(Klass, Klass)> {
+bb0(%0 : @guaranteed $Klass):
+  cond_br undef, bbLoopPreHeader, bbEarlyExit
+
+bbLoopPreHeader:
+  br bbLoopHeader
+
+bbLoopHeader:
+  %1 = unchecked_bitwise_cast %0 : $Klass to $SubKlass
+  %2 = unchecked_bitwise_cast %1 : $SubKlass to $Klass
+  %3 = tuple(%2 : $Klass, %2 : $Klass)
+  %4 = copy_value %3 : $(Klass, Klass)
+  cond_br undef, bbBackEdge, bbExitingBlock
+
+bbBackEdge:
+  destroy_value %4 : $(Klass, Klass)
+  br bbLoopHeader
+
+bbExitingBlock:
+  %5 = enum $FakeOptional<(Klass, Klass)>, #FakeOptional.some!enumelt, %4 : $(Klass, Klass)
+  br bbExitBlock(%5 : $FakeOptional<(Klass, Klass)>)
+
+bbEarlyExit:
+  %6 = enum $FakeOptional<(Klass, Klass)>, #FakeOptional.none!enumelt
+  br bbExitBlock(%6 : $FakeOptional<(Klass, Klass)>)
+
+bbExitBlock(%result : @owned $FakeOptional<(Klass, Klass)>):
+  return %result : $FakeOptional<(Klass, Klass)>
+}
+
+// CHECK-LABEL: sil [ossa] @unowned_to_guaranteed_rauw_3 : $@convention(thin) (@guaranteed Klass) -> Klass {
+// CHECK: bb0(
+// CHECK-NEXT: unchecked_ownership_conversion
+// CHECK-NEXT: return
+// CHECK: } // end sil function 'unowned_to_guaranteed_rauw_3'
 sil [ossa] @unowned_to_guaranteed_rauw_3 : $@convention(thin) (@guaranteed Klass) -> Klass {
 bb0(%0 : @guaranteed $Klass):
   %1 = unchecked_bitwise_cast %0 : $Klass to $SubKlass
@@ -164,9 +381,13 @@ bb0(%0 : @guaranteed $Klass):
   return %2 : $Klass
 }
 
-// CHECK-CLEANUP-LABEL: sil [ossa] @guaranteed_to_guaranteed : $@convention(thin) (@guaranteed Klass) -> () {
-// CHECK-CLEANUP-NOT: unchecked_ref_cast
-// CHECK-CLEANUP: } // end sil function 'guaranteed_to_guaranteed'
+//===---
+// Guaranteed Tests
+//
+
+// CHECK-LABEL: sil [ossa] @guaranteed_to_guaranteed : $@convention(thin) (@guaranteed Klass) -> () {
+// CHECK-NOT: unchecked_ref_cast
+// CHECK: } // end sil function 'guaranteed_to_guaranteed'
 sil [ossa] @guaranteed_to_guaranteed : $@convention(thin) (@guaranteed Klass) -> () {
 bb0(%0 : @guaranteed $Klass):
   %1 = unchecked_ref_cast %0 : $Klass to $SubKlass
@@ -177,9 +398,9 @@ bb0(%0 : @guaranteed $Klass):
   return %9999 : $()
 }
 
-// CHECK-CLEANUP-LABEL: sil [ossa] @guaranteed_to_unowned : $@convention(thin) (@guaranteed Klass) -> () {
-// CHECK-CLEANUP-NOT: unchecked_ref_cast
-// CHECK-CLEANUP: } // end sil function 'guaranteed_to_unowned'
+// CHECK-LABEL: sil [ossa] @guaranteed_to_unowned : $@convention(thin) (@guaranteed Klass) -> () {
+// CHECK-NOT: unchecked_ref_cast
+// CHECK: } // end sil function 'guaranteed_to_unowned'
 sil [ossa] @guaranteed_to_unowned : $@convention(thin) (@guaranteed Klass) -> () {
 bb0(%0 : @guaranteed $Klass):
   %1 = unchecked_ref_cast %0 : $Klass to $SubKlass
@@ -198,12 +419,9 @@ bb0(%0 : @guaranteed $Klass):
 //
 // CHECK-LABEL: sil [ossa] @guaranteed_to_owned_consuming : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
 // CHECK-NOT: enum $FakeOptional<Klass>, #FakeOptional.some!enumelt
+// CHECK-NOT: copy_value
+// CHECK-NOT: destroy_value
 // CHECK: } // end sil function 'guaranteed_to_owned_consuming'
-//
-// CHECK-CLEANUP-LABEL: sil [ossa] @guaranteed_to_owned_consuming : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
-// CHECK-CLEANUP-NOT: copy_value
-// CHECK-CLEANUP-NOT: destroy_value
-// CHECK-CLEANUP: } // end sil function 'guaranteed_to_owned_consuming'
 sil [ossa] @guaranteed_to_owned_consuming : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
 bb0(%0 : @guaranteed $FakeOptional<Klass>):
   switch_enum %0 : $FakeOptional<Klass>, case #FakeOptional.some: bb1, case #FakeOptional.none: bb2
@@ -223,20 +441,59 @@ bb3(%4 : @owned $FakeOptional<Klass>):
   return %9999 : $()
 }
 
+// CHECK-LABEL: sil [ossa] @guaranteed_to_owned_consuming_loop : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
+// CHECK-NOT: enum $FakeOptional<Klass>, #FakeOptional.some!enumelt
+// CHECK-NOT: copy_value
+// CHECK-NOT: destroy_value
+// CHECK: } // end sil function 'guaranteed_to_owned_consuming_loop'
+sil [ossa] @guaranteed_to_owned_consuming_loop : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
+bb0(%0 : @guaranteed $FakeOptional<Klass>):
+  cond_br undef, bbPreLoopHeader, bbEarlyExit
+
+bbPreLoopHeader:
+  br bbLoopHeader
+
+bbLoopHeader:
+  switch_enum %0 : $FakeOptional<Klass>, case #FakeOptional.some: bb1, case #FakeOptional.none: bb2
+
+bb1(%0a : @guaranteed $Klass):
+  %1 = enum $FakeOptional<Klass>, #FakeOptional.some!enumelt, %0a : $Klass
+  %2 = copy_value %1 : $FakeOptional<Klass>
+  br bb3(%2 : $FakeOptional<Klass>)
+
+bb2:
+  %3 = enum $FakeOptional<Klass>, #FakeOptional.none!enumelt
+  br bb3(%3 : $FakeOptional<Klass>)
+
+bb3(%4 : @owned $FakeOptional<Klass>):
+  destroy_value %4 : $FakeOptional<Klass>
+  cond_br undef, bbBackEdge, bbLoopExitingBlock
+
+bbBackEdge:
+  br bbLoopHeader
+
+bbLoopExitingBlock:
+  br bbExit
+
+bbEarlyExit:
+  br bbExit
+
+bbExit:
+  %9999 = tuple()
+  return %9999 : $()
+}
+
 // For the normal check, make sure we performed the optimization. In this case
 // it means eliminating the enum instruction in bb1.
-//
-// CHECK-LABEL: sil [ossa] @guaranteed_to_guaranteed_consuming : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
-// CHECK-NOT: enum $FakeOptional<Klass>, #FakeOptional.some!enumelt
-// CHECK: } // end sil function 'guaranteed_to_guaranteed_consuming'
 //
 // Then after cleaning up show that we do not have any copy_value or
 // begin_borrows left.
 //
-// CHECK-CLEANUP-LABEL: sil [ossa] @guaranteed_to_guaranteed_consuming : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
-// CHECK-CLEANUP-NOT: copy_value
-// CHECK-CLEANUP-NOT: begin_borrow
-// CHECK-CLEANUP: } // end sil function 'guaranteed_to_guaranteed_consuming'
+// CHECK-LABEL: sil [ossa] @guaranteed_to_guaranteed_consuming : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
+// CHECK-NOT: copy_value
+// CHECK-NOT: begin_borrow
+// CHECK-NOT: enum $FakeOptional<Klass>, #FakeOptional.some!enumelt
+// CHECK: } // end sil function 'guaranteed_to_guaranteed_consuming'
 //
 // We eliminate all begin borrows from this example with semantic-arc.
 sil [ossa] @guaranteed_to_guaranteed_consuming : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
@@ -261,13 +518,10 @@ bb3(%4 : @guaranteed $FakeOptional<Klass>):
 // Make sure we performed the optimization.
 //
 // CHECK-LABEL: sil [ossa] @guaranteed_to_guaranteed_non_consuming_deadend : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
+// CHECK-NOT: copy_value
+// CHECK-NOT: begin_borrow
 // CHECK-NOT: enum $FakeOptional<Klass>, #FakeOptional.some!enumelt
 // CHECK: } // end sil function 'guaranteed_to_guaranteed_non_consuming_deadend'
-
-// CHECK-CLEANUP-LABEL: sil [ossa] @guaranteed_to_guaranteed_non_consuming_deadend : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
-// CHECK-CLEANUP-NOT: copy_value
-// CHECK-CLEANUP-NOT: begin_borrow
-// CHECK-CLEANUP: } // end sil function 'guaranteed_to_guaranteed_non_consuming_deadend'
 sil [ossa] @guaranteed_to_guaranteed_non_consuming_deadend : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
 bb0(%0 : @guaranteed $FakeOptional<Klass>):
   switch_enum %0 : $FakeOptional<Klass>, case #FakeOptional.some: bb1, case #FakeOptional.none: bb2
@@ -293,13 +547,10 @@ bb2:
 // replacing it with %0.
 //
 // CHECK-LABEL: sil [ossa] @guaranteed_to_guaranteed_nonconsuming_2 : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
+// CHECK-NOT: copy_value
 // CHECK-NOT: enum $FakeOptional<Klass>, #FakeOptional.some!enumelt
+// CHECK-NOT: begin_borrow
 // CHECK: } // end sil function 'guaranteed_to_guaranteed_nonconsuming_2'
-//
-// CHECK-CLEANUP-LABEL: sil [ossa] @guaranteed_to_guaranteed_nonconsuming_2 : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
-// CHECK-CLEANUP-NOT: copy_value
-// CHECK-CLEANUP-NOT: begin_borrow
-// CHECK-CLEANUP: } // end sil function 'guaranteed_to_guaranteed_nonconsuming_2'
 sil [ossa] @guaranteed_to_guaranteed_nonconsuming_2 : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
 bb0(%0 : @guaranteed $FakeOptional<Klass>):
   switch_enum %0 : $FakeOptional<Klass>, case #FakeOptional.some: bb1, case #FakeOptional.none: bb2
@@ -321,37 +572,11 @@ bb3:
   return %9999 : $()
 }
 
-// We introduce a single copy in this case. SemanticARCOpt should improve to be
-// able to hit this pattern.
-//
-// CHECK-CLEANUP-LABEL: sil [ossa] @owned_to_owned_conditional : $@convention(thin) (@owned FakeOptional<Klass>) -> () {
-// CHECK-CLEANUP: copy_value
-// CHECK-CLEANUP-NOT: copy_value
-// CHECK-CLEANUP: } // end sil function 'owned_to_owned_conditional'
-sil [ossa] @owned_to_owned_conditional : $@convention(thin) (@owned FakeOptional<Klass>) -> () {
-bb0(%0 : @owned $FakeOptional<Klass>):
-  switch_enum %0 : $FakeOptional<Klass>, case #FakeOptional.some: bb1, case #FakeOptional.none: bb2
-
-bb1(%0a : @owned $Klass):
-  // We are replacing %1 with %0.
-  %1 = enum $FakeOptional<Klass>, #FakeOptional.some!enumelt, %0a : $Klass
-  br bb3(%1 : $FakeOptional<Klass>)
-
-bb2:
-  %3 = enum $FakeOptional<Klass>, #FakeOptional.none!enumelt
-  br bb3(%3 : $FakeOptional<Klass>)
-
-bb3(%4 : @owned $FakeOptional<Klass>):
-  destroy_value %4 : $FakeOptional<Klass>
-  %9999 = tuple()
-  return %9999 : $()
-}
-
 // This test makes sure after we transform we eliminate all of the ARC traffic.
-// CHECK-CLEANUP-LABEL: sil [ossa] @guaranteed_copy_rauw_owned : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
-// CHECK-CLEANUP-NOT: copy_value
-// CHECK-CLEANUP-NOT: begin_borrow
-// CHECK-CLEANUP: } // end sil function 'guaranteed_copy_rauw_owned'
+// CHECK-LABEL: sil [ossa] @guaranteed_copy_rauw_owned : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
+// CHECK-NOT: copy_value
+// CHECK-NOT: begin_borrow
+// CHECK: } // end sil function 'guaranteed_copy_rauw_owned'
 sil [ossa] @guaranteed_copy_rauw_owned : $@convention(thin) (@guaranteed FakeOptional<Klass>) -> () {
 bb0(%0 : @guaranteed $FakeOptional<Klass>):
   %0c = copy_value %0 : $FakeOptional<Klass>
@@ -370,17 +595,3 @@ bb3(%4 : @owned $FakeOptional<Klass>):
   %9999 = tuple()
   return %9999 : $()
 }
-
-// Make sure that we don't crash here on the unused unchecked_ref_cast.
-//
-// CHECK-LABEL: sil [ossa] @unusedBorrowCast : $@convention(thin) () -> @owned Klass {
-// CHECK: } // end sil function 'unusedBorrowCast'
-sil [ossa] @unusedBorrowCast : $@convention(thin) () -> @owned Klass {
-bb0:
-  %0 = alloc_ref $Klass
-  %1 = begin_borrow %0 : $Klass
-  %2 = unchecked_ref_cast %1 : $Klass to $Builtin.NativeObject
-  end_borrow %1 : $Klass
-  return %0 : $Klass 
-}
-

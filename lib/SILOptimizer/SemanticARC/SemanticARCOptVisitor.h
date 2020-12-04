@@ -141,9 +141,21 @@ struct LLVM_LIBRARY_VISIBILITY SemanticARCOptVisitor
   bool visitCopyValueInst(CopyValueInst *cvi);
   bool visitBeginBorrowInst(BeginBorrowInst *bbi);
   bool visitLoadInst(LoadInst *li);
-  // bool
-  // visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst
-  // *uoci);
+
+  bool
+  visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst
+                                        *uoci) {
+    auto op = uoci->getOperand();
+    auto opKind = op.getOwnershipKind();
+
+    for (auto *use : uoci->getUses()) {
+      if (use->isLifetimeEnding() || !use->canAcceptKind(opKind))
+        return false;
+    }
+    eraseAndRAUWSingleValueInstruction(uoci, op);
+    return true;
+  }
+
   bool visitSILPhiArgument(SILPhiArgument *arg);
   bool visitEndBorrowInst(EndBorrowInst *ebi) {
     if (ebi->getOperand().getOwnershipKind() == OwnershipKind::None) {
@@ -161,7 +173,7 @@ struct LLVM_LIBRARY_VISIBILITY SemanticARCOptVisitor
     case SILInstructionKind::CopyValueInst:
     case SILInstructionKind::BeginBorrowInst:
     case SILInstructionKind::LoadInst:
-      // case SILInstructionKind::UncheckedOwnershipConversionInst:
+    case SILInstructionKind::UncheckedOwnershipConversionInst:
     case SILInstructionKind::EndBorrowInst:
       return true;
     }

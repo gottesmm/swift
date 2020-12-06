@@ -25,8 +25,10 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "sil-mandatory-combiner"
+
 #include "swift/Basic/LLVM.h"
 #include "swift/Basic/STLExtras.h"
+#include "swift/SIL/BasicBlockUtils.h"
 #include "swift/SIL/SILInstructionWorklist.h"
 #include "swift/SIL/SILVisitor.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
@@ -93,9 +95,9 @@ public:
     changed = true;
   }
 
-  bool tryCanonicalize(SILInstruction *inst) {
+  bool tryCanonicalize(SILInstruction *inst, DeadEndBlocks &deadEndBlocks) {
     changed = false;
-    canonicalize(inst);
+    canonicalize(inst, deadEndBlocks);
     return changed;
   }
 };
@@ -129,9 +131,10 @@ class MandatoryCombiner final
   InstModCallbacks instModCallbacks;
   SmallVectorImpl<SILInstruction *> &createdInstructions;
   SmallVector<SILInstruction *, 16> instructionsPendingDeletion;
+  DeadEndBlocks &deadEndBlocks;
 
 public:
-  MandatoryCombiner(SmallVectorImpl<SILInstruction *> &createdInstructions)
+  MandatoryCombiner(SmallVectorImpl<SILInstruction *> &createdInstructions, DeadEndBlocks &deadEndBlocks)
       : worklist("MC"), madeChange(false), iteration(0),
         instModCallbacks(
             [&](SILInstruction *instruction) {
@@ -142,7 +145,7 @@ public:
             [this](SILValue oldValue, SILValue newValue) {
               worklist.replaceValueUsesWith(oldValue, newValue);
             }),
-        createdInstructions(createdInstructions){};
+        createdInstructions(createdInstructions), deadEndBlocks(deadEndBlocks) {};
 
   void addReachableCodeToWorklist(SILFunction &function);
 
@@ -238,6 +241,8 @@ void MandatoryCombiner::addReachableCodeToWorklist(SILFunction &function) {
 
 bool MandatoryCombiner::doOneIteration(SILFunction &function,
                                        unsigned iteration) {
+  function.verify();
+  SWIFT_DEFER { function.verify(); };
   madeChange = false;
 
   addReachableCodeToWorklist(function);
@@ -256,12 +261,14 @@ bool MandatoryCombiner::doOneIteration(SILFunction &function,
       if (compilingWithOptimization) {
         if (isInstructionTriviallyDead(instruction)) {
           worklist.eraseInstFromFunction(*instruction);
+          function.verify();
           madeChange = true;
           continue;
         }
       }
 
-      if (mcCanonicialize.tryCanonicalize(instruction)) {
+      if (mcCanonicialize.tryCanonicalize(instruction, deadEndBlocks)) {
+        function.verify();
         madeChange = true;
         continue;
       }
@@ -389,7 +396,8 @@ class MandatoryCombine final : public SILFunctionTransform {
       return;
     }
 
-    MandatoryCombiner combiner(createdInstructions);
+    DeadEndBlocks deadEndBlocks(function);
+    MandatoryCombiner combiner(createdInstructions, deadEndBlocks);
     bool madeChange = combiner.runOnFunction(*function);
 
     if (madeChange) {

@@ -16,6 +16,7 @@
 
 #define DEBUG_TYPE "silgen-cleanup"
 
+#include "swift/SIL/BasicBlockUtils.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
 #include "swift/SILOptimizer/Utils/CanonicalizeInstruction.h"
@@ -87,13 +88,14 @@ void SILGenCleanup::run() {
                << "\nRunning SILGenCleanup on " << function.getName() << "\n");
 
     SILGenCanonicalize sgCanonicalize;
+    DeadEndBlocks deadEndBlocks(&function);
 
     // Iterate over all blocks even if they aren't reachable. No phi-less
     // dataflow cycles should have been created yet, and these transformations
     // are simple enough they shouldn't be affected by cycles.
     for (auto &bb : function) {
       for (auto ii = bb.begin(), ie = bb.end(); ii != ie;) {
-        ii = sgCanonicalize.canonicalize(&*ii);
+        ii = sgCanonicalize.canonicalize(&*ii, deadEndBlocks);
         ii = sgCanonicalize.deleteDeadOperands(ii);
       }
     }

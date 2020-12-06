@@ -137,9 +137,9 @@ public:
     changed = true;
   }
 
-  bool tryCanonicalize(SILInstruction *inst) {
+  bool tryCanonicalize(SILInstruction *inst, DeadEndBlocks &deadEndBlocks) {
     changed = false;
-    canonicalize(inst);
+    canonicalize(inst, deadEndBlocks);
     return changed;
   }
 };
@@ -177,7 +177,7 @@ bool SILCombiner::doOneIteration(SILFunction &F, unsigned Iteration) {
     }
 
     // Canonicalize the instruction.
-    if (scCanonicalize.tryCanonicalize(I)) {
+    if (scCanonicalize.tryCanonicalize(I, deadEndBlocks)) {
       MadeChange = true;
       continue;
     }

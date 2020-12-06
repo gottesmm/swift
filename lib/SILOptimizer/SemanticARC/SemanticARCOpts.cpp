@@ -43,6 +43,9 @@ static llvm::cl::list<ARCTransformKind> TransformsToPerform(
         clEnumValN(ARCTransformKind::PhiArgPeepholes,
                    "sil-semantic-arc-peepholes-phi-arg-peepholes",
                    "Perform small peepholes on phi arguments"),
+        clEnumValN(ARCTransformKind::OwnershipConversionElimPeephole,
+                   "sil-semantic-arc-peepholes-ownership-conversion-elim",
+                   "Eliminate unchecked_ownership_conversion insts that are not needed"),
         clEnumValN(ARCTransformKind::OwnedToGuaranteedPhi,
                    "sil-semantic-arc-owned-to-guaranteed-phi",
                    "Perform Owned To Guaranteed Phi. NOTE: Seeded by peephole "
@@ -82,6 +85,7 @@ struct SemanticARCOpts : SILFunctionTransform {
       case ARCTransformKind::LoadCopyToLoadBorrowPeephole:
       case ARCTransformKind::PhiArgPeepholes:
       case ARCTransformKind::AllPeepholes:
+      case ARCTransformKind::OwnershipConversionElimPeephole:
         // We never assume we are at fixed point when running these transforms.
         if (performPeepholesWithoutFixedPoint(visitor)) {
           invalidateAnalysis(SILAnalysis::InvalidationKind::Instructions);

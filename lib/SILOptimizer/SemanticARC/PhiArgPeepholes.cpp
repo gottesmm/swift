@@ -101,6 +101,7 @@ bool SemanticARCOptVisitor::visitSILPhiArgument(SILPhiArgument *arg) {
   // Finally, set our argument to have OwnershipKind::None. Some other pass will
   // trivially eliminate it when we are eliminating other branches.
   arg->setOwnershipKind(OwnershipKind::None);
+  ctx.phiArgumentToDelete.push_back(arg);
 
   return true;
 }

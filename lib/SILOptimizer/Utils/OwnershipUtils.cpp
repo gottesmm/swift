@@ -310,6 +310,15 @@ struct OwnershipRAUWUtility {
   void eliminateReborrows(BorrowedValue oldBorrowedValue, SILValue newValue);
 
   OwnershipLifetimeExtender getLifetimeExtender() { return {ctx}; }
+
+  InstModCallbacks getCallbacks() const {
+    return InstModCallbacks(
+        ctx.eraseNotify, ctx.newInstNotify,
+        [](SILValue, SILValue) { llvm_unreachable("unhandled"); },
+        [](SingleValueInstruction *, SILValue) {
+          llvm_unreachable("unhandled");
+        });
+  }
 };
 
 } // anonymous namespace
@@ -348,15 +357,16 @@ static void cleanupOperandsBeforeDeletion(
   }
 }
 
-static SILPhiArgument *insertOwnedBaseValueAlongBranchEdge(BranchInst *bi,
-                                                           SILValue innerCopy) {
+static SILPhiArgument *
+insertOwnedBaseValueAlongBranchEdge(BranchInst *bi, SILValue innerCopy,
+                                    const InstModCallbacks &callbacks) {
   auto *destBB = bi->getDestBB();
   // We need to create the phi argument before calling addNewEdgeValueToBranch
   // since it checks that the destination block has enough arguments for the
   // argument.
   auto *phiArg =
       destBB->createPhiArgument(innerCopy->getType(), OwnershipKind::Owned);
-  addNewEdgeValueToBranch(bi, destBB, innerCopy);
+  addNewEdgeValueToBranch(bi, destBB, innerCopy, callbacks);
 
   // Grab our predecessor blocks, ignoring us, add to the branch edge an
   // undef corresponding to our value.
@@ -371,7 +381,7 @@ static SILPhiArgument *insertOwnedBaseValueAlongBranchEdge(BranchInst *bi,
       continue;
     addNewEdgeValueToBranch(
         predBlock->getTerminator(), destBB,
-        SILUndef::get(innerCopy->getType(), *destBB->getParent()));
+        SILUndef::get(innerCopy->getType(), *destBB->getParent()), callbacks);
   }
 
   return phiArg;
@@ -471,7 +481,8 @@ void OwnershipRAUWUtility::eliminateReborrowsOfRecursiveBorrows(
     // do, we need to recursively process them.
     auto *borrowedArg =
         const_cast<SILPhiArgument *>(bi->getArgForOperand(borrowingOperand));
-    auto *baseArg = insertOwnedBaseValueAlongBranchEdge(bi, innerCopy);
+    auto *baseArg =
+        insertOwnedBaseValueAlongBranchEdge(bi, innerCopy, getCallbacks());
     baseBorrowedValuePair.emplace_back(baseArg, borrowedArg);
   }
 
@@ -499,7 +510,8 @@ void OwnershipRAUWUtility::eliminateReborrowsOfRecursiveBorrows(
       auto borrowingOp = *BorrowingOperand::get(use);
       auto *brInst = cast<BranchInst>(borrowingOp.op->getUser());
       auto *newBorrowedPhi = brInst->getArgForOperand(borrowingOp);
-      auto *newBasePhi = insertOwnedBaseValueAlongBranchEdge(brInst, baseArg);
+      auto *newBasePhi =
+          insertOwnedBaseValueAlongBranchEdge(brInst, baseArg, getCallbacks());
       baseBorrowedValuePair.emplace_back(newBasePhi, newBorrowedPhi);
     }
   }
@@ -530,7 +542,8 @@ void OwnershipRAUWUtility::rewriteReborrows(
 
     auto *borrowedArg =
         const_cast<SILPhiArgument *>(bi->getArgForOperand(reborrow.op));
-    auto *baseArg = insertOwnedBaseValueAlongBranchEdge(bi, innerCopy);
+    auto *baseArg =
+        insertOwnedBaseValueAlongBranchEdge(bi, innerCopy, getCallbacks());
     baseBorrowedValuePair.emplace_back(baseArg, borrowedArg);
   }
 
@@ -558,7 +571,8 @@ void OwnershipRAUWUtility::rewriteReborrows(
       auto borrowingOp = *BorrowingOperand::get(use);
       auto *brInst = cast<BranchInst>(borrowingOp.op->getUser());
       auto *newBorrowedPhi = brInst->getArgForOperand(borrowingOp);
-      auto *newBasePhi = insertOwnedBaseValueAlongBranchEdge(brInst, baseArg);
+      auto *newBasePhi =
+          insertOwnedBaseValueAlongBranchEdge(brInst, baseArg, getCallbacks());
       baseBorrowedValuePair.emplace_back(newBasePhi, newBorrowedPhi);
     }
   }

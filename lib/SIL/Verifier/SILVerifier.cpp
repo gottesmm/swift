@@ -955,21 +955,34 @@ public:
       for (SILBasicBlock *predBB : arg->getParent()->getPredecessorBlocks()) {
         auto *TI = predBB->getTerminator();
         // FIXME: when critical edges are removed, only allow BranchInst.
-        require(isa <BranchInst>(TI) || isa<CondBranchInst>(TI),
+        require(isa<BranchInst>(TI) || isa<CondBranchInst>(TI),
                 "All phi argument inputs must be from branches.");
       }
-    } else {
     }
-    if (arg->isPhiArgument() && prohibitAddressPhis()) {
-      // As a property of well-formed SIL, we disallow address-type
-      // phis. Supporting them would prevent reliably reasoning about the
-      // underlying storage of memory access. This reasoning is important for
-      // diagnosing violations of memory access rules and supporting future
-      // optimizations such as bitfield packing. Address-type block arguments
-      // also create unnecessary complexity for SIL optimization passes that
-      // need to reason about memory aliasing.
-      require(!arg->getType().isAddress(),
-              "Block arguments cannot be addresses");
+
+    if (arg->isPhiArgument()) {
+      if (prohibitAddressPhis()) {
+        // As a property of well-formed SIL, we disallow address-type
+        // phis. Supporting them would prevent reliably reasoning about the
+        // underlying storage of memory access. This reasoning is important for
+        // diagnosing violations of memory access rules and supporting future
+        // optimizations such as bitfield packing. Address-type block arguments
+        // also create unnecessary complexity for SIL optimization passes that
+        // need to reason about memory aliasing.
+        require(!arg->getType().isAddress(),
+                "Block arguments cannot be addresses");
+      }
+
+      CanSILFunctionType type = ([](SILValue arg) {
+                                   SILType argTy = arg->getType();
+                                   // Handle `Optional<@convention(block) @noescape (_)->(_)>`
+                                   if (auto optionalObjTy = argTy.getOptionalObjectType())
+                                     argTy = optionalObjTy;
+                                   
+                                   return argTy.getAs<SILFunctionType>();
+                                 })(arg);
+      require(!type || !type->isNoEscape(),
+              "No escape closures can not be used as phi arguments");
     }
   }
 

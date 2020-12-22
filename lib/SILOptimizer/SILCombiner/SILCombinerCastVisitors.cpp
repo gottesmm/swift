@@ -385,9 +385,6 @@ static bool canBeUsedAsCastDestination(SILValue value, CastInst *castInst,
 SILInstruction *
 SILCombiner::
 visitUnconditionalCheckedCastAddrInst(UnconditionalCheckedCastAddrInst *UCCAI) {
-  if (UCCAI->getFunction()->hasOwnership())
-    return nullptr;
-
   // Optimize the unconditional_checked_cast_addr in this pattern:
   //
   //   %box = alloc_existential_box $Error, $ConcreteError
@@ -412,10 +409,10 @@ visitUnconditionalCheckedCastAddrInst(UnconditionalCheckedCastAddrInst *UCCAI) {
     SILBuilderContext builderCtx(Builder.getModule(), Builder.getTrackingList());
     SILBuilderWithScope builder(UCCAI, builderCtx);
     SILLocation loc = UCCAI->getLoc();
-    builder.createRetainValue(loc, val, builder.getDefaultAtomicity());
+    auto copy = builder.emitCopyValueOperation(loc, val);
     builder.createDestroyAddr(loc, UCCAI->getSrc());
-    builder.createStore(loc, val, UCCAI->getDest(),
-                        StoreOwnershipQualifier::Unqualified);
+    builder.createStore(loc, copy, UCCAI->getDest(),
+                        StoreOwnershipQualifier::Init);
     return eraseInstFromFunction(*UCCAI);
   }
 

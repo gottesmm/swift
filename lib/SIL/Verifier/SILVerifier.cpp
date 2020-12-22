@@ -11,7 +11,10 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "sil-verifier"
+
 #include "VerifierPrivate.h"
+#include "SILVerifierCAPI.h"
+
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/AnyFunctionRef.h"
 #include "swift/AST/Decl.h"
@@ -5548,10 +5551,8 @@ public:
 //===----------------------------------------------------------------------===//
 
 static bool verificationEnabled(const SILModule &M) {
-#ifdef NDEBUG
   if (!M.getOptions().VerifyAll)
     return false;
-#endif
   return !M.getOptions().VerifyNone;
 }
 
@@ -5561,10 +5562,15 @@ void SILFunction::verify(bool SingleFunction) const {
   if (!verificationEnabled(getModule()))
     return;
 
+#ifndef NDEBUG
   // Please put all checks in visitSILFunction in SILVerifier, not here. This
   // ensures that the pretty stack trace in the verifier is included with the
   // back trace when the verifier crashes.
   SILVerifier(*this, SingleFunction).verify();
+#else
+  if (SILVerifierCAPI_verifySILFunction)
+    SILVerifierCAPI_verifySILModule(SingleFunction);
+#endif
 }
 
 void SILFunction::verifyCriticalEdges() const {
@@ -5783,7 +5789,9 @@ void SILWitnessTable::verify(const SILModule &M) const {
 
 /// Verify that a default witness table follows invariants.
 void SILDefaultWitnessTable::verify(const SILModule &M) const {
-#ifndef NDEBUG
+  if (!verificationEnabled(M))
+    return;
+
   for (const Entry &E : getEntries()) {
     // FIXME: associated type witnesses.
     if (!E.isValid() || E.getKind() != SILWitnessTable::Method)
@@ -5802,7 +5810,6 @@ void SILDefaultWitnessTable::verify(const SILModule &M) const {
            SILFunctionTypeRepresentation::WitnessMethod &&
            "Default witnesses must have witness_method representation.");
   }
-#endif
 }
 
 /// Verify that a global variable follows invariants.

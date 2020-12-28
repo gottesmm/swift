@@ -1681,11 +1681,12 @@ that use a SIL value are required to be able to be semantically partitioned in
 between "non-lifetime ending uses" that just require the value to be live and
 "lifetime ending uses" that end the lifetime of the value and after which the
 value can no longer be used. Since by definition operands that are lifetime
-ending uses end their associated value's lifetime, we must have that the
-lifetime ending use points jointly post-dominate all non-lifetime ending use
-points and that a value must have exactly one lifetime ending use along all
-reachable program paths, preventing leaks and use-after-frees. As an example,
-consider the following SIL example with partitioned defs/uses annotated inline::
+ending uses end their associated value's lifetime, we must have that, ignoring
+program ending `Dead End Blocks`_, the lifetime ending use points jointly
+post-dominate all non-lifetime ending use points and that a value must have
+exactly one lifetime ending use along all reachable program paths, preventing
+leaks and use-after-frees. As an example, consider the following SIL example
+with partitioned defs/uses annotated inline::
 
   sil @stash_and_cast : $@convention(thin) (@owned Klass) -> @owned SuperKlass {
   bb0(%kls1 : @owned $Klass): // Definition of %kls1
@@ -2315,6 +2316,57 @@ The current list of interior pointer SIL instructions are:
 
 (*) We still need to finish adding support for project_box, but all other
 interior pointers are guarded already.
+
+Dead End Blocks
+```````````````
+
+In SIL, one can express that a program is semantically expected to exit at the
+end of a block by terminating the block with an `unreachable`_. Such a block is
+called a *program terminating block* and all blocks that are post-dominated by
+blocks of the aforementioned kind are called *dead end blocks*. Intuitively, any
+path through a dead end block is known to result in program termination, so
+resources that normally would need to be released back to the system will
+instead be returned to the system upon process tear down.
+
+Since we rely on the system at these points to perform resource cleanup, we are
+able to loosen our lifetime requirements by allowing for values to not have
+their lifetimes ended along paths that end in program terminating
+blocks. Operationally, the implication for this is that end_borrow,
+destroy_value instructions are redundent, albeit legal, in dead end
+blocks. Consider the following legal SIL where we leak ``%0`` and ``%1``::
+
+  sil @user : $@convention(thin) (@owned Klass) -> () {
+  bb0(%0 : @owned $Klass):
+    cond_br ..., bb1, bb2
+
+  bb1:
+    // This is a dead end block since it is post-dominated by two dead end blocks.
+    cond_br ..., bbDeadEndBlock1, bbDeadEndBlock2
+
+  bbDeadEndBlock1:
+    // This is a dead end block.
+    //
+    // We are exiting the program here causing the operating system to clean up
+    // all resources associated with our process, so there is no need for a
+    // destroy_value. That memory will be cleaned up anyways.
+    unreachable
+
+  bbDeadEndBlock2:
+    // Even though we do not need to insert destroy_value along these paths, we
+    // can if we want to. It is just necessary and the optimizer can eliminate
+    // such a destroy_value if it wishes.
+    //
+    // NOTE: The author arbitrarily chose just to destroy %0: we could legally
+    // destroy either value (or both!).
+    destroy_value %0 : $Klass
+    unreachable
+
+  bb2:
+    // This block is live, so we need to put in a destroy_value for %0 to
+    // maintain valid ossa.
+    destroy_value %0 : $Klass
+    ...
+  }
 
 Runtime Failure
 ---------------

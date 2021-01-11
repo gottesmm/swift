@@ -6182,7 +6182,18 @@ void IRGenSILFunction::visitCopyAddrInst(swift::CopyAddrInst *i) {
 
 // This is a no-op because we do not lower Swift TBAA info to LLVM IR, and it
 // does not produce any values.
-void IRGenSILFunction::visitBindMemoryInst(swift::BindMemoryInst *) {}
+void IRGenSILFunction::visitBindMemoryInst(swift::BindMemoryInst *i) {
+  Address base = getLoweredAddress(i->getBase());
+  Explosion numElts = getLoweredExplosion(i->getIndex());
+  SILType eltTy = i->getBoundType();
+  const auto &addrTI = getTypeInfo(eltTy);
+  llvm::Value *stride = addrTI.getStride(*this, eltTy);
+  auto *strideBytes = Builder.CreateMul(stride, numElts.claimNext());
+  auto *bindMemoryFunc = getOrCreateBindMemoryFn();
+  auto *metadataRef = emitTypeMetadataRef(eltTy.getSwiftRValueType());
+  Builder.CreateCall(bindMemoryFunc,
+                     {base.getAddress(), strideBytes, metadataRef});
+}
 
 void IRGenSILFunction::visitDestroyAddrInst(swift::DestroyAddrInst *i) {
   SILType addrTy = i->getOperand()->getType();

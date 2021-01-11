@@ -239,6 +239,7 @@ public struct UnsafePointer<Pointee>: _Pointer {
   @inlinable // unsafe-performance
   public var pointee: Pointee {
     @_transparent unsafeAddress {
+      swift_isMemoryBoundToType(self, Pointee.self)
       return self
     }
   }

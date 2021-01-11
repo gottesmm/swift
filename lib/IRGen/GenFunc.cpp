@@ -2402,6 +2402,7 @@ llvm::Function *IRGenFunction::getOrCreateResumePrjFn() {
       },
       false /*isNoInline*/));
 }
+
 llvm::Function *
 IRGenFunction::createAsyncDispatchFn(const FunctionPointer &fnPtr,
                                      ArrayRef<llvm::Value *> args) {
@@ -2547,4 +2548,12 @@ llvm::Function *IRGenFunction::createAsyncSuspendFn() {
   suspendCall->setTailCall();
   Builder.CreateRetVoid();
   return suspendFn;
+}
+
+llvm::Function *IRGenFunction::getOrCreateBindMemoryFn() {
+  auto name = "_swift_bindMemory";
+  auto *funcTy = llvm::FunctionType::get(
+      IGM.VoidTy, {IGM.Int8PtrTy, IGM.SizeTy, IGM.Int8PtrTy}, false);
+  return llvm::Function::Create(funcTy, llvm::GlobalValue::ExternalLinkage,
+                                name, IGM.Module);
 }

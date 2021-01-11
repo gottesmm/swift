@@ -158,6 +158,8 @@ public:
   llvm::Function *getOrCreateResumeFromSuspensionFn();
   llvm::Function *createAsyncSuspendFn();
 
+  llvm::Function *getOrCreateBindMemoryFn();
+
 private:
   void emitPrologue();
   void emitEpilogue();

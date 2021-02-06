@@ -345,12 +345,6 @@ void addFunctionPasses(SILPassPipelinePlan &P,
   // class_method/witness_method instructions may use concrete types now.
   P.addDevirtualizer();
 
-  // We earlier eliminated ownership if we are not compiling the stdlib. Now
-  // handle the stdlib functions, re-simplifying, eliminating ARC as we do.
-  P.addCopyPropagation();
-  P.addSemanticARCOpts();
-  P.addNonTransparentFunctionOwnershipModelEliminator();
-
   switch (OpLevel) {
   case OptimizationLevelKind::HighLevel:
     // Does not inline functions with defined semantics.
@@ -366,6 +360,12 @@ void addFunctionPasses(SILPassPipelinePlan &P,
     P.addLateInliner();
     break;
   }
+
+  // We earlier eliminated ownership if we are not compiling the stdlib. Now
+  // handle the stdlib functions, re-simplifying, eliminating ARC as we do.
+  P.addCopyPropagation();
+  P.addSemanticARCOpts();
+  P.addNonTransparentFunctionOwnershipModelEliminator();
 
   // Promote stack allocations to values and eliminate redundant
   // loads.

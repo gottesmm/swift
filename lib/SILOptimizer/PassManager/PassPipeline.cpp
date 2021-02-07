@@ -517,12 +517,6 @@ static void addHighLevelFunctionPipeline(SILPassPipelinePlan &P) {
 
   addFunctionPasses(P, OptimizationLevelKind::HighLevel);
 
-  // We earlier eliminated ownership if we are not compiling the stdlib. Now
-  // handle the stdlib functions, re-simplifying, eliminating ARC as we do.
-  P.addCopyPropagation();
-  P.addSemanticARCOpts();
-  P.addNonTransparentFunctionOwnershipModelEliminator();
-
   addHighLevelLoopOptPasses(P);
   
   P.addStringOptimization();
@@ -775,6 +769,11 @@ SILPassPipelinePlan::getPerformancePassPipeline(const SILOptions &Options) {
   addHighLevelFunctionPipeline(P);
 
   addHighLevelModulePipeline(P);
+
+  // Run one last copy propagation/semantic arc opts run before serialization/us
+  // lowering ownership.
+  P.addCopyPropagation();
+  P.addSemanticARCOpts();
 
   addSerializePipeline(P);
   if (Options.StopOptimizationAfterSerialization)

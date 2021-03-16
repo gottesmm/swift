@@ -807,6 +807,28 @@ struct OperandOwnership {
 
   /// Return the OwnershipConstraint corresponding to this OperandOwnership.
   OwnershipConstraint getOwnershipConstraint();
+
+  bool validForBorrowingOperand() const {
+    switch (*this) {
+    case OperandOwnership::NonUse:
+    case OperandOwnership::TrivialUse:
+    case OperandOwnership::InstantaneousUse:
+    case OperandOwnership::UnownedInstantaneousUse:
+    case OperandOwnership::ForwardingUnowned:
+    case OperandOwnership::PointerEscape:
+    case OperandOwnership::BitwiseEscape:
+    case OperandOwnership::DestroyingConsume:
+    case OperandOwnership::ForwardingConsume:
+    case OperandOwnership::InteriorPointer:
+    case OperandOwnership::ForwardingBorrow:
+    case OperandOwnership::EndBorrow:
+      return false;
+    case OperandOwnership::Reborrow:
+    case OperandOwnership::Borrow:
+      return true;
+    }
+    llvm_unreachable("Unhandled case?!");
+  }
 };
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,

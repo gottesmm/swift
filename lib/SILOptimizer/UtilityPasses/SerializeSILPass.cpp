@@ -218,6 +218,7 @@ static bool hasOpaqueArchetype(TypeExpansionContext context,
   case SILInstructionKind::LoadBorrowInst:
   case SILInstructionKind::BeginBorrowInst:
   case SILInstructionKind::StoreBorrowInst:
+  case SILInstructionKind::RebaseBorrowInst:
   case SILInstructionKind::BeginAccessInst:
 #define NEVER_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, name, ...)       \
   case SILInstructionKind::Load##Name##Inst:

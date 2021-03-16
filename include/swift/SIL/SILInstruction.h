@@ -3918,6 +3918,54 @@ inline auto BeginBorrowInst::getEndBorrows() const -> EndBorrowRange {
   return getUsersOfType<EndBorrowInst>();
 }
 
+/// Represents the begin scope of a borrowed value. Must be paired with an
+/// end_borrow instruction in its use-def list.
+class RebaseBorrowInst
+    : public InstructionBase<SILInstructionKind::RebaseBorrowInst,
+                             SingleValueInstruction> {
+public:
+  enum OperandIndexT {
+    ValueOperandIndex = 0,
+    NewBaseOperandIndex = 1,
+  };
+
+private:
+  friend class SILBuilder;
+
+  FixedOperandList<2> Operands;
+
+  RebaseBorrowInst(SILDebugLocation DebugLoc, SILValue value, SILValue newBase)
+      : InstructionBase(DebugLoc, value->getType()),
+        Operands(this, value, newBase) {}
+
+public:
+  using EndBorrowRange =
+      decltype(std::declval<ValueBase>().getUsersOfType<EndBorrowInst>());
+
+  /// Return a range over all EndBorrow instructions for this BeginBorrow.
+  EndBorrowRange getEndBorrows() const;
+
+  /// Return the single use of this BeginBorrowInst, not including any
+  /// EndBorrowInst uses, or return nullptr if the borrow is dead or has
+  /// multiple uses.
+  ///
+  /// Useful for matching common SILGen patterns that emit one borrow per use,
+  /// and simplifying pass logic.
+  Operand *getSingleNonEndingUse() const;
+
+  SILValue getValueOperand() const { return Operands[ValueOperandIndex].get(); }
+  SILValue getBaseOperand() const {
+    return Operands[NewBaseOperandIndex].get();
+  }
+
+  ArrayRef<Operand> getAllOperands() const { return Operands.asArray(); }
+  MutableArrayRef<Operand> getAllOperands() { return Operands.asArray(); }
+};
+
+inline auto RebaseBorrowInst::getEndBorrows() const -> EndBorrowRange {
+  return getUsersOfType<EndBorrowInst>();
+}
+
 /// Represents a store of a borrowed value into an address. Returns the borrowed
 /// address. Must be paired with an end_borrow in its use-def list.
 class StoreBorrowInst

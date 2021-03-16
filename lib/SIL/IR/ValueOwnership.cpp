@@ -66,6 +66,7 @@ public:
 
 CONSTANT_OWNERSHIP_INST(Guaranteed, BeginBorrow)
 CONSTANT_OWNERSHIP_INST(Guaranteed, LoadBorrow)
+CONSTANT_OWNERSHIP_INST(Guaranteed, RebaseBorrow)
 CONSTANT_OWNERSHIP_INST(Owned, AllocBox)
 CONSTANT_OWNERSHIP_INST(Owned, AllocExistentialBox)
 CONSTANT_OWNERSHIP_INST(Owned, AllocRef)

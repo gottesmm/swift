@@ -1996,6 +1996,16 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn,
                             getLocalValue(ValID2, addrType), Qualifier);
     break;
   }
+  case SILInstructionKind::RebaseBorrowInst: {
+    auto ty = MF->getType(TyID);
+    SILType valType = getSILType(ty, (SILValueCategory)TyCategory, Fn);
+    SILValue val = getLocalValue(ValID, valType);
+    auto ty2 = MF->getType(TyID2);
+    auto valType2 = getSILType(ty2, (SILValueCategory)TyCategory2, Fn);
+    auto val2 = getLocalValue(ValID2, valType2);
+    ResultInst = Builder.createRebaseBorrow(Loc, val, val2);
+    break;
+  }
   case SILInstructionKind::StoreBorrowInst: {
     auto Ty = MF->getType(TyID);
     SILType addrType = getSILType(Ty, (SILValueCategory)TyCategory, Fn);

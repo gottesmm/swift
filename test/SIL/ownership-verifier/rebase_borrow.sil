@@ -1,0 +1,63 @@
+// RUN: %target-sil-opt -enable-sil-verify-all=1 -o /dev/null %s
+
+// We shouldn't crash on any of these test cases.
+
+sil_stage canonical
+
+import Builtin
+import Swift
+
+final class LinkedListNode {
+  var next: Optional<LinkedListNode>
+  var data: Builtin.Int32
+}
+
+// A simple linked list read only search without any ARC traffic.
+sil [ossa] @ll_iterative_readonly_search : $@convention(thin) (@guaranteed LinkedListNode, Builtin.Int32) -> @owned Optional<LinkedListNode> {
+bb0(%0 : @guaranteed $LinkedListNode, %1 : $Builtin.Int32):
+  br bb1
+
+bb1:
+  %0a = begin_borrow %0 : $LinkedListNode
+  br bb2(%0a : $LinkedListNode)
+
+bb2(%inductionVar : @guaranteed $LinkedListNode):
+  br bb3
+
+bb3:
+  %value = ref_element_addr %inductionVar : $LinkedListNode, #LinkedListNode.data
+  %testVal = load [trivial] %value : $*Builtin.Int32
+  %cmpResult = builtin "cmp_slt_Int32"(%testVal : $Builtin.Int32, %1 : $Builtin.Int32) : $Builtin.Int1
+  cond_br %cmpResult, bb4, bb5
+
+bb4:
+  %addr = ref_element_addr %inductionVar : $LinkedListNode, #LinkedListNode.next
+  %loadVal = load_borrow %addr : $*Optional<LinkedListNode>
+  switch_enum %loadVal : $Optional<LinkedListNode>, case #Optional.some!enumelt: bbSome, case #Optional.none!enumelt: bbNone
+
+// We do not use the unwrapped value here since we need to ensure that the new
+// induction variable is a borrow introducer, not a sub borrow.
+bbSome(%unwrappedLoadedVal : @guaranteed $LinkedListNode):
+  end_borrow %loadVal : $Optional<LinkedListNode>
+  %unwrappedAddr = unchecked_take_enum_data_addr %addr : $*Optional<LinkedListNode>, #Optional.some!enumelt
+  %loadedUnwrappedVal = load_borrow %unwrappedAddr : $*LinkedListNode
+  %nextVar = rebase_borrow %loadedUnwrappedVal : $LinkedListNode on %0 : $LinkedListNode
+  end_borrow %loadedUnwrappedVal : $LinkedListNode
+  end_borrow %inductionVar : $LinkedListNode
+  br bb2(%nextVar : $LinkedListNode)
+
+bbNone:
+  %noneResult = enum $Optional<LinkedListNode>, #Optional.none!enumelt
+  end_borrow %loadVal : $Optional<LinkedListNode>
+  end_borrow %inductionVar : $LinkedListNode
+  br bbEpilog(%noneResult : $Optional<LinkedListNode>)
+
+bb5:
+  %result = copy_value %inductionVar : $LinkedListNode
+  end_borrow %inductionVar : $LinkedListNode
+  %wrappedResult = enum $Optional<LinkedListNode>, #Optional.some!enumelt, %result : $LinkedListNode
+  br bbEpilog(%wrappedResult : $Optional<LinkedListNode>)
+
+bbEpilog(%wrappedResult2 : @owned $Optional<LinkedListNode>):
+  return %wrappedResult2 : $Optional<LinkedListNode>
+}

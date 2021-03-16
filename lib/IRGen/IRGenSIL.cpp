@@ -1225,6 +1225,9 @@ public:
   void visitBeginBorrowInst(BeginBorrowInst *i) {
     llvm_unreachable("unimplemented");
   }
+  void visitRebaseBorrowInst(RebaseBorrowInst *i) {
+    llvm_unreachable("unimplemented");
+  }
   void visitEndBorrowInst(EndBorrowInst *i) {
     llvm_unreachable("unimplemented");
   }

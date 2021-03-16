@@ -1184,6 +1184,22 @@ void SILCloner<ImplClass>::visitEndBorrowInst(EndBorrowInst *Inst) {
 }
 
 template <typename ImplClass>
+void SILCloner<ImplClass>::visitRebaseBorrowInst(RebaseBorrowInst *Inst) {
+  getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
+
+  // If we don't have ownership, fold the rebase borrow and eliminate it.
+  if (!getBuilder().hasOwnership()) {
+    return recordFoldedValue(Inst, getOpValue(Inst->getValueOperand()));
+  }
+
+  // Otherwise, do the clone.
+  recordClonedInstruction(Inst, getBuilder().createRebaseBorrow(
+                                    getOpLocation(Inst->getLoc()),
+                                    getOpValue(Inst->getValueOperand()),
+                                    getOpValue(Inst->getBaseOperand())));
+}
+
+template <typename ImplClass>
 void SILCloner<ImplClass>::visitBeginAccessInst(BeginAccessInst *Inst) {
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   recordClonedInstruction(

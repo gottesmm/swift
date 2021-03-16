@@ -4,4 +4,5 @@ target_sources(swiftSIL PRIVATE
   MemoryLifetimeVerifier.cpp
   ReborrowVerifier.cpp
   SILOwnershipVerifier.cpp
-  SILVerifier.cpp)
+  SILVerifier.cpp
+  RebaseBorrowVerifier.cpp)

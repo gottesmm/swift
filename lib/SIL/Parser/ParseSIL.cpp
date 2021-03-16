@@ -3973,6 +3973,26 @@ bool SILParser::parseSpecificSILInstruction(SILBuilder &B,
 
     break;
   }
+
+  case SILInstructionKind::RebaseBorrowInst: {
+    SILValue value, base;
+    SourceLoc valueLoc, baseLoc, onLoc;
+    Identifier onToken;
+    if (parseTypedValueRef(value, valueLoc, B) ||
+        parseSILIdentifier(onToken, onLoc, diag::expected_tok_in_sil_instr,
+                           "on") ||
+        parseTypedValueRef(base, baseLoc, B) ||
+        parseSILDebugLocation(InstLoc, B))
+      return true;
+
+    if (onToken.str() != "on") {
+      P.diagnose(onLoc, diag::expected_tok_in_sil_instr, "on");
+      return true;
+    }
+
+    ResultVal = B.createRebaseBorrow(InstLoc, value, base);
+    break;
+  }
   case SILInstructionKind::AllocStackInst:
   case SILInstructionKind::MetatypeInst: {
 

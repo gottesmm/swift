@@ -31,9 +31,11 @@ class ReborrowVerifier {
   /// A cache of dead-end basic blocks that we use to determine if we can
   /// ignore "leaks".
   DeadEndBlocks &deadEndBlocks;
+
   /// The builder that the checker uses to emit error messages, crash if asked
   /// for, or supply back interesting info to the caller.
   LinearLifetimeChecker::ErrorBuilder errorBuilder;
+
   /// A map of reborrow phi arg to its base values.
   /// Note that a reborrow phi arg can have different base values based on
   /// different control flow paths.

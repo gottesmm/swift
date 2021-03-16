@@ -1445,6 +1445,11 @@ public:
     *this << getIDAndType(SI->getDest());
   }
 
+  void visitRebaseBorrowInst(RebaseBorrowInst *rbi) {
+    *this << getIDAndType(rbi->getValueOperand()) << " on ";
+    *this << getIDAndType(rbi->getBaseOperand());
+  }
+
   void visitEndBorrowInst(EndBorrowInst *EBI) {
     *this << getIDAndType(EBI->getOperand());
   }

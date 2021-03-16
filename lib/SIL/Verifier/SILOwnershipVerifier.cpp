@@ -13,6 +13,7 @@
 #define DEBUG_TYPE "sil-ownership-verifier"
 
 #include "LinearLifetimeCheckerPrivate.h"
+#include "RebaseBorrowVerifierPrivate.h"
 #include "ReborrowVerifierPrivate.h"
 
 #include "swift/AST/ASTContext.h"
@@ -51,6 +52,7 @@
 #include <algorithm>
 
 using namespace swift;
+using namespace swift::silverifier;
 
 // This is an option to put the SILOwnershipVerifier in testing mode. This
 // causes the following:
@@ -106,14 +108,15 @@ class SILValueOwnershipChecker {
 
   ReborrowVerifier &reborrowVerifier;
 
+  RebaseBorrowVerifier rebaseBorrowVerifier;
+
 public:
-  SILValueOwnershipChecker(
-      DeadEndBlocks &deadEndBlocks, SILValue value,
-      LinearLifetimeChecker::ErrorBuilder &errorBuilder,
-      ReborrowVerifier &reborrowVerifier)
+  SILValueOwnershipChecker(DeadEndBlocks &deadEndBlocks, SILValue value,
+                           LinearLifetimeChecker::ErrorBuilder &errorBuilder,
+                           ReborrowVerifier &reborrowVerifier)
       : result(), deadEndBlocks(deadEndBlocks), value(value),
-        errorBuilder(errorBuilder),
-        reborrowVerifier(reborrowVerifier) {
+        errorBuilder(errorBuilder), reborrowVerifier(reborrowVerifier),
+        rebaseBorrowVerifier(deadEndBlocks, errorBuilder) {
     assert(value && "Can not initialize a checker with an empty SILValue");
   }
 
@@ -264,6 +267,7 @@ bool SILValueOwnershipChecker::gatherNonGuaranteedUsers(
     };
     initialScopedOperand.getImplicitUses(nonLifetimeEndingUsers, &error);
     reborrowVerifier.verifyReborrows(initialScopedOperand, value);
+    rebaseBorrowVerifier.verifyReborrow(initialScopedOperand, value);
   }
 
   return foundError;
@@ -362,6 +366,7 @@ bool SILValueOwnershipChecker::gatherUsers(
 
         scopedOperand.getImplicitUses(nonLifetimeEndingUsers, &onError);
         reborrowVerifier.verifyReborrows(scopedOperand, value);
+        rebaseBorrowVerifier.verifyReborrow(scopedOperand, value);
       }
 
       // Next see if our use is an interior pointer operand. If we have an
@@ -379,6 +384,17 @@ bool SILValueOwnershipChecker::gatherUsers(
         };
         foundError |= interiorPointerOperand.findTransitiveUses(
             nonLifetimeEndingUsers, &onError);
+      }
+
+      // Check if this is a rebase_borrow use and our value is being used as the
+      // value of a rebase_borrow. In such a case, we need to validate that our
+      // current base has new base as a base.
+      if (auto *rbi = dyn_cast<RebaseBorrowInst>(user)) {
+        if (op->getOperandNumber() == RebaseBorrowInst::ValueOperandIndex) {
+          BorrowedValue bv(value);
+          assert(bool(bv));
+          rebaseBorrowVerifier.verifyBaseValue(bv, rbi);
+        }
       }
 
       // Finally add the op to the non lifetime ending user list.

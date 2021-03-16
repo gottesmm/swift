@@ -15,6 +15,7 @@
 
 #include "swift/Basic/MultiMapCache.h"
 #include "swift/SIL/MemAccessUtils.h"
+#include "swift/SIL/OwnershipUtils.h"
 #include "swift/SIL/SILValue.h"
 
 namespace swift {

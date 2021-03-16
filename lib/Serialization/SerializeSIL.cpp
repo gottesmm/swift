@@ -1571,6 +1571,13 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
         .write();
     break;
   }
+  case SILInstructionKind::RebaseBorrowInst: {
+    const auto &i = *cast<RebaseBorrowInst>(&SI);
+    TwoOperandLayoutInstSerializer{*this, i, i.getValueOperand(),
+                                   i.getBaseOperand(), 0 /*attr*/}
+        .write();
+    break;
+  }
   case SILInstructionKind::TailAddrInst: {
     const TailAddrInst *TAI = cast<TailAddrInst>(&SI);
     SILTailAddrLayout::emitRecord(Out, ScratchRecord,

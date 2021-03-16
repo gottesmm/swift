@@ -396,6 +396,17 @@ OperandOwnershipClassifier::visitStoreBorrowInst(StoreBorrowInst *i) {
   return OperandOwnership::TrivialUse;
 }
 
+OperandOwnership
+OperandOwnershipClassifier::visitRebaseBorrowInst(RebaseBorrowInst *i) {
+  // We are an instantaneous use of our value operand...
+  if (getValue() == i->getValueOperand()) {
+    return OperandOwnership::InstantaneousUse;
+  }
+
+  // and a borrow use of our base.
+  return OperandOwnership::Borrow;
+}
+
 // Get the OperandOwnership for instaneous apply, yield, and return uses.
 // This does not apply to uses that begin an explicit borrow scope in the
 // caller, such as begin_apply.

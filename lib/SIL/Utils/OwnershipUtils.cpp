@@ -262,7 +262,8 @@ bool swift::findTransitiveGuaranteedUses(
         // Initially push the reborrow as a use point. visitReborrow may pop it
         // if it only wants to compute the extended lifetime's use points.
         usePoints.push_back(scopeEnd);
-        if (scopeEnd->getOperandOwnership() == OperandOwnership::Reborrow)
+        if (visitReborrow &&
+            scopeEnd->getOperandOwnership() == OperandOwnership::Reborrow)
           visitReborrow(scopeEnd);
         return true;
       });
@@ -331,6 +332,9 @@ void BorrowingOperandKind::print(llvm::raw_ostream &os) const {
   case Kind::Yield:
     os << "Yield";
     return;
+  case Kind::RebaseBorrowBase:
+    os << "RebaseBorrowBase";
+    return;
   }
   llvm_unreachable("Covered switch isn't covered?!");
 }
@@ -361,6 +365,14 @@ bool BorrowingOperand::visitScopeEndingUses(
     llvm_unreachable("Using invalid case");
   case BorrowingOperandKind::BeginBorrow:
     for (auto *use : cast<BeginBorrowInst>(op->getUser())->getUses()) {
+      if (use->isLifetimeEnding()) {
+        if (!func(use))
+          return false;
+      }
+    }
+    return true;
+  case BorrowingOperandKind::RebaseBorrowBase:
+    for (auto *use : cast<RebaseBorrowInst>(op->getUser())->getUses()) {
       if (use->isLifetimeEnding()) {
         if (!func(use))
           return false;
@@ -414,6 +426,11 @@ bool BorrowingOperand::visitBorrowIntroducingUserResults(
   case BorrowingOperandKind::BeginApply:
   case BorrowingOperandKind::Yield:
     llvm_unreachable("Never has borrow introducer results!");
+  case BorrowingOperandKind::RebaseBorrowBase: {
+    auto value = BorrowedValue(cast<RebaseBorrowInst>(op->getUser()));
+    assert(value);
+    return visitor(value);
+  }
   case BorrowingOperandKind::BeginBorrow: {
     auto value = BorrowedValue(cast<BeginBorrowInst>(op->getUser()));
     assert(value);
@@ -441,7 +458,8 @@ BorrowedValue BorrowingOperand::getBorrowIntroducingUserResult() {
 
   case BorrowingOperandKind::BeginBorrow:
     return BorrowedValue(cast<BeginBorrowInst>(op->getUser()));
-
+  case BorrowingOperandKind::RebaseBorrowBase:
+    return BorrowedValue(cast<RebaseBorrowInst>(op->getUser()));
   case BorrowingOperandKind::Branch: {
     auto *bi = cast<BranchInst>(op->getUser());
     return BorrowedValue(bi->getDestBB()->getArgument(op->getOperandNumber()));
@@ -478,6 +496,9 @@ void BorrowedValueKind::print(llvm::raw_ostream &os) const {
   case BorrowedValueKind::Phi:
     os << "Phi";
     return;
+  case BorrowedValueKind::RebaseBorrow:
+    os << "RebaseBorrow";
+    return;
   }
   llvm_unreachable("Covered switch isn't covered?!");
 }
@@ -498,6 +519,7 @@ void BorrowedValue::getLocalScopeEndingInstructions(
   case BorrowedValueKind::SILFunctionArgument:
     llvm_unreachable("Should only call this with a local scope");
   case BorrowedValueKind::BeginBorrow:
+  case BorrowedValueKind::RebaseBorrow:
   case BorrowedValueKind::LoadBorrow:
   case BorrowedValueKind::Phi:
     for (auto *use : value->getUses()) {
@@ -520,6 +542,7 @@ bool BorrowedValue::visitLocalScopeEndingUses(
     llvm_unreachable("Should only call this with a local scope");
   case BorrowedValueKind::LoadBorrow:
   case BorrowedValueKind::BeginBorrow:
+  case BorrowedValueKind::RebaseBorrow:
   case BorrowedValueKind::Phi:
     for (auto *use : value->getUses()) {
       if (use->isLifetimeEnding()) {
@@ -1341,9 +1364,10 @@ void swift::visitTransitiveEndBorrows(
         auto *phiArg = cast<SILPhiArgument>(
             succBlock->getArgument(consumingUse->getOperandNumber()));
         worklist.insert(phiArg);
-      } else {
-        visitEndBorrow(cast<EndBorrowInst>(consumingUser));
+        continue;
       }
+
+      visitEndBorrow(cast<EndBorrowInst>(consumingUser));
     }
   }
 }

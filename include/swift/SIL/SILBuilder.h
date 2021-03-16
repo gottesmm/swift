@@ -899,6 +899,12 @@ public:
                       StoreBorrowInst(getSILDebugLocation(Loc), Src, DestAddr));
   }
 
+  RebaseBorrowInst *createRebaseBorrow(SILLocation loc, SILValue borrowedValue,
+                                       SILValue newBaseValue) {
+    return insert(new (getModule()) RebaseBorrowInst(
+        getSILDebugLocation(loc), borrowedValue, newBaseValue));
+  }
+
   /// A helper function for emitting store_borrow in operations where one must
   /// handle both ossa and non-ossa code.
   ///

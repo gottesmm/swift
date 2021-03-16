@@ -131,9 +131,12 @@ bool findInnerTransitiveGuaranteedUses(SILValue guaranteedValue,
 /// points where the "extended" borrow scope ends. An extended borrow
 /// scope is found by looking through any reborrows that end the nested
 /// scope. Other uses within nested borrow scopes are ignored.
-bool findTransitiveGuaranteedUses(SILValue guaranteedValue,
-                                  SmallVectorImpl<Operand *> &usePoints,
-                                  function_ref<void(Operand *)> visitReborrow);
+///
+/// If \p visitReborrow is nullptr, we do not visit reborrows but do include
+/// them as usepoints.
+bool findTransitiveGuaranteedUses(
+    SILValue guaranteedValue, SmallVectorImpl<Operand *> &usePoints,
+    function_ref<void(Operand *)> visitReborrow = nullptr);
 
 /// Find all "use points" of guaranteed value across its extended borrow scope
 /// (looking through reborrows). The "use points" are the relevant points for
@@ -213,6 +216,7 @@ public:
     Apply,
     TryApply,
     Yield,
+    RebaseBorrowBase,
   };
 
 private:
@@ -221,26 +225,43 @@ private:
 public:
   BorrowingOperandKind(Kind newValue) : value(newValue) {}
 
-  operator Kind() const { return value; }
+  BorrowingOperandKind(Operand *op) : value(Invalid) {
+    // Make sure that if we were passed a non-guaranteed value, we do not
+    // recognize this as a valid borrowing operand.
+    // if (!op->getOperandOwnership().validForBorrowingOperand())
+    //  return;
 
-  static BorrowingOperandKind get(SILInstructionKind kind) {
-    switch (kind) {
+    switch (op->getUser()->getKind()) {
     default:
-      return Kind::Invalid;
+      return;
     case SILInstructionKind::BeginBorrowInst:
-      return Kind::BeginBorrow;
+      value = Kind::BeginBorrow;
+      return;
     case SILInstructionKind::BeginApplyInst:
-      return Kind::BeginApply;
+      value = Kind::BeginApply;
+      return;
     case SILInstructionKind::BranchInst:
-      return Kind::Branch;
+      value = Kind::Branch;
+      return;
     case SILInstructionKind::ApplyInst:
-      return Kind::Apply;
+      value = Kind::Apply;
+      return;
     case SILInstructionKind::TryApplyInst:
-      return Kind::TryApply;
+      value = Kind::TryApply;
+      return;
     case SILInstructionKind::YieldInst:
-      return Kind::Yield;
+      value = Kind::Yield;
+      return;
+    case SILInstructionKind::RebaseBorrowInst:
+      if (!op->getOperandOwnership().validForBorrowingOperand())
+        return;
+
+      value = Kind::RebaseBorrowBase;
+      return;
     }
   }
+
+  operator Kind() const { return value; }
 
   void print(llvm::raw_ostream &os) const;
   SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
@@ -262,8 +283,8 @@ struct BorrowingOperand {
   Operand *op;
   BorrowingOperandKind kind;
 
-  BorrowingOperand(Operand *op)
-      : op(op), kind(BorrowingOperandKind::get(op->getUser()->getKind())) {}
+  BorrowingOperand() : op(nullptr), kind(BorrowingOperandKind::Invalid) {}
+  BorrowingOperand(Operand *op) : op(op), kind(BorrowingOperandKind(op)) {}
   BorrowingOperand(const BorrowingOperand &other)
       : op(other.op), kind(other.kind) {}
   BorrowingOperand &operator=(const BorrowingOperand &other) {
@@ -284,8 +305,7 @@ struct BorrowingOperand {
   /// If \p op is a borrow introducing operand return it after doing some
   /// checks.
   static BorrowingOperand get(Operand *op) {
-    auto *user = op->getUser();
-    auto kind = BorrowingOperandKind::get(user->getKind());
+    auto kind = BorrowingOperandKind(op);
     if (!kind)
       return {nullptr, kind};
     return {op, kind};
@@ -330,6 +350,7 @@ struct BorrowingOperand {
     case BorrowingOperandKind::Apply:
     case BorrowingOperandKind::TryApply:
     case BorrowingOperandKind::Yield:
+    case BorrowingOperandKind::RebaseBorrowBase:
       return false;
     case BorrowingOperandKind::Branch:
       return true;
@@ -349,6 +370,7 @@ struct BorrowingOperand {
       llvm_unreachable("Using invalid case?!");
     case BorrowingOperandKind::BeginBorrow:
     case BorrowingOperandKind::Branch:
+    case BorrowingOperandKind::RebaseBorrowBase:
       return true;
     case BorrowingOperandKind::BeginApply:
     case BorrowingOperandKind::Apply:
@@ -407,6 +429,7 @@ public:
     BeginBorrow,
     SILFunctionArgument,
     Phi,
+    RebaseBorrow,
   };
 
 private:
@@ -434,6 +457,8 @@ public:
       }
       return Kind::Phi;
     }
+    case ValueKind::RebaseBorrowInst:
+      return Kind::RebaseBorrow;
     }
   }
 
@@ -454,6 +479,7 @@ public:
     case BorrowedValueKind::BeginBorrow:
     case BorrowedValueKind::LoadBorrow:
     case BorrowedValueKind::Phi:
+    case BorrowedValueKind::RebaseBorrow:
       return true;
     case BorrowedValueKind::SILFunctionArgument:
       return false;
@@ -606,6 +632,64 @@ struct BorrowedValue {
   SILValue operator->() const { return value; }
   SILValue operator*() { return value; }
   SILValue operator*() const { return value; }
+
+  /// If this borrowed value has a single base value that is local to the
+  /// function, return that. Returns SILValue() otherwise.
+  ///
+  /// NOTE: For load_borrow, this returns an address.
+  SILValue getSingleLocalBaseValue() {
+    switch (kind) {
+    case BorrowedValueKind::Invalid:
+      llvm_unreachable("Should never pass invalid here?!");
+    case BorrowedValueKind::LoadBorrow:
+      return cast<LoadBorrowInst>(value)->getOperand();
+    case BorrowedValueKind::BeginBorrow:
+      return cast<BeginBorrowInst>(value)->getOperand();
+    case BorrowedValueKind::SILFunctionArgument:
+      return SILValue();
+    case BorrowedValueKind::Phi:
+      return SILValue();
+    case BorrowedValueKind::RebaseBorrow:
+      return cast<RebaseBorrowInst>(value)->getBaseOperand();
+    }
+  }
+
+  BorrowingOperand getSingleLocalBorrowingOperand() {
+    switch (kind) {
+    case BorrowedValueKind::Invalid:
+      llvm_unreachable("Should never pass invalid here?!");
+    case BorrowedValueKind::LoadBorrow:
+      // Borrowing operands must be objects.
+      return {};
+    case BorrowedValueKind::BeginBorrow: {
+      auto result =
+          BorrowingOperand(&cast<BeginBorrowInst>(value)->getAllOperands()[0]);
+      assert(result);
+      return result;
+    }
+    case BorrowedValueKind::SILFunctionArgument:
+    case BorrowedValueKind::Phi:
+    case BorrowedValueKind::RebaseBorrow: // TODO: Should reborrow be here?
+      return {};
+    }
+  }
+
+  /// Returns true if this borrowed value has a base that is an address.
+  ///
+  /// Example: load_borrow.
+  bool mustHaveAddressBase() const {
+    switch (kind) {
+    case BorrowedValueKind::Invalid:
+      llvm_unreachable("Should never pass invalid here?!");
+    case BorrowedValueKind::LoadBorrow:
+      return true;
+    case BorrowedValueKind::BeginBorrow:
+    case BorrowedValueKind::SILFunctionArgument:
+    case BorrowedValueKind::Phi:
+    case BorrowedValueKind::RebaseBorrow:
+      return false;
+    }
+  }
 
 private:
   enum class InteriorPointerOperandVisitorKind {

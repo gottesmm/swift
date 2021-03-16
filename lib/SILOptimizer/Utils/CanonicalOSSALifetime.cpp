@@ -87,6 +87,7 @@ SILValue CanonicalizeOSSALifetime::getCanonicalCopiedDef(SILValue v) {
         }
         break;
       }
+      case BorrowedValueKind::RebaseBorrow:
       case BorrowedValueKind::LoadBorrow:
       case BorrowedValueKind::Phi:
         break;
@@ -133,6 +134,7 @@ bool CanonicalizeOSSALifetime::computeBorrowLiveness() {
   case BorrowedValueKind::SILFunctionArgument:
     // For efficiency, function arguments skip liveness.
     return true;
+  case BorrowedValueKind::RebaseBorrow:
   case BorrowedValueKind::LoadBorrow:
   case BorrowedValueKind::Phi:
     // TODO: Canonicalize load_borrow scope and phi once consolidateBorrowScope

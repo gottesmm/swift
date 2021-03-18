@@ -147,9 +147,15 @@ namespace {
     }
   };
 
+  template <typename SubInstSerializerTy>
+  struct InstSerializer;
+
   class SILSerializer {
     using TypeID = serialization::TypeID;
-    
+
+    template <typename SubInstSerializerTy>
+    friend struct InstSerializer;
+
     Serializer &S;
 
     llvm::BitstreamWriter &Out;
@@ -774,6 +780,61 @@ SILSerializer::writeKeyPathPatternComponent(
     break;
   }
 }
+
+namespace {
+
+template <typename SubInstSerializer>
+struct InstSerializer {
+  using TypeID = serialization::TypeID;
+
+  SILSerializer &serializer;
+  const SILInstruction &inst;
+
+  ValueID addValueRef(const ValueBase *val) {
+    return serializer.addValueRef(val);
+  }
+
+  serialization::TypeID addTypeRef(Type ty) {
+    return serializer.S.addTypeRef(ty);
+  }
+
+  llvm::BitstreamWriter &getBitstreamWriter() const { return serializer.Out; }
+
+  SmallVectorImpl<uint64_t> &getScratchBuffer() const {
+    return serializer.ScratchRecord;
+  }
+
+  unsigned getAbbrCode() const {
+    return serializer.SILAbbrCodes[SubInstSerializer::Code];
+  }
+};
+
+struct TwoOperandLayoutInstSerializer
+    : InstSerializer<TwoOperandLayoutInstSerializer> {
+  static constexpr unsigned Code = SILTwoOperandsLayout::Code;
+
+  SILValue operand;
+  SILValue operand2;
+  unsigned attr;
+
+  TwoOperandLayoutInstSerializer(SILSerializer &serializer,
+                                 const SILInstruction &inst, SILValue operand,
+                                 SILValue operand2, unsigned attr)
+      : InstSerializer{serializer, inst}, operand(operand), operand2(operand2),
+        attr(attr) {}
+
+  void write() && {
+    SILTwoOperandsLayout::emitRecord(
+        getBitstreamWriter(), getScratchBuffer(), getAbbrCode(),
+        (unsigned)inst.getKind(), attr,
+        addTypeRef(operand->getType().getASTType()),
+        (unsigned)operand->getType().getCategory(), addValueRef(operand),
+        addTypeRef(operand2->getType().getASTType()),
+        (unsigned)operand2->getType().getCategory(), addValueRef(operand2));
+  }
+};
+
+} // end anonymous namespace
 
 void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   PrettyStackTraceSILNode stackTrace("Serializing", &SI);
@@ -1475,43 +1536,39 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
 
     break;
   }
-  case SILInstructionKind::CopyBlockWithoutEscapingInst:
-  case SILInstructionKind::DeallocPartialRefInst:
-  case SILInstructionKind::MarkDependenceInst:
-  case SILInstructionKind::IndexAddrInst:
+  case SILInstructionKind::CopyBlockWithoutEscapingInst: {
+    const auto &c = *cast<CopyBlockWithoutEscapingInst>(&SI);
+    TwoOperandLayoutInstSerializer{*this, c, c.getBlock(), c.getClosure(),
+                                   0 /*attr*/}
+        .write();
+    break;
+  }
+  case SILInstructionKind::DeallocPartialRefInst: {
+    const auto &i = *cast<DeallocPartialRefInst>(&SI);
+    TwoOperandLayoutInstSerializer{*this, i, i.getInstance(), i.getMetatype(),
+                                   0 /*attr*/}
+        .write();
+    break;
+  }
+  case SILInstructionKind::MarkDependenceInst: {
+    const auto &i = *cast<MarkDependenceInst>(&SI);
+    TwoOperandLayoutInstSerializer{*this, i, i.getValue(), i.getBase(),
+                                   0 /*attr*/}
+        .write();
+    break;
+  }
   case SILInstructionKind::IndexRawPointerInst: {
-    SILValue operand, operand2;
-    unsigned Attr = 0;
-    if (SI.getKind() == SILInstructionKind::CopyBlockWithoutEscapingInst) {
-      const CopyBlockWithoutEscapingInst *C = cast<CopyBlockWithoutEscapingInst>(&SI);
-      operand = C->getBlock();
-      operand2 = C->getClosure();
-    } else if (SI.getKind() == SILInstructionKind::DeallocPartialRefInst) {
-      const DeallocPartialRefInst *DPRI = cast<DeallocPartialRefInst>(&SI);
-      operand = DPRI->getInstance();
-      operand2 = DPRI->getMetatype();
-    } else if (SI.getKind() == SILInstructionKind::IndexRawPointerInst) {
-      const IndexRawPointerInst *IRP = cast<IndexRawPointerInst>(&SI);
-      operand = IRP->getBase();
-      operand2 = IRP->getIndex();
-    } else if (SI.getKind() == SILInstructionKind::MarkDependenceInst) {
-      const MarkDependenceInst *MDI = cast<MarkDependenceInst>(&SI);
-      operand = MDI->getValue();
-      operand2 = MDI->getBase();
-    } else {
-      const IndexAddrInst *IAI = cast<IndexAddrInst>(&SI);
-      operand = IAI->getBase();
-      operand2 = IAI->getIndex();
-    }
-    SILTwoOperandsLayout::emitRecord(Out, ScratchRecord,
-        SILAbbrCodes[SILTwoOperandsLayout::Code],
-        (unsigned)SI.getKind(), Attr,
-        S.addTypeRef(operand->getType().getASTType()),
-        (unsigned)operand->getType().getCategory(),
-        addValueRef(operand),
-        S.addTypeRef(operand2->getType().getASTType()),
-        (unsigned)operand2->getType().getCategory(),
-        addValueRef(operand2));
+    const auto &i = *cast<IndexRawPointerInst>(&SI);
+    TwoOperandLayoutInstSerializer{*this, i, i.getBase(), i.getIndex(),
+                                   0 /*attr*/}
+        .write();
+    break;
+  }
+  case SILInstructionKind::IndexAddrInst: {
+    const auto &i = *cast<IndexAddrInst>(&SI);
+    TwoOperandLayoutInstSerializer{*this, i, i.getBase(), i.getIndex(),
+                                   0 /*attr*/}
+        .write();
     break;
   }
   case SILInstructionKind::TailAddrInst: {

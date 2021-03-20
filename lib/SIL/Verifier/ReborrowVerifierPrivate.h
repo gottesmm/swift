@@ -34,11 +34,12 @@ class ReborrowVerifier {
   /// The builder that the checker uses to emit error messages, crash if asked
   /// for, or supply back interesting info to the caller.
   LinearLifetimeChecker::ErrorBuilder errorBuilder;
-  /// A map of reborrow phi arg to its base values.
-  /// Note that a reborrow phi arg can have different base values based on
-  /// different control flow paths.
-  llvm::DenseMap<SILPhiArgument *, SmallPtrSet<SILValue, 8>>
-      reborrowToBaseValuesMap;
+
+  /// A map of reborrow values to its base values.
+  ///
+  /// Note that a reborrow can be a phi arg and such reborrow phi args can have
+  /// different base values based on different control flow paths.
+  llvm::DenseMap<SILValue, SmallPtrSet<SILValue, 8>> reborrowToBaseValuesMap;
 
 public:
   ReborrowVerifier(const SILFunction *func, DeadEndBlocks &deadEndBlocks,
@@ -51,7 +52,7 @@ public:
 
 private:
   /// Verifies whether the reborrow's lifetime lies within its base value
-  bool verifyReborrowLifetime(SILPhiArgument *phiArg, SILValue baseVal);
+  bool verifyReborrowLifetime(SILValue reborrowedValue, SILValue baseVal);
 };
 
 } // namespace swift

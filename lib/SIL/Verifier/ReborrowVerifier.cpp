@@ -16,12 +16,12 @@
 
 using namespace swift;
 
-bool ReborrowVerifier::verifyReborrowLifetime(SILPhiArgument *phiArg,
+bool ReborrowVerifier::verifyReborrowLifetime(SILValue reborrowedValue,
                                               SILValue baseVal) {
   bool result = false;
-  SmallVector<Operand *, 4> phiArgUses(phiArg->getUses());
+  SmallVector<Operand *, 4> reborrowedValueUses(reborrowedValue->getUses());
 
-  // Verify whether the guaranteed phi arg lies within the lifetime of the base
+  // Verify whether the reborrowed value lies within the lifetime of the base
   // value.
   LinearLifetimeChecker checker(deadEndBlocks);
   // newErrorBuilder is consumed at the end of the checkValue function.
@@ -31,23 +31,23 @@ bool ReborrowVerifier::verifyReborrowLifetime(SILPhiArgument *phiArg,
   // If the baseValue has no consuming uses, there is nothing more to verify
   if (baseValConsumingUses.empty())
     return false;
-  auto linearLifetimeResult = checker.checkValue(baseVal, baseValConsumingUses,
-                                                 phiArgUses, newErrorBuilder);
+  auto linearLifetimeResult = checker.checkValue(
+      baseVal, baseValConsumingUses, reborrowedValueUses, newErrorBuilder);
   result |= linearLifetimeResult.getFoundError();
   return result;
 }
 
 void ReborrowVerifier::verifyReborrows(BorrowingOperand initialScopedOperand,
                                        SILValue value) {
-  auto visitReborrowBaseValuePair = [&](SILPhiArgument *phiArg,
+  auto visitReborrowBaseValuePair = [&](SILValue reborrowedValue,
                                         SILValue baseValue) {
     // If the (phiArg, baseValue) pair was not visited before, verify the
     // lifetime.
-    auto it = reborrowToBaseValuesMap.find(phiArg);
+    auto it = reborrowToBaseValuesMap.find(reborrowedValue);
     if (it == reborrowToBaseValuesMap.end() ||
         it->second.find(baseValue) == it->second.end()) {
-      reborrowToBaseValuesMap[phiArg].insert(baseValue);
-      verifyReborrowLifetime(phiArg, baseValue);
+      reborrowToBaseValuesMap[reborrowedValue].insert(baseValue);
+      verifyReborrowLifetime(reborrowedValue, baseValue);
     }
   };
   // For every unique reborrow/base value pair, verify the lifetime

@@ -1072,7 +1072,8 @@ using BaseValueSet = SmallPtrSet<SILValue, 8>;
 /// control flow paths.
 void findTransitiveReborrowBaseValuePairs(
     BorrowingOperand initialScopeOperand, SILValue origBaseValue,
-    function_ref<void(SILPhiArgument *, SILValue)> visitReborrowBaseValuePair);
+    function_ref<void(SILValue reborrowedValue, SILValue reborrowBaseValue)>
+        visitReborrowBaseValuePair);
 
 /// Given a begin_borrow visit all end_borrow users of the borrow or its
 /// reborrows.

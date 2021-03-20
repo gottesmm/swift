@@ -1276,7 +1276,8 @@ bool ForwardingOperand::visitForwardedValues(
 
 void swift::findTransitiveReborrowBaseValuePairs(
     BorrowingOperand initialScopedOperand, SILValue origBaseValue,
-    function_ref<void(SILPhiArgument *, SILValue)> visitReborrowBaseValuePair) {
+    function_ref<void(SILValue reborrowedValue, SILValue reborrowBaseValue)>
+        visitReborrowBaseValuePair) {
   // We need a SetVector to make sure we don't revisit the same reborrow operand
   // again.
   SmallSetVector<std::tuple<Operand *, SILValue>, 4> worklist;

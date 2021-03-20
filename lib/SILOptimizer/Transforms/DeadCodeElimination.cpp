@@ -125,7 +125,7 @@ class DCE {
   // was also passed as a branch operand. The renamed base value should then be
   // live if the reborrow phiArg was also live.
   using BaseValueSet = SmallPtrSet<SILValue, 8>;
-  llvm::DenseMap<SILPhiArgument *, BaseValueSet> reborrowDependencies;
+  llvm::DenseMap<SILValue, BaseValueSet> reborrowDependencies;
 
   /// Tracks if the pass changed branches.
   bool BranchesChanged = false;
@@ -318,9 +318,8 @@ void DCE::findReborrowDependencies(BeginBorrowInst *borrowInst) {
   LLVM_DEBUG(llvm::dbgs() << "Finding reborrow dependencies of " << borrowInst
                           << "\n");
   BorrowingOperand initialScopedOperand(&borrowInst->getOperandRef());
-  auto visitReborrowBaseValuePair = [&](SILPhiArgument *phiArg,
-                                        SILValue baseValue) {
-    reborrowDependencies[phiArg].insert(baseValue);
+  auto visitReborrowBaseValuePair = [&](SILValue value, SILValue baseValue) {
+    reborrowDependencies[value].insert(baseValue);
   };
   // Find all reborrow dependencies starting from \p borrowInst and populate
   // them in reborrowDependencies

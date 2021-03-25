@@ -407,6 +407,15 @@ struct BorrowingOperand {
       SmallVectorImpl<Operand *> &foundUses,
       std::function<void(Operand *)> *errorFunction = nullptr) const;
 
+  /// Returns true if the passed in set of uses is completely within
+  /// the lifetime of this borrowed operand's scope.
+  ///
+  /// NOTE: Scratch space is used internally to this method to store the end
+  /// borrow scopes if needed.
+  bool areUsesWithinScope(ArrayRef<Operand *> uses,
+                          SmallVectorImpl<Operand *> &scratchSpace,
+                          DeadEndBlocks &deadEndBlocks) const;
+
   void print(llvm::raw_ostream &os) const;
   SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
 

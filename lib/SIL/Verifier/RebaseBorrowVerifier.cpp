@@ -117,71 +117,73 @@ bool RebaseBorrowVerifier::verifyBaseValue(BorrowedValue initialBV,
   if (!initialBV.isLocalScope())
     return true;
 
+  // Get the borrowed value of our new base...
+  BorrowedValue newBaseBV(rbi->getBaseOperand());
+  assert(bool(newBaseBV) && "Base operand must be a borrowed value");
+
   // First see if we can find a single local BorrowingOperand for our initial
   // BV. If so, we know that it must be an object since BorrowingOperands
   // currently are never adddresses.
   if (BorrowingOperand oldBase = initialBV.getSingleLocalBorrowingOperand()) {
-    assert(oldBase->get().isObject());
+    assert(oldBase->get()->getType().isObject());
 
     // Then see if our old borrowing operand is the same as our base operand. If
     // so, we are good!
-    if (oldBase->get() == rbi->getBaseOperand())
+    if (oldBase->get() == *newBaseBV)
       return true;
 
     // Otherwise, make sure that initialBV is completely within the scope of
     // oldBase.
-  }
-
-  // If our old base is the same as our new base, we are done.
-  auto newBase = rbi->getBaseOperand();
-  if (newBase == oldBase)
-    return true;
-
-  // Get the borrowed value of our new base...
-  BorrowedValue newBaseBV(newBase);
-  assert(bool(newBaseBV) && "Base operand must be a borrowed value");
-
-  // Then if our old base was an object base, just make sure it's entire
-  // extended lifetime is within the new base's lifetime.
-  if (oldBase->getType().isObject()) {
     SWIFT_DEFER {
       oldBaseUseScratchSpace.clear();
       scratchSpace.clear();
     };
-    initialBV.visitExtendedLocalScopeEndingUses([&](Operand *op) {
+
+    oldBase.visitExtendedScopeEndingUses([&](Operand *op) {
       oldBaseUseScratchSpace.push_back(op);
       return true;
     });
+
     if (!newBaseBV.areUsesWithinScope(oldBaseUseScratchSpace, scratchSpace,
                                       deadEndBlocks)) {
       return false;
     }
+
     return true;
   }
 
-  // Otherwise, we have an old base that is an address type. That means that
-  // we are rebasing a load_borrow base. We only support doing this if the
-  // underlying memory base is an interior pointer than was projected out of
-  // guaranteed value which acts as the real base.
-  SILValue addrProj =
-      getUnderlyingObjectStoppingAtObjectToAddrProjections(*initialBV);
-  auto intPtrOperand = InteriorPointerOperand::inferFromResult(addrProj);
-  if (!intPtrOperand)
-    return false;
+  // Check if our base value of our borrowed value is an address. If so, see if
+  // it is an interior pointer into a base object that completely encloses our
+  // value.
+  if (SILValue baseValue = initialBV.getSingleLocalBaseValue()) {
+    if (baseValue->getType().isAddress()) {
+      // Otherwise, we have an old base that is an address type. That means that
+      // we are rebasing a load_borrow base. We only support doing this if the
+      // underlying memory base is an interior pointer than was projected out of
+      // guaranteed value which acts as the real base.
+      SILValue addrProj =
+        getUnderlyingObjectStoppingAtObjectToAddrProjections(baseValue);
+      auto intPtrOperand = InteriorPointerOperand::inferFromResult(addrProj);
+      if (!intPtrOperand)
+        return false;
 
-  SWIFT_DEFER {
-    oldBaseUseScratchSpace.clear();
-    scratchSpace.clear();
-  };
-  // TODO: Make this the extended use?
-  intPtrOperand.visitBaseValueScopeEndingUses([&](Operand *use) {
-    oldBaseUseScratchSpace.push_back(use);
-    return true;
-  });
-  if (!newBaseBV.areUsesWithinScope(oldBaseUseScratchSpace, scratchSpace,
-                                    deadEndBlocks)) {
-    return false;
+      SWIFT_DEFER {
+        oldBaseUseScratchSpace.clear();
+        scratchSpace.clear();
+      };
+      // TODO: Make this the extended use?
+      intPtrOperand.visitBaseValueScopeEndingUses([&](Operand *use) {
+        oldBaseUseScratchSpace.push_back(use);
+        return true;
+      });
+      if (!newBaseBV.areUsesWithinScope(oldBaseUseScratchSpace, scratchSpace,
+                                        deadEndBlocks)) {
+        return false;
+      }
+      return true;
+    }
   }
 
-  return true;
+  // If this isn't a case we understood, return false.
+  return false;
 }

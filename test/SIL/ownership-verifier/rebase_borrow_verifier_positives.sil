@@ -14,8 +14,48 @@ final class LinkedListNode {
 
 sil @get_linkedlist_node : $@convention(thin) () -> @owned LinkedListNode
 
-// CHECK: fofofofofofofofof
-sil [ossa] @ll_iterative_readonly_search_with_invalid_write : $@convention(thin) (@guaranteed LinkedListNode, @guaranteed LinkedListNode, Builtin.Int32) -> @owned Optional<LinkedListNode> {
+// In this case, we make sure that the rebase_borrow acts as a borrow of the new
+// base meaning that we emit errors that the rebase_borrow base has bases
+// outside of its lifetime.
+//
+// CHECK-LABEL: Error#: 0. Begin Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Found non consuming use outside of the lifetime being verified.
+// CHECK: Value:   %21 = begin_borrow %20 : $LinkedListNode        // users: %25, %22
+// CHECK: User:   end_borrow %6 : $LinkedListNode                 // id: %33
+// CHECK: Error#: 0. End Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK-LABEL: Error#: 1. Begin Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Found non consuming use outside of the lifetime being verified.
+// CHECK: Value:   %21 = begin_borrow %20 : $LinkedListNode        // users: %25, %22
+// CHECK: User:   %32 = copy_value %6 : $LinkedListNode           // user: %34
+// CHECK: Error#: 1. End Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK-LABEL: Error#: 2. Begin Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Found non consuming use outside of the lifetime being verified.
+// CHECK: Value:   %21 = begin_borrow %20 : $LinkedListNode        // users: %25, %22
+// CHECK: User:   end_borrow %6 : $LinkedListNode                 // id: %30
+// CHECK: Error#: 2. End Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK-LABEL: Error#: 3. Begin Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Found non consuming use outside of the lifetime being verified.
+// CHECK: Value:   %21 = begin_borrow %20 : $LinkedListNode        // users: %25, %22
+// CHECK: User:   %12 = ref_element_addr %6 : $LinkedListNode, #LinkedListNode.next // users: %17, %13
+// CHECK: Error#: 3. End Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK-LABEL: Error#: 4. Begin Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Found non consuming use outside of the lifetime being verified.
+// CHECK: Value:   %21 = begin_borrow %20 : $LinkedListNode        // users: %25, %22
+// CHECK: User:   %8 = ref_element_addr %6 : $LinkedListNode, #LinkedListNode.data // user: %9
+// CHECK: Error#: 4. End Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK-LABEL: Error#: 5. Begin Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+// CHECK: Found outside of lifetime use?!
+// CHECK: Value:   %21 = begin_borrow %20 : $LinkedListNode        // users: %25, %22
+// CHECK: Consuming User:   end_borrow %21 : $LinkedListNode                // id: %25
+// CHECK: Non Consuming User:   br bb2(%22 : $LinkedListNode)                   // id: %27
+// CHECK: Block: bb5
+// CHECK: Error#: 5. End Error in Function: 'll_iterative_readonly_search_with_too_short_lifetime_base'
+sil [ossa] @ll_iterative_readonly_search_with_too_short_lifetime_base : $@convention(thin) (@guaranteed LinkedListNode, @guaranteed LinkedListNode, Builtin.Int32) -> @owned Optional<LinkedListNode> {
 bb0(%0 : @guaranteed $LinkedListNode, %0bad : @guaranteed $LinkedListNode, %1 : $Builtin.Int32):
   br bb1
 
@@ -45,9 +85,11 @@ bb4a(%unwrappedLoadedVal : @guaranteed $LinkedListNode):
   %loadedUnwrappedVal = load_borrow %unwrappedAddr : $*LinkedListNode
   %f = function_ref @get_linkedlist_node : $@convention(thin) () -> @owned LinkedListNode
   %newBad = apply %f() : $@convention(thin) () -> @owned LinkedListNode
-  %nextVar = rebase_borrow %loadedUnwrappedVal : $LinkedListNode on %newBad : $LinkedListNode
+  %newBadBorrow = begin_borrow %newBad : $LinkedListNode
+  %nextVar = rebase_borrow %loadedUnwrappedVal : $LinkedListNode on %newBadBorrow : $LinkedListNode
   end_borrow %loadedUnwrappedVal : $LinkedListNode
   end_borrow %inductionVar : $LinkedListNode
+  end_borrow %newBadBorrow : $LinkedListNode
   destroy_value %newBad : $LinkedListNode
   br bb2(%nextVar : $LinkedListNode)
 

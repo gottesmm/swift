@@ -2223,6 +2223,10 @@ void Driver::buildActions(SmallVectorImpl<const Action *> &TopLevelActions,
     TopLevelActions.push_back(LinkAction);
 
     if (TC.getTriple().isOSDarwin() &&
+        // dsymutil does not run on static libraries. Instead, the .a is viewed
+        // as the collection of .os and when a final executable/dylib is linked,
+        // dsymutil will go back and grab the relevent files from the archive.
+        OI.LinkAction != LinkKind::StaticLibrary &&
         OI.DebugInfoLevel > IRGenDebugInfoLevel::None) {
       auto *dSYMAction = C.createAction<GenerateDSYMJobAction>(LinkAction);
       TopLevelActions.push_back(dSYMAction);

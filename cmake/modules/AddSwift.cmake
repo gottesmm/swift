@@ -389,6 +389,8 @@ endfunction()
 #   add_swift_host_library(name
 #     [SHARED]
 #     [STATIC]
+#     [OBJECT]
+#     [IGNORE_LLVM_UPDATE_COMPILE_FLAGS]
 #     [LLVM_LINK_COMPONENTS comp1 ...]
 #     source1 [source2 source3 ...])
 #
@@ -401,15 +403,25 @@ endfunction()
 # STATIC
 #   Build a static library.
 #
+# OBJECT
+#   Build an object library
+#
 # LLVM_LINK_COMPONENTS
 #   LLVM components this library depends on.
+#
+# IGNORE_LLVM_UPDATE_COMPILE_FLAGS
+#   If set do not use llvm_update_compile_flags to generate cflags/etc.  This is
+#   generally used when compiling a mixed c/c++/swift library and one wants to
+#   disable this for the swift part.
 #
 # source1 ...
 #   Sources to add into this library.
 function(add_swift_host_library name)
   set(options
         SHARED
-        STATIC)
+        STATIC
+        OBJECT
+        IGNORE_LLVM_UPDATE_COMPILE_FLAGS)
   set(single_parameter_options)
   set(multiple_parameter_options
         LLVM_LINK_COMPONENTS)
@@ -423,8 +435,8 @@ function(add_swift_host_library name)
 
   translate_flags(ASHL "${options}")
 
-  if(NOT ASHL_SHARED AND NOT ASHL_STATIC)
-    message(FATAL_ERROR "Either SHARED or STATIC must be specified")
+  if(NOT ASHL_SHARED AND NOT ASHL_STATIC AND NOT ASHL_OBJECT)
+    message(FATAL_ERROR "One of SHARED/STATIC/OBJECT must be specified")
   endif()
 
   if(XCODE)
@@ -449,11 +461,15 @@ function(add_swift_host_library name)
     set(libkind SHARED)
   elseif(ASHL_STATIC)
     set(libkind STATIC)
+  elseif(ASHL_OBJECT)
+    set(libkind OBJECT)
   endif()
 
   add_library(${name} ${libkind} ${ASHL_SOURCES})
   add_dependencies(${name} ${LLVM_COMMON_DEPENDS})
-  llvm_update_compile_flags(${name})
+  if (NOT ASHL_IGNORE_LLVM_UPDATE_COMPILE_FLAGS)
+    llvm_update_compile_flags(${name})
+  endif()
   swift_common_llvm_config(${name} ${ASHL_LLVM_LINK_COMPONENTS})
   set_output_directory(${name}
       BINARY_DIR ${SWIFT_RUNTIME_OUTPUT_INTDIR}
@@ -519,7 +535,18 @@ function(add_swift_host_library name)
       target_link_options(${name} PRIVATE
         "LINKER:-current_version,${SWIFT_COMPILER_VERSION}")
     endif()
+
+    # For now turn off in swift targets, debug info if we are compiling a static
+    # library.
+    if (ASHL_STATIC)
+      target_compile_options(${name} PRIVATE $<$<COMPILE_LANGUAGE:Swift>:-gnone>)
+    endif()
   endif()
+
+  # If we are compiling in release or release with deb info, compile swift code
+  # with -cross-module-optimization enabled.
+  target_compile_options(${name} PRIVATE
+    $<$<AND:$<COMPILE_LANGUAGE:Swift>,$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:-cross-module-optimization>)
 
   add_dependencies(dev ${name})
   if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
@@ -566,6 +593,9 @@ function(add_swift_host_tool executable)
   _add_host_variant_c_compile_link_flags(${executable})
   target_link_directories(${executable} PRIVATE
     ${SWIFTLIB_DIR}/${SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_LIB_SUBDIR})
+  # Force executables linker language to be CXX so that we do not link using the
+  # host toolchain swiftc.
+  set_target_properties(${executable} PROPERTIES LINKER_LANGUAGE CXX)
   add_dependencies(${executable} ${LLVM_COMMON_DEPENDS})
 
   set_target_properties(${executable} PROPERTIES

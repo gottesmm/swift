@@ -769,7 +769,7 @@ class MemoryToRegisters {
     // Otherwise, emplace the map and compute it.
     domTreeLevels.emplace();
     auto &levels = *domTreeLevels;
-    SmallVector<DomTreeNode *, 32> worklist;
+    StackList<DomTreeNode *> worklist(&f);
     DomTreeNode *rootNode = domInfo->getRootNode();
     levels[rootNode] = 0;
     worklist.push_back(rootNode);

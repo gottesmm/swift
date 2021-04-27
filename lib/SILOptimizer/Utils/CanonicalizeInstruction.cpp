@@ -26,6 +26,7 @@
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILInstruction.h"
 #include "swift/SILOptimizer/Analysis/SimplifyInstruction.h"
+#include "swift/SILOptimizer/Utils/CanonicalOSSALifetime.h"
 #include "swift/SILOptimizer/Utils/DebugOptUtils.h"
 #include "swift/SILOptimizer/Utils/OwnershipOptUtils.h"
 #include "llvm/ADT/Statistic.h"
@@ -411,10 +412,31 @@ broadenSingleElementStores(StoreInst *storeInst,
 //===----------------------------------------------------------------------===//
 
 static SILBasicBlock::iterator
-eliminateSimpleCopies(CopyValueInst *cvi, CanonicalizeInstruction &pass) {
+canonicalizeCopies(CopyValueInst *cvi, CanonicalizeInstruction &pass) {
   auto next = std::next(cvi->getIterator());
+  auto newCallbacks = pass.callbacks.onDelete([&](SILInstruction *toDelete) {
+    // Advance next if we need to.
+    if (next == toDelete->getIterator())
+      ++next;
 
-  // Eliminate copies that only have destroy_value uses.
+    // Delegate to our deleter, not sending the notification we are deleting
+    // (the notification is already sent) by delete instruction.
+    pass.callbacks.deleteInst(toDelete, false /*notify when deleting*/);
+  });
+
+  // Canonicalize the underlying lifetime if we have dominance analysis and a
+  // non local access block analysis. Otherwise, we just use the simple
+  // formulation below.
+  if (pass.da && pass.nlaba) {
+    SILValue value =
+        CanonicalizeOSSALifetime::getCanonicalCopiedDef(cvi->getOperand());
+    CanonicalizeOSSALifetime lifetime(
+        false /*pruneDebugMode*/, false /*canonicalizeBorrowMode*/,
+        false /*poisonRefsMode*/, pass.nlaba, pass.da, newCallbacks);
+    lifetime.canonicalizeValueLifetime(value);
+    return next;
+  }
+
   SmallVector<DestroyValueInst *, 8> destroys;
   for (auto *use : getNonDebugUses(cvi)) {
     if (auto *dvi = dyn_cast<DestroyValueInst>(use->getUser())) {
@@ -511,8 +533,9 @@ CanonicalizeInstruction::canonicalize(SILInstruction *inst) {
     return broadenSingleElementStores(storeInst, *this);
   }
 
-  if (auto *cvi = dyn_cast<CopyValueInst>(inst))
-    return eliminateSimpleCopies(cvi, *this);
+  if (auto *cvi = dyn_cast<CopyValueInst>(inst)) {
+    return canonicalizeCopies(cvi, *this);
+  }
 
   if (auto *bbi = dyn_cast<BeginBorrowInst>(inst))
     return eliminateSimpleBorrows(bbi, *this);

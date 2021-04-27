@@ -38,13 +38,8 @@ struct SILGenCanonicalize final : CanonicalizeInstruction {
   // Just delete the given 'inst' and record its operands. The callback isn't
   // allowed to mutate any other instructions.
   void killInstruction(SILInstruction *inst) override {
-    deadOperands.erase(inst);
-    for (auto &operand : inst->getAllOperands()) {
-      if (auto *operInst = operand.get()->getDefiningInstruction())
-        deadOperands.insert(operInst);
-    }
-    inst->eraseFromParent();
-    changed = true;
+    notifyWillBeDeletedCallback(inst);
+    deleteInstructionCallback(inst);
   }
 
   void notifyHasNewUsers(SILValue) override { changed = true; }
@@ -78,6 +73,33 @@ struct SILGenCanonicalize final : CanonicalizeInstruction {
       eliminateDeadInstruction(deadOperInst, callbacks);
     }
     return nextII;
+  }
+
+protected:
+  /// A special delete instruction callback used for the InstModCallbacks of
+  /// this CanonicalizeInstruction. Deletes an instruction and does not read or
+  /// mutate any other instructions.
+  ///
+  /// NOTE: This is protected since it is not part of the public class
+  /// interface.
+  void deleteInstructionCallback(SILInstruction *inst) override {
+    inst->eraseFromParent();
+    changed = true;
+  }
+
+  /// A special callback called before an instruction is deleted. Used to update
+  /// state when implementing 2 stage deletion of large groups of instructions
+  /// without consideration of SSA form (consider
+  /// InstructionDeleter::deleteInstruction()).
+  ///
+  /// NOTE: This is protected since it is not part of the public class
+  /// interface.
+  void notifyWillBeDeletedCallback(SILInstruction *inst) override {
+    deadOperands.erase(inst);
+    for (auto &operand : inst->getAllOperands()) {
+      if (auto *operInst = operand.get()->getDefiningInstruction())
+        deadOperands.insert(operInst);
+    }
   }
 };
 

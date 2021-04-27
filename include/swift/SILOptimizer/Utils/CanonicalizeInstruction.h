@@ -29,6 +29,9 @@
 #include "swift/SIL/BasicBlockUtils.h"
 #include "swift/SIL/SILBasicBlock.h"
 #include "swift/SIL/SILInstruction.h"
+#include "swift/SILOptimizer/Analysis/DominanceAnalysis.h"
+#include "swift/SILOptimizer/Analysis/NonLocalAccessBlockAnalysis.h"
+#include "swift/SILOptimizer/Utils/CanonicalOSSALifetime.h"
 #include "swift/SILOptimizer/Utils/InstOptUtils.h"
 #include "llvm/Support/Debug.h"
 
@@ -43,6 +46,16 @@ struct CanonicalizeInstruction {
   DeadEndBlocks &deadEndBlocks;
   InstModCallbacks callbacks;
 
+  /// DominanceAnalysis used to canonicalize lifetimes. Always passed in
+  /// together with \see nlaba via the same constructor. If not passed in, we
+  /// only eliminate simple copies and do not invoke copy propagation.
+  DominanceAnalysis *da = nullptr;
+
+  /// NonLocalAccessBlockAnalysis used to canonicalize lifetimes. Always passed
+  /// in together with \see nlaba via the same constructor. If not passed in, we
+  /// only eliminate simple copies and do not invoke copy propagation.
+  NonLocalAccessBlockAnalysis *nlaba = nullptr;
+
   CanonicalizeInstruction(const char *passDebugType,
                           DeadEndBlocks &deadEndBlocks)
       : deadEndBlocks(deadEndBlocks),
@@ -52,20 +65,66 @@ struct CanonicalizeInstruction {
       debugType = passDebugType;
 #endif
     callbacks = InstModCallbacks()
-      .onDelete([&](SILInstruction *toDelete) {
-        killInstruction(toDelete);
-      })
-      .onCreateNewInst([&](SILInstruction *newInst) {
-        notifyNewInstruction(newInst);
-      })
-      .onSetUseValue([&](Operand *use, SILValue newValue) {
-        use->set(newValue);
-        notifyHasNewUsers(newValue);
-      });
+                    .onDelete([&](SILInstruction *toDelete) {
+                      deleteInstructionCallback(toDelete);
+                    })
+                    .onNotifyWillBeDeleted([&](SILInstruction *willBeDeleted) {
+                      notifyWillBeDeletedCallback(willBeDeleted);
+                    })
+                    .onCreateNewInst([&](SILInstruction *newInst) {
+                      notifyNewInstruction(newInst);
+                    })
+                    .onSetUseValue([&](Operand *use, SILValue newValue) {
+                      use->set(newValue);
+                      notifyHasNewUsers(newValue);
+                    });
+  }
+
+  CanonicalizeInstruction(const char *passDebugType,
+                          DeadEndBlocks &deadEndBlocks, DominanceAnalysis &da,
+                          NonLocalAccessBlockAnalysis &nlaba)
+      : deadEndBlocks(deadEndBlocks), callbacks(), da(&da), nlaba(&nlaba) {
+#ifndef NDEBUG
+    if (llvm::DebugFlag && !llvm::isCurrentDebugType(debugType))
+      debugType = passDebugType;
+#endif
+    callbacks = InstModCallbacks()
+                    .onDelete([&](SILInstruction *toDelete) {
+                      deleteInstructionCallback(toDelete);
+                    })
+                    .onNotifyWillBeDeleted([&](SILInstruction *willBeDeleted) {
+                      notifyWillBeDeletedCallback(willBeDeleted);
+                    })
+                    .onCreateNewInst([&](SILInstruction *newInst) {
+                      notifyNewInstruction(newInst);
+                    })
+                    .onSetUseValue([&](Operand *use, SILValue newValue) {
+                      use->set(newValue);
+                      notifyHasNewUsers(newValue);
+                    });
   }
 
   virtual ~CanonicalizeInstruction();
 
+protected:
+  /// A special delete instruction callback used for the InstModCallbacks of
+  /// this CanonicalizeInstruction. Deletes an instruction and does not read or
+  /// mutate any other instructions.
+  ///
+  /// NOTE: This is protected since it is not part of the public class
+  /// interface.
+  virtual void deleteInstructionCallback(SILInstruction *inst) = 0;
+
+  /// A special callback called before an instruction is deleted. Used to update
+  /// state when implementing 2 stage deletion of large groups of instructions
+  /// without consideration of SSA form (consider
+  /// InstructionDeleter::deleteInstruction()).
+  ///
+  /// NOTE: This is protected since it is not part of the public class
+  /// interface.
+  virtual void notifyWillBeDeletedCallback(SILInstruction *inst) = 0;
+
+public:
   const SILFunction *getFunction() const { return deadEndBlocks.getFunction(); }
 
   /// Rewrite this instruction, based on its operands and uses, into a more

@@ -102,6 +102,17 @@ public:
     canonicalize(inst);
     return changed;
   }
+
+protected:
+  void deleteInstructionCallback(SILInstruction *inst) override {
+    worklist.eraseSingleInstFromFunction(*inst,
+                                         /*AddOperandsToWorklist*/ false);
+    changed = true;
+  }
+
+  void notifyWillBeDeletedCallback(SILInstruction *inst) override {
+    worklist.addOperandsToWorklist(*inst);
+  }
 };
 
 } // anonymous namespace

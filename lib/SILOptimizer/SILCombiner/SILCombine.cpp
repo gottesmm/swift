@@ -21,11 +21,13 @@
 #define DEBUG_TYPE "sil-combine"
 
 #include "SILCombiner.h"
+#include "swift/SIL/BasicBlockDatastructures.h"
 #include "swift/SIL/DebugUtils.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILVisitor.h"
-#include "swift/SIL/BasicBlockDatastructures.h"
 #include "swift/SILOptimizer/Analysis/AliasAnalysis.h"
+#include "swift/SILOptimizer/Analysis/DominanceAnalysis.h"
+#include "swift/SILOptimizer/Analysis/NonLocalAccessBlockAnalysis.h"
 #include "swift/SILOptimizer/Analysis/SimplifyInstruction.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/SILOptimizer/PassManager/Transforms.h"
@@ -121,9 +123,10 @@ class SILCombineCanonicalize final : CanonicalizeInstruction {
 
 public:
   SILCombineCanonicalize(SmallSILInstructionWorklist<256> &Worklist,
-                         DeadEndBlocks &deadEndBlocks)
-      : CanonicalizeInstruction(DEBUG_TYPE, deadEndBlocks), Worklist(Worklist) {
-  }
+                         DeadEndBlocks &deadEndBlocks, DominanceAnalysis *da,
+                         NonLocalAccessBlockAnalysis *nlaba)
+      : CanonicalizeInstruction(DEBUG_TYPE, deadEndBlocks, *da, *nlaba),
+        Worklist(Worklist) {}
 
   void notifyNewInstruction(SILInstruction *inst) override {
     Worklist.add(inst);
@@ -153,6 +156,17 @@ public:
     changed = false;
     canonicalize(inst);
     return changed;
+  }
+
+protected:
+  void deleteInstructionCallback(SILInstruction *inst) override {
+    Worklist.eraseSingleInstFromFunction(*inst,
+                                         /*AddOperandsToWorklist*/ false);
+    changed = true;
+  }
+
+  void notifyWillBeDeletedCallback(SILInstruction *inst) override {
+    Worklist.addOperandsToWorklist(*inst);
   }
 };
 
@@ -222,7 +236,7 @@ bool SILCombiner::doOneIteration(SILFunction &F, unsigned Iteration) {
   // Add reachable instructions to our worklist.
   addReachableCodeToWorklist(&*F.begin());
 
-  SILCombineCanonicalize scCanonicalize(Worklist, deadEndBlocks);
+  SILCombineCanonicalize scCanonicalize(Worklist, deadEndBlocks, DA, NLABA);
 
   // Process until we run out of items in our worklist.
   while (!Worklist.isEmpty()) {
@@ -359,12 +373,13 @@ class SILCombine : public SILFunctionTransform {
     auto *DA = PM->getAnalysis<DominanceAnalysis>();
     auto *PCA = PM->getAnalysis<ProtocolConformanceAnalysis>();
     auto *CHA = PM->getAnalysis<ClassHierarchyAnalysis>();
+    auto *NLABA = PM->getAnalysis<NonLocalAccessBlockAnalysis>();
 
     SILOptFunctionBuilder FuncBuilder(*this);
     // Create a SILBuilder with a tracking list for newly added
     // instructions, which we will periodically move to our worklist.
     SILBuilder B(*getFunction(), &TrackingList);
-    SILCombiner Combiner(FuncBuilder, B, AA, DA, PCA, CHA,
+    SILCombiner Combiner(FuncBuilder, B, AA, DA, PCA, CHA, NLABA,
                          getOptions().RemoveRuntimeAsserts);
     bool Changed = Combiner.runOnFunction(*getFunction());
     assert(TrackingList.empty() &&

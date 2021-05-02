@@ -196,6 +196,11 @@ ParserResult<TypeRepr> Parser::parseTypeSimple(
     }
     LLVM_FALLTHROUGH;
   default:
+    // TODO: Refactor this.
+    if (Tok.is(tok::integer_literal))
+      if (peekToken().is(tok::kw_product))
+        break;
+
     {
       auto diag = diagnose(Tok, MessageID);
       // If the next token is closing or separating, the type was likely forgotten
@@ -1005,6 +1010,12 @@ ParserResult<TypeRepr> Parser::parseOldStyleProtocolComposition() {
 ///   type-tuple-element:
 ///     identifier? identifier ':' type
 ///     type
+///     homogeneous-tuple-element
+///   homogeneous-tuple-element:
+///     integer-literal 'x' type
+///
+/// NOTE: homogenous-tuple-element is sugar that we actually parse as an
+/// artificial sub type-tuple-body.
 ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
   // Force the context to create deferred nodes, as we might need to
   // de-structure the tuple type to create a function type.
@@ -1027,8 +1038,6 @@ ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
                                   diag::expected_rparen_tuple_type_list,
                                   SyntaxKind::TupleTypeElementList,
                                   [&] () -> ParserStatus {
-    TupleTypeReprElement element;
-
     // 'inout' here can be a obsoleted use of the marker in an argument list,
     // consume it in backtracking context so we can determine it's really a
     // deprecated use of it.
@@ -1045,6 +1054,34 @@ ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
     if (Tok.isContextualKeyword("some")) {
       Backtracking.emplace(*this);
     }
+
+    // See if our tuple element is of the form integer-literal 'x' type. In that
+    // case, we parse the element as an inline list of integer-literal num
+    // elements in the tuple at that point.
+    if (Tok.is(tok::integer_literal)) {
+      APInt size;
+      if (!Tok.getText().getAsInteger(10, size)) {
+        // TODO: Talk about what to do with the x token.
+        if (peekToken().getText() == "x") {
+          consumeToken();
+          consumeToken();
+          // Ok, we know that we have a homogenous tuple... Parse the underlying
+          // type and add it N times to our parent tuple.
+          auto type = parseType(diag::expected_type);
+          if (type.hasCodeCompletion())
+            return makeParserCodeCompletionStatus();
+          if (type.isNull())
+            return makeParserError();
+          for (unsigned i : range(size.getLimitedValue())) {
+            (void)i;
+            ElementsR.push_back(type.get());
+          }
+          return makeParserSuccess();
+        }
+      }
+    }
+
+    TupleTypeReprElement element;
 
     // If the tuple element starts with a potential argument label followed by a
     // ':' or another potential argument label, then the identifier is an
@@ -1194,7 +1231,6 @@ ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
                                                 SourceRange(LPLoc, RPLoc),
                                                 EllipsisLoc, EllipsisIdx));
 }
-
 
 /// parseTypeArray - Parse the type-array production, given that we
 /// are looking at the initial l_square.  Note that this index

@@ -3747,6 +3747,24 @@ NeverNullType TypeResolver::resolveTupleType(TupleTypeRepr *repr,
     complained = true;
   }
 
+  // If we have a homogenous tuple, we just need to resolve the type of the
+  // first element and then just add it N times to the tuple. This lets us
+  // significantly reduce compile time when type checking these.
+  if (repr->isHomogeous()) {
+    auto *firstTyR = repr->getElementType(0);
+    auto firstTy = resolveType(firstTyR, elementOptions);
+    if (firstTy->hasError())
+      return ErrorType::get(getASTContext());
+    auto eltName = repr->getElementName(0);
+    if (!eltName.empty())
+      return ErrorType::get(getASTContext());
+    for (unsigned i : range(repr->getNumElements())) {
+      (void)i;
+      elements.emplace_back(firstTy, eltName, ParameterTypeFlags());
+    }
+    return TupleType::get(elements, getASTContext(), true/*is homogenous*/);
+  }
+
   bool hadError = false;
   bool foundDupLabel = false;
   for (unsigned i = 0, end = repr->getNumElements(); i != end; ++i) {

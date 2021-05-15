@@ -1033,6 +1033,25 @@ ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
   unsigned EllipsisIdx;
   SmallVector<TupleTypeReprElement, 8> ElementsR;
 
+  /// A state machine that we use when parsing homogenous tuple elements. We
+  /// always start with an unknown (Top) state and then as we gather more
+  /// information, we refine to either FoundSingleHomogenousTupleElt or
+  /// FoundNonHomogenousTupleElt. The rules are that:
+  ///
+  /// 1. If we see a homogenous tuple element span and the state machine is not
+  /// at Unknown, we error . This is because we only allow for homogenous tuples
+  /// to consist of a single homogenous tuple span (for now). If we are at
+  /// unknown, we move to FoundSingleHomogenousTupleElt.
+  ///
+  /// 2. If 
+  enum class HomogenousTupleEltState {
+    Unknown,
+    FoundSingleHomogenousTupleElt,
+    FoundNonHomogenousTupleElt,
+  };
+  auto homogenousTupleEltState =
+    HomogenousTupleEltState::Unknown;
+
   ParserStatus Status = parseList(tok::r_paren, LPLoc, RPLoc,
                                   /*AllowSepAfterLast=*/false,
                                   diag::expected_rparen_tuple_type_list,
@@ -1063,6 +1082,11 @@ ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
       if (!Tok.getText().getAsInteger(10, size)) {
         // TODO: Talk about what to do with the x token.
         if (peekToken().getText() == "x") {
+          // This means we had multiple homogenous tuple span. Error!
+          //
+          // TODO: Better error. Maybe later than type checker.
+          if (homogenousTupleEltState != HomogenousTupleEltState::Unknown)
+            return makeParserError();
           consumeToken();
           consumeToken();
           // Ok, we know that we have a homogenous tuple... Parse the underlying
@@ -1076,11 +1100,16 @@ ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
             (void)i;
             ElementsR.push_back(type.get());
           }
+          homogenousTupleEltState =
+            HomogenousTupleEltState::FoundSingleHomogenousTupleElt;
           return makeParserSuccess();
         }
       }
     }
 
+    homogenousTupleEltState =
+      HomogenousTupleEltState::FoundNonHomogenousTupleElt;
+        
     TupleTypeReprElement element;
 
     // If the tuple element starts with a potential argument label followed by a
@@ -1226,10 +1255,12 @@ ParserResult<TypeRepr> Parser::parseTypeTupleBody() {
     }
   }
 
-  return makeParserResult(Status,
-                          TupleTypeRepr::create(Context, ElementsR,
-                                                SourceRange(LPLoc, RPLoc),
-                                                EllipsisLoc, EllipsisIdx));
+  auto *repr = TupleTypeRepr::create(Context, ElementsR,
+                                     SourceRange(LPLoc, RPLoc),
+                                     EllipsisLoc, EllipsisIdx);
+  if (homogenousTupleEltState == HomogenousTupleEltState::FoundSingleHomogenousTupleElt)
+    repr->setIsHomogenous();
+  return makeParserResult(Status, repr);
 }
 
 /// parseTypeArray - Parse the type-array production, given that we

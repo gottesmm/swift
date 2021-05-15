@@ -69,9 +69,11 @@ protected:
     Warned : 1
   );
 
-  SWIFT_INLINE_BITFIELD_FULL(TupleTypeRepr, TypeRepr, 1+32,
+  SWIFT_INLINE_BITFIELD_FULL(TupleTypeRepr, TypeRepr, 1+1+32,
     /// Whether this tuple has '...' and its position.
     HasEllipsis : 1,
+    /// Whether this tuple is a homogenous tuple
+    IsHomogenous : 1,
     : NumPadBits,
     /// The number of elements contained.
     NumElements : 32
@@ -721,6 +723,16 @@ public:
   ArrayRef<TupleTypeReprElement> getElements() const {
     return { getTrailingObjects<TupleTypeReprElement>(),
              Bits.TupleTypeRepr.NumElements };
+  }
+
+  /// Set that this tuple type repr is for a homogenous tuple. This is a one way
+  /// transformation!
+  void setIsHomogenous() {
+    Bits.TupleTypeRepr.IsHomogenous = true;
+  }
+
+  bool isHomogeous() const {
+    return Bits.TupleTypeRepr.IsHomogenous;
   }
 
   void getElementTypes(SmallVectorImpl<TypeRepr *> &Types) const {

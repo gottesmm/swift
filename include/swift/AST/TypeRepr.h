@@ -69,9 +69,11 @@ protected:
     Warned : 1
   );
 
-  SWIFT_INLINE_BITFIELD_FULL(TupleTypeRepr, TypeRepr, 1+32,
+  SWIFT_INLINE_BITFIELD_FULL(TupleTypeRepr, TypeRepr, 1+1+32,
     /// Whether this tuple has '...' and its position.
     HasEllipsis : 1,
+    /// Whether this tuple is a homogenous tuple
+    IsHomogenousTuple : 1,
     : NumPadBits,
     /// The number of elements contained.
     NumElements : 32

@@ -404,11 +404,11 @@ protected:
     Count : 32
   );
 
-  SWIFT_INLINE_BITFIELD_FULL(TupleType, TypeBase, 1+32,
+  SWIFT_INLINE_BITFIELD_FULL(TupleType, TypeBase, 1+1+32,
     /// Whether an element of the tuple is inout, __shared or __owned.
     /// Values cannot have such tuple types in the language.
     HasElementWithOwnership : 1,
-
+    IsHomogenous : 1,
     : NumPadBits,
 
     /// The number of elements of the tuple.
@@ -2197,7 +2197,8 @@ public:
   /// Returns a ParenType instead if there is exactly one element which
   /// is unlabeled and not varargs, so it doesn't accidentally construct
   /// a tuple which is impossible to write.
-  static Type get(ArrayRef<TupleTypeElt> Elements, const ASTContext &C);
+  static Type get(ArrayRef<TupleTypeElt> Elements, const ASTContext &C,
+                  bool isHomogenous = false);
 
   /// getEmpty - Return the empty tuple type '()'.
   static CanTypeWrapper<TupleType> getEmpty(const ASTContext &C);
@@ -2231,24 +2232,33 @@ public:
     return static_cast<bool>(Bits.TupleType.HasElementWithOwnership);
   }
 
+  /// Returns true if this tuple is a homogenous tuple that contains all
+  /// elements that are the same type.
+  bool isHomogenous() const {
+    return Bits.TupleType.IsHomogenous;
+  }
+
   // Implement isa/cast/dyncast/etc.
   static bool classof(const TypeBase *T) {
     return T->getKind() == TypeKind::Tuple;
   }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, getElements());
+    Profile(ID, getElements(), isHomogenous());
   }
   static void Profile(llvm::FoldingSetNodeID &ID, 
-                      ArrayRef<TupleTypeElt> Elements);
+                      ArrayRef<TupleTypeElt> Elements,
+                      bool isHomogenous);
   
 private:
   TupleType(ArrayRef<TupleTypeElt> elements, const ASTContext *CanCtx,
             RecursiveTypeProperties properties,
-            bool hasElementWithOwnership)
+            bool hasElementWithOwnership,
+            bool isHomogenous)
      : TypeBase(TypeKind::Tuple, CanCtx, properties) {
      Bits.TupleType.HasElementWithOwnership = hasElementWithOwnership;
      Bits.TupleType.Count = elements.size();
+     Bits.TupleType.IsHomogenous = isHomogenous;
      std::uninitialized_copy(elements.begin(), elements.end(),
                              getTrailingObjects<TupleTypeElt>());
   }

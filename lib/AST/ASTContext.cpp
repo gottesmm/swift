@@ -2693,7 +2693,10 @@ CanTupleType TupleType::getEmpty(const ASTContext &C) {
 }
 
 void TupleType::Profile(llvm::FoldingSetNodeID &ID,
-                        ArrayRef<TupleTypeElt> Fields) {
+                        ArrayRef<TupleTypeElt> Fields,
+                        bool isHomogenous) {
+  ID.AddBoolean(isHomogenous);
+  // TODO: If we are homogenous, could we profile less?
   ID.AddInteger(Fields.size());
   for (const TupleTypeElt &Elt : Fields) {
     ID.AddPointer(Elt.Name.get());
@@ -2703,10 +2706,37 @@ void TupleType::Profile(llvm::FoldingSetNodeID &ID,
 }
 
 /// getTupleType - Return the uniqued tuple type with the specified elements.
-Type TupleType::get(ArrayRef<TupleTypeElt> Fields, const ASTContext &C) {
+Type TupleType::get(ArrayRef<TupleTypeElt> Fields, const ASTContext &C,
+                    bool isHomogenous) {
   if (Fields.size() == 1 && !Fields[0].isVararg() && !Fields[0].hasName())
     return ParenType::get(C, Fields[0].getRawType(),
                           Fields[0].getParameterFlags());
+
+  if (isHomogenous) {
+    const TupleTypeElt &firstElt = Fields.front();
+
+    // We know that a homogenous tuple can not have ValueOwnership (we refuse to
+    // parse in such a case). So we always have trivial properties.
+    RecursiveTypeProperties properties;
+    auto arena = getArena(properties);
+    void *InsertPos = nullptr;
+    // Check to see if we've already seen this tuple before.
+    llvm::FoldingSetNodeID ID;
+    TupleType::Profile(ID, Fields, true/*isHomogenous*/);
+
+    if (TupleType *TT
+        = C.getImpl().getArena(arena).TupleTypes.FindNodeOrInsertPos(ID,InsertPos))
+      return TT;
+
+    bool IsCanonical = !firstElt.getType().isNull() && firstElt.getType()->isCanonical();
+    size_t bytes = totalSizeToAlloc<TupleTypeElt>(Fields.size());
+    // TupleType will copy the fields list into ASTContext owned memory.
+    void *mem = C.Allocate(bytes, alignof(TupleType), arena);
+    auto New = new (mem) TupleType(Fields, IsCanonical ? &C : nullptr, properties,
+                                   false/*has elt with ownership*/, true/*is homogenous*/);
+    C.getImpl().getArena(arena).TupleTypes.InsertNode(New, InsertPos);
+    return New;
+  }
 
   RecursiveTypeProperties properties;
   bool hasElementWithOwnership = false;
@@ -2734,7 +2764,7 @@ Type TupleType::get(ArrayRef<TupleTypeElt> Fields, const ASTContext &C) {
   void *InsertPos = nullptr;
   // Check to see if we've already seen this tuple before.
   llvm::FoldingSetNodeID ID;
-  TupleType::Profile(ID, Fields);
+  TupleType::Profile(ID, Fields, false/*is homogenous*/);
 
   if (TupleType *TT
         = C.getImpl().getArena(arena).TupleTypes.FindNodeOrInsertPos(ID,InsertPos))
@@ -2752,7 +2782,7 @@ Type TupleType::get(ArrayRef<TupleTypeElt> Fields, const ASTContext &C) {
   // TupleType will copy the fields list into ASTContext owned memory.
   void *mem = C.Allocate(bytes, alignof(TupleType), arena);
   auto New = new (mem) TupleType(Fields, IsCanonical ? &C : nullptr, properties,
-                                 hasElementWithOwnership);
+                                 hasElementWithOwnership, false/*is homogenous*/);
   C.getImpl().getArena(arena).TupleTypes.InsertNode(New, InsertPos);
   return New;
 }

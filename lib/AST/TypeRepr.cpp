@@ -288,6 +288,7 @@ TupleTypeRepr::TupleTypeRepr(ArrayRef<TupleTypeReprElement> Elements,
     : TypeRepr(TypeReprKind::Tuple), Parens(Parens) {
   Bits.TupleTypeRepr.HasEllipsis = Ellipsis.isValid();
   Bits.TupleTypeRepr.NumElements = Elements.size();
+  Bits.TupleTypeRepr.IsHomogenous = false;
 
   // Copy elements.
   std::uninitialized_copy(Elements.begin(), Elements.end(),

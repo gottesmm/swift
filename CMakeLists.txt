@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12.4)
+cmake_minimum_required(VERSION 3.19.6)
 
 # TODO: Fix RPATH usage to be CMP0068 compliant
 # Disable Policy CMP0068 for CMake 3.9
@@ -40,7 +40,7 @@ else()
   set(CMAKE_JOB_POOL_LINK local_jobs)
 endif()
 
-ENABLE_LANGUAGE(C)
+ENABLE_LANGUAGE(C CXX)
 
 # Use C++14.
 set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
@@ -51,6 +51,16 @@ set(CMAKE_CXX_EXTENSIONS NO)
 include(SwiftUtils)
 include(CheckSymbolExists)
 include(CMakeDependentOption)
+include(CheckLanguage)
+
+# Enable Swift if it is available in the host toolchain for use in the host
+# compiler.
+check_language(Swift)
+if(CMAKE_Swift_COMPILER)
+  enable_language(Swift)
+else()
+  message(STATUS "No Host Swift Toolchain support?!")
+endif()
 
 #
 # User-configurable options that control the inclusion and default build

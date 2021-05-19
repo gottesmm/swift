@@ -4,6 +4,14 @@ include(SwiftXcodeSupport)
 include(SwiftWindowsSupport)
 include(SwiftAndroidSupport)
 
+function(_target_compile_options_c_cxx name kind)
+  target_compile_options(${name} ${kind} $<$<COMPILE_LANGUAGE:C,CXX>:${ARGN}>)
+endfunction()
+
+function(_target_compile_options_swift name kind)
+  target_compile_options(${name} ${kind} $<$<COMPILE_LANGUAGE:Swift>:${ARGN}>)
+endfunction()
+
 function(_swift_gyb_target_sources target scope)
   file(GLOB GYB_UNICODE_DATA ${SWIFT_SOURCE_DIR}/utils/UnicodeData/*)
   file(GLOB GYB_STDLIB_SUPPORT ${SWIFT_SOURCE_DIR}/utils/gyb_stdlib_support.py)
@@ -91,16 +99,16 @@ function(_add_host_variant_c_compile_link_flags name)
     get_target_triple(target target_variant "${SWIFT_HOST_VARIANT_SDK}" "${SWIFT_HOST_VARIANT_ARCH}"
       MACCATALYST_BUILD_FLAVOR ""
       DEPLOYMENT_VERSION "${DEPLOYMENT_VERSION}")
-    target_compile_options(${name} PRIVATE -target;${target})
+    _target_compile_options_c_cxx(${name} PRIVATE -target;${target}>)
     target_link_options(${name} PRIVATE -target;${target})
   endif()
 
   set(_sysroot
     "${SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_ARCH_${SWIFT_HOST_VARIANT_ARCH}_PATH}")
   if(SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_USE_ISYSROOT)
-    target_compile_options(${name} PRIVATE -isysroot;${_sysroot})
+    _target_compile_options_c_cxx(${name} PRIVATE -isysroot;${_sysroot})
   elseif(NOT SWIFT_COMPILER_IS_MSVC_LIKE AND NOT "${_sysroot}" STREQUAL "/")
-    target_compile_options(${name} PRIVATE --sysroot=${_sysroot})
+    _target_compile_options_c_cxx(${name} PRIVATE --sysroot=${_sysroot})
   endif()
 
   if(SWIFT_HOST_VARIANT_SDK STREQUAL ANDROID)
@@ -108,7 +116,7 @@ function(_add_host_variant_c_compile_link_flags name)
     # enabled, then fallback to the linker included in the android NDK.
     if(NOT SWIFT_USE_LINKER STREQUAL "lld")
       swift_android_tools_path(${SWIFT_HOST_VARIANT_ARCH} tools_path)
-      target_compile_options(${name} PRIVATE -B${tools_path})
+      _target_compile_options_c_cxx(${name} PRIVATE -B${tools_path})
     endif()
   endif()
 
@@ -116,14 +124,14 @@ function(_add_host_variant_c_compile_link_flags name)
     # We collate -F with the framework path to avoid unwanted deduplication
     # of options by target_compile_options -- this way no undesired
     # side effects are introduced should a new search path be added.
-    target_compile_options(${name} PRIVATE
+    _target_compile_options_c_cxx(${name} PRIVATE
       -arch ${SWIFT_HOST_VARIANT_ARCH}
       "-F${SWIFT_SDK_${SWIFT_HOST_VARIANT_ARCH}_PATH}/../../../Developer/Library/Frameworks")
   endif()
 
   _compute_lto_flag("${SWIFT_TOOLS_ENABLE_LTO}" _lto_flag_out)
   if (_lto_flag_out)
-    target_compile_options(${name} PRIVATE ${_lto_flag_out})
+    _target_compile_options_c_cxx(${name} PRIVATE ${_lto_flag_out})
     target_link_options(${name} PRIVATE ${_lto_flag_out})
   endif()
 endfunction()
@@ -135,9 +143,11 @@ function(_add_host_variant_c_compile_flags target)
   is_build_type_optimized("${CMAKE_BUILD_TYPE}" optimized)
   if(optimized)
     if("${CMAKE_BUILD_TYPE}" STREQUAL "MinSizeRel")
-      target_compile_options(${target} PRIVATE -Os)
+      _target_compile_options_c_cxx(${target} PRIVATE -Os)
+      _target_compile_options_swift(${target} PRIVATE -Osize)
     else()
-      target_compile_options(${target} PRIVATE -O2)
+      _target_compile_options_c_cxx(${target} PRIVATE -O2)
+      _target_compile_options_swift(${target} PRIVATE -O)
     endif()
 
     # Omit leaf frame pointers on x86 production builds (optimized, no debug
@@ -146,17 +156,18 @@ function(_add_host_variant_c_compile_flags target)
     if(NOT debug AND NOT LLVM_ENABLE_ASSERTIONS)
       if(SWIFT_HOST_VARIANT_ARCH MATCHES "i?86")
         if(NOT SWIFT_COMPILER_IS_MSVC_LIKE)
-          target_compile_options(${target} PRIVATE -momit-leaf-frame-pointer)
+          _target_compile_options_c_cxx(${target} PRIVATE -momit-leaf-frame-pointer)
         else()
-          target_compile_options(${target} PRIVATE /Oy)
+          _target_compile_options_c_cxx(${target} PRIVATE /Oy)
         endif()
       endif()
     endif()
   else()
     if(NOT SWIFT_COMPILER_IS_MSVC_LIKE)
-      target_compile_options(${target} PRIVATE -O0)
+      _target_compile_options_swift(${target} PRIVATE -Onone)
+      _target_compile_options_c_cxx(${target} PRIVATE -O0)
     else()
-      target_compile_options(${target} PRIVATE /Od)
+      _target_compile_options_c_cxx(${target} PRIVATE /Od)
     endif()
   endif()
 
@@ -166,7 +177,7 @@ function(_add_host_variant_c_compile_flags target)
     if(debuginfo)
       _compute_lto_flag("${SWIFT_TOOLS_ENABLE_LTO}" _lto_flag_out)
       if(_lto_flag_out)
-        target_compile_options(${target} PRIVATE -gline-tables-only)
+        _target_compile_options_c_cxx(${target} PRIVATE -gline-tables-only)
       else()
         target_compile_options(${target} PRIVATE -g)
       endif()
@@ -178,7 +189,7 @@ function(_add_host_variant_c_compile_flags target)
   if(SWIFT_HOST_VARIANT_SDK STREQUAL WINDOWS)
     # MSVC/clang-cl don't support -fno-pic or -fms-compatibility-version.
     if(NOT SWIFT_COMPILER_IS_MSVC_LIKE)
-      target_compile_options(${target} PRIVATE
+      _target_compile_options_c_cxx(${target} PRIVATE
         -fms-compatibility-version=1900
         -fno-pic)
     endif()
@@ -214,9 +225,9 @@ function(_add_host_variant_c_compile_flags target)
     # TODO(compnerd) when moving up to VS 2017 15.3 and newer, we can disable
     # RTTI again
     if(SWIFT_COMPILER_IS_MSVC_LIKE)
-      target_compile_options(${target} PRIVATE /GR-)
+      _target_compile_options_c_cxx(${target} PRIVATE /GR-)
     else()
-      target_compile_options(${target} PRIVATE
+      _target_compile_options_c_cxx(${target} PRIVATE
         -frtti
         "SHELL:-Xclang -fno-rtti-data")
     endif()
@@ -231,7 +242,7 @@ function(_add_host_variant_c_compile_flags target)
     # causes failures for the runtime library when cross-compiling due to
     # undefined symbols from the standard library.
     if(NOT CMAKE_BUILD_TYPE STREQUAL Debug)
-      target_compile_options(${target} PRIVATE
+      _target_compile_options_c_cxx(${target} PRIVATE
         -U_DEBUG)
     endif()
   endif()
@@ -246,24 +257,24 @@ function(_add_host_variant_c_compile_flags target)
       # the build.
       if(CMAKE_C_COMPILER_ID MATCHES Clang AND CMAKE_C_COMPILER_VERSION
           VERSION_LESS 9.0.0)
-        target_compile_options(${target} PRIVATE -mcx16)
+        _target_compile_options_c_cxx(${target} PRIVATE -mcx16)
       endif()
     endif()
   endif()
 
   if(LLVM_ENABLE_ASSERTIONS)
-    target_compile_options(${target} PRIVATE -UNDEBUG)
+    _target_compile_options_c_cxx(${target} PRIVATE -UNDEBUG)
   else()
-    target_compile_definitions(${target} PRIVATE -DNDEBUG)
+    _target_compile_options_c_cxx(${target} PRIVATE -DNDEBUG)
   endif()
 
   if(SWIFT_ENABLE_RUNTIME_FUNCTION_COUNTERS)
-    target_compile_definitions(${target} PRIVATE
+    _target_compile_options_c_cxx(${target} PRIVATE
       SWIFT_ENABLE_RUNTIME_FUNCTION_COUNTERS)
   endif()
 
   if(SWIFT_ANALYZE_CODE_COVERAGE)
-    target_compile_options(${target} PRIVATE
+    _target_compile_options_c_cxx(${target} PRIVATE
       -fprofile-instr-generate
       -fcoverage-mapping)
   endif()
@@ -272,14 +283,14 @@ function(_add_host_variant_c_compile_flags target)
       SWIFT_HOST_VARIANT_ARCH STREQUAL aarch64) AND
      (SWIFT_HOST_VARIANT_SDK STREQUAL LINUX OR
       SWIFT_HOST_VARIANT_SDK STREQUAL ANDROID))
-    target_compile_options(${target} PRIVATE -funwind-tables)
+    _target_compile_options_c_cxx(${target} PRIVATE -funwind-tables)
   endif()
 
   if(SWIFT_HOST_VARIANT_SDK STREQUAL "LINUX")
     if(SWIFT_HOST_VARIANT_ARCH STREQUAL x86_64)
       # this is the minimum architecture that supports 16 byte CAS, which is
       # necessary to avoid a dependency to libatomic
-      target_compile_options(${target} PRIVATE -march=core2)
+      _target_compile_options_c_cxx(${target} PRIVATE -march=core2)
     endif()
   endif()
 
@@ -411,7 +422,8 @@ endfunction()
 function(add_swift_host_library name)
   set(options
         SHARED
-        STATIC)
+        STATIC
+        IGNORE_LLVM_COMPILE_FLAGS)
   set(single_parameter_options)
   set(multiple_parameter_options
         LLVM_LINK_COMPONENTS)
@@ -454,8 +466,12 @@ function(add_swift_host_library name)
   endif()
 
   add_library(${name} ${libkind} ${ASHL_SOURCES})
-  add_dependencies(${name} ${LLVM_COMMON_DEPENDS})
-  llvm_update_compile_flags(${name})
+  if (LLVM_COMMON_DEPENDS)
+    add_dependencies(${name} ${LLVM_COMMON_DEPENDS})
+  endif()
+  if (NOT ASHL_IGNORE_LLVM_COMPILE_FLAGS)
+    llvm_update_compile_flags(${name})
+  endif()
   swift_common_llvm_config(${name} ${ASHL_LLVM_LINK_COMPONENTS})
   set_output_directory(${name}
       BINARY_DIR ${SWIFT_RUNTIME_OUTPUT_INTDIR}
@@ -498,12 +514,12 @@ function(add_swift_host_library name)
 
     if(NOT ${CMAKE_C_COMPILER_ID} STREQUAL MSVC)
       swift_windows_get_sdk_vfs_overlay(ASHL_VFS_OVERLAY)
-      target_compile_options(${name} PRIVATE
+      _target_compile_options_c_cxx(${name} PRIVATE
         "SHELL:-Xclang -ivfsoverlay -Xclang ${ASHL_VFS_OVERLAY}")
 
       # MSVC doesn't support -Xclang. We don't need to manually specify
       # the dependent libraries as `cl` does so.
-      target_compile_options(${name} PRIVATE
+      _target_compile_options_c_cxx(${name} PRIVATE
         "SHELL:-Xclang --dependent-lib=oldnames"
         # TODO(compnerd) handle /MT, /MTd
         "SHELL:-Xclang --dependent-lib=msvcrt$<$<CONFIG:Debug>:d>")
@@ -567,7 +583,9 @@ function(add_swift_host_tool executable)
   _add_host_variant_c_compile_link_flags(${executable})
   target_link_directories(${executable} PRIVATE
     ${SWIFTLIB_DIR}/${SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_LIB_SUBDIR})
-  add_dependencies(${executable} ${LLVM_COMMON_DEPENDS})
+  if (LLVM_COMMON_DEPENDS)
+    add_dependencies(${executable} ${LLVM_COMMON_DEPENDS})
+  endif()
 
   set_target_properties(${executable} PROPERTIES
     FOLDER "Swift executables")
@@ -596,7 +614,7 @@ function(add_swift_host_tool executable)
     if(NOT ${CMAKE_C_COMPILER_ID} STREQUAL MSVC)
       # MSVC doesn't support -Xclang. We don't need to manually specify
       # the dependent libraries as `cl` does so.
-      target_compile_options(${executable} PRIVATE
+      _target_compile_options_c_cxx(${executable} PRIVATE
         "SHELL:-Xclang --dependent-lib=oldnames"
         # TODO(compnerd) handle /MT, /MTd
         "SHELL:-Xclang --dependent-lib=msvcrt$<$<CONFIG:Debug>:d>")
@@ -627,7 +645,7 @@ function(add_swift_fuzzer_host_tool executable)
 
   # Then make sure that we pass the -fsanitize=fuzzer flag both on the cflags
   # and cxx flags line.
-  target_compile_options(${executable} PRIVATE "-fsanitize=fuzzer")
+  _target_compile_options_c_cxx(${executable} PRIVATE "-fsanitize=fuzzer")
   target_link_libraries(${executable} PRIVATE "-fsanitize=fuzzer")
 endfunction()
 

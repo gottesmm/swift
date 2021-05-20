@@ -31,6 +31,11 @@ class Product(object):
         return cls.__name__.lower()
 
     @classmethod
+    def get_build_dir_name(cls, host_target):
+        """Return the dir name for this product."""
+        return '{}-{}'.format(cls.product_name(), host_target)
+
+    @classmethod
     def product_source_name(cls):
         """product_source_name() -> str
 

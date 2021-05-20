@@ -493,14 +493,11 @@ class BuildScriptInvocation(object):
             "--libdispatch-build-type", args.libdispatch_build_variant,
             "--libicu-build-type", args.libicu_build_variant,
             "--xctest-build-type", args.build_variant,
-            "--llbuild-build-type", args.build_variant,
             "--swift-enable-assertions", str(args.swift_assertions).lower(),
             "--swift-stdlib-enable-assertions", str(
                 args.swift_stdlib_assertions).lower(),
             "--swift-analyze-code-coverage", str(
                 args.swift_analyze_code_coverage).lower(),
-            "--llbuild-enable-assertions", str(
-                args.llbuild_assertions).lower(),
             "--lldb-assertions", str(
                 args.lldb_assertions).lower(),
             "--cmake-generator", args.cmake_generator,
@@ -624,7 +621,6 @@ class BuildScriptInvocation(object):
             (args.build_foundation, "foundation"),
             (args.build_xctest, "xctest"),
             (args.build_lldb, "lldb"),
-            (args.build_llbuild, "llbuild"),
             (args.build_libcxx, "libcxx"),
             (args.build_libdispatch, "libdispatch"),
             (args.build_libicu, "libicu")
@@ -657,7 +653,6 @@ class BuildScriptInvocation(object):
             impl_args += [
                 "--skip-test-cmark",
                 "--skip-test-lldb",
-                "--skip-test-llbuild",
                 "--skip-test-xctest",
                 "--skip-test-foundation",
                 "--skip-test-libdispatch",
@@ -798,11 +793,6 @@ class BuildScriptInvocation(object):
                 "--llvm-install-components=%s" % args.llvm_install_components
             ]
 
-        if not args.clean_llbuild:
-            impl_args += [
-                "--skip-clean-llbuild"
-            ]
-
         if args.llvm_ninja_targets:
             impl_args += [
                 "--llvm-ninja-targets=%s" % ' '.join(args.llvm_ninja_targets)
@@ -910,8 +900,6 @@ class BuildScriptInvocation(object):
             impl_product_classes.append(products.Foundation)
         if self.args.build_xctest:
             impl_product_classes.append(products.XCTest)
-        if self.args.build_llbuild:
-            impl_product_classes.append(products.LLBuild)
         # Sanity check that all of our impl classes are actually
         # build_script_impl products.
         for prod in impl_product_classes:
@@ -940,6 +928,8 @@ class BuildScriptInvocation(object):
             product_classes.append(products.SwiftInspect)
         if self.args.tsan_libdispatch_test:
             product_classes.append(products.TSanLibDispatch)
+        if self.args.build_llbuild:
+            product_classes.append(products.LLBuild)
 
         # Keep SwiftDriver at last.
         # swift-driver's integration with the build scripts is not fully
@@ -1069,8 +1059,7 @@ class BuildScriptInvocation(object):
         self._execute_merged_host_lipo_core_action()
 
         # Non-build-script-impl products...
-        # Note: currently only supports building for the host.
-        for host_target in [self.args.host_target]:
+        for host_target in all_host_names:
             for product_class in product_classes:
                 if product_class.is_build_script_impl_product():
                     continue

@@ -184,6 +184,7 @@ def _apply_default_arguments(args):
         args.test_watchos = False
         args.test_android = False
         args.test_swiftpm = False
+        args.test_llbuild = False
         args.test_swift_driver = False
         args.test_swiftsyntax = False
         args.test_indexstoredb = False
@@ -193,11 +194,18 @@ def _apply_default_arguments(args):
         args.test_swiftevolve = False
         args.test_toolchainbenchmarks = False
 
-    # --test implies --test-early-swift-driver
-    # (unless explicitly skipped with `--skip-test-early-swift-driver`)
-    if args.test and (args.build_early_swift_driver and
-                      args.test_early_swift_driver is None):
-        args.test_early_swift_driver = True
+    # --test implies...
+    if args.test:
+        # --test-early-swift-driver
+        # (unless explicitly skipped with `--skip-test-early-swift-driver`)
+        if args.build_early_swift_driver and \
+           args.test_early_swift_driver is None:
+            args.test_early_swift_driver = True
+
+        # --test-llbuild
+        # (unless explicitly skipped with `--skip-test-llbuild`)
+        if args.build_llbuild and args.test_llbuild is None:
+            args.test_llbuild = True
 
     # --skip-test-ios is merely a shorthand for host and simulator tests.
     if not args.test_ios:
@@ -591,6 +599,10 @@ def create_argument_parser():
 
     option(['-b', '--llbuild'], toggle_true('build_llbuild'),
            help='build llbuild')
+
+    option('--install-llbuild',
+           store('install_llbuild', const=True),
+           help='Install llbuild into the just built host toolchain')
 
     option(['--libcxx'], toggle_true('build_libcxx'),
            help='build libcxx')
@@ -1057,6 +1069,8 @@ def create_argument_parser():
                 'phone itself)')
     option('--skip-clean-llbuild', toggle_false('clean_llbuild'),
            help='skip cleaning up llbuild')
+    option('--skip-test-llbuild', toggle_false('test_llbuild'),
+           help='Return llbuild tests against the host toolchain')
     option('--clean-early-swift-driver', toggle_true('clean_early_swift_driver'),
            help='Clean up the early SwiftDriver')
     option('--skip-test-early-swift-driver',

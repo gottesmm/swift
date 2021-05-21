@@ -1012,8 +1012,9 @@ class BuildScriptInvocation(object):
         # Compute the list of hosts to operate on.
         all_host_names = [
             self.args.host_target] + self.args.cross_compile_hosts
-        all_hosts = [StdlibDeploymentTarget.get_target_for_name(name)
-                     for name in all_host_names]
+        all_hosts = StdlibDeploymentTarget.get_targets_by_name(all_host_names)
+        for i in range(len(all_hosts)):
+            assert(all_host_names[i] == all_hosts[i].name)
 
         # Compute the list of product classes to operate on.
         #
@@ -1026,14 +1027,14 @@ class BuildScriptInvocation(object):
 
         # Pre-build-script-impl products...
         # Note: currently only supports building for the host.
-        for host_target in [self.args.host_target]:
+        for host_target in all_hosts[:1]:
             for product_class in before_impl_product_classes:
                 if product_class.is_build_script_impl_product():
                     continue
                 if not product_class.is_before_build_script_impl_product():
                     continue
                 # Execute clean, build, test, install
-                self.execute_product_build_steps(product_class, host_target)
+                self.execute_product_build_steps(product_class, host_target.name)
 
         # Build...
         for host_target in all_hosts:
@@ -1069,13 +1070,15 @@ class BuildScriptInvocation(object):
         self._execute_merged_host_lipo_core_action()
 
         # Non-build-script-impl products...
-        # Note: currently only supports building for the host.
-        for host_target in [self.args.host_target]:
+        #
+        # Note: currently only supports building for the host. We use the slice
+        # on all_hosts for this purpose.
+        for host_target in all_hosts[:1]:
             for product_class in product_classes:
                 if product_class.is_build_script_impl_product():
                     continue
                 # Execute clean, build, test, install
-                self.execute_product_build_steps(product_class, host_target)
+                self.execute_product_build_steps(product_class, host_target.name)
 
         # Extract symbols...
         for host_target in all_hosts:
@@ -1124,33 +1127,34 @@ class BuildScriptInvocation(object):
             env=self.impl_env, echo=self.args.verbose_build)
 
     def execute_product_build_steps(self, product_class, host_target):
+        host_target_name = host_target
         product_source = product_class.product_source_name()
         product_name = product_class.product_name()
         if product_class.is_swiftpm_unified_build_product():
             build_dir = self.workspace.swiftpm_unified_build_dir(
-                host_target)
+                host_target_name)
         else:
             build_dir = self.workspace.build_dir(
-                host_target, product_name)
+                host_target_name, product_name)
         product = product_class(
             args=self.args,
             toolchain=self.toolchain,
             source_dir=self.workspace.source_dir(product_source),
             build_dir=build_dir)
-        if product.should_clean(host_target):
-            print("--- Cleaning %s ---" % product_name)
-            product.clean(host_target)
-        if product.should_build(host_target):
-            print("--- Building %s ---" % product_name)
-            product.build(host_target)
-        if product.should_test(host_target):
-            print("--- Running tests for %s ---" % product_name)
-            product.test(host_target)
-            print("--- Finished tests for %s ---" % product_name)
-        if product.should_install(host_target) or \
-           (self.install_all and product.should_build(host_target)):
-            print("--- Installing %s ---" % product_name)
-            product.install(host_target)
+        if product.should_clean(host_target_name):
+            print("--- Cleaning {} for {}  ---".format(product_name, host_target_name))
+            product.clean(host_target_name)
+        if product.should_build(host_target_name):
+            print("--- Building {} for {} ---".format(product_name, host_target_name))
+            product.build(host_target_name)
+        if product.should_test(host_target_name):
+            print("--- Running tests for {} for {} ---".format(product_name, host_target_name))
+            product.test(host_target_name)
+            print("--- Finished tests for {} for {} ---".format(product_name, host_target_name))
+        if product.should_install(host_target_name) or \
+           (self.install_all and product.should_build(host_target_name)):
+            print("--- Installing {} for {} ---".format(product_name, host_target_name))
+            product.install(host_target_name)
 
 
 # -----------------------------------------------------------------------------

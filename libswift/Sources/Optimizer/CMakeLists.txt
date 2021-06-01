@@ -1,6 +1,6 @@
 
 add_swift_host_library(LibSwiftOptimizer
-  SHARED
+  STATIC
   PURE_SWIFT
   Empty.swift)
 

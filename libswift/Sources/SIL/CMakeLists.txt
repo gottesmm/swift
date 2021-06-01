@@ -1,6 +1,6 @@
 
 add_swift_host_library(LibSwiftSIL
-  SHARED
+  STATIC
   PURE_SWIFT
   Argument.swift
   BasicBlock.swift

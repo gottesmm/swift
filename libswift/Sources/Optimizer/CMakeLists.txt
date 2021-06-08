@@ -6,9 +6,15 @@
 # See http://swift.org/LICENSE.txt for license information
 # See http://swift.org/CONTRIBUTORS.txt for Swift project authors
 
-add_libswift_module(Optimizer
-    DEPENDS SIL)
+add_swift_host_library(LibSwiftOptimizer
+  STATIC PURE_SWIFT Empty.swift)
 
+target_link_libraries(LibSwiftOptimizer PRIVATE
+  LibSwiftSIL
+  swiftSILOptimizer)
+set_target_properties(LibSwiftOptimizer
+  PROPERTIES
+  Swift_MODULE_NAME "Optimizer")
 add_subdirectory(InstructionPasses)
 add_subdirectory(PassManager)
 add_subdirectory(FunctionPasses)

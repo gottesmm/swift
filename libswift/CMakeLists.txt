@@ -17,7 +17,5 @@ else()
   endif()
 
   add_subdirectory(Sources)
-
-  add_libswift("libswift")  
 endif()
 

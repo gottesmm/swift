@@ -6,7 +6,9 @@
 # See http://swift.org/LICENSE.txt for license information
 # See http://swift.org/CONTRIBUTORS.txt for Swift project authors
 
-add_libswift_module(SIL
+add_swift_host_library(LibSwiftSIL
+  STATIC
+  PURE_SWIFT
   Argument.swift
   BasicBlock.swift
   Builder.swift
@@ -21,3 +23,7 @@ add_libswift_module(SIL
   StackList.swift
   Value.swift)
 
+target_link_libraries(LibSwiftSIL PRIVATE swiftSIL)
+set_target_properties(LibSwiftSIL
+  PROPERTIES
+  Swift_MODULE_NAME "SIL")

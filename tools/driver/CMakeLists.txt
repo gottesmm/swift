@@ -21,12 +21,17 @@ set(driver_common_libs
 add_swift_host_tool(swift-frontend
   ${driver_sources_and_options}
   SWIFT_COMPONENT compiler
-  HAS_LIBSWIFT
 )
 target_link_libraries(swift-frontend
                       PRIVATE
-                        ${driver_common_libs}
-                        libswift)
+                      ${driver_common_libs})
+
+if (SWIFT_TOOLS_ENABLE_LIBSWIFT)
+  target_link_libraries(swift-frontend
+    PRIVATE
+    LibSwiftSIL
+    LibSwiftOptimizer
+endif()
 
 # Create a `swift-driver` symlinks adjacent to the `swift-frontend` executable
 # to ensure that `swiftc` forwards to the standalone driver when invoked.

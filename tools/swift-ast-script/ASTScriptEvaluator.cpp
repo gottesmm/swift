@@ -31,11 +31,10 @@ namespace {
 
 class ASTScriptWalker : public ASTWalker {
   const ASTScript &Script;
-  ProtocolDecl *ViewProtocol;
 
 public:
-  ASTScriptWalker(const ASTScript &script, ProtocolDecl *viewProtocol)
-    : Script(script), ViewProtocol(viewProtocol) {}
+  ASTScriptWalker(const ASTScript &script)
+    : Script(script) {}
 
   bool walkToDeclPre(Decl *D) override {
     visit(D);
@@ -55,26 +54,27 @@ public:
       auto paramFnType = paramType->getAs<FunctionType>();
       if (!paramFnType) continue;
 
-      // The parameter function must return a type parameter that
-      // conforms to SwiftUI.View.
-      auto paramResultType = paramFnType->getResult();
-      if (!paramResultType->isTypeParameter()) continue;
-      auto sig = fn->getGenericSignature();
-      if (!sig->requiresProtocol(paramResultType, ViewProtocol)) continue;
-
-      // The parameter must not be a @ViewBuilder parameter.
-      if (param->getResultBuilderType()) continue;
+      int maxTup = -1;
+      for (auto param : paramFnType->getParams()) {
+        if (auto tup = param.getPlainType()->getAs<TupleType>())  {
+          maxTup = std::max(maxTup, int(tup->getNumElements()));
+        }
+        if (auto tup = param.getParameterType(false, &fn->getASTContext())->getAs<TupleType>())  {
+          maxTup = std::max(maxTup, int(tup->getNumElements()));
+        }
+      }
 
       // Print the function.
-      printDecl(fn);
+      if (maxTup >= 0)
+        printDecl(fn, maxTup);
     }
   }
 
-  void printDecl(const ValueDecl *decl) {
+  void printDecl(const ValueDecl *decl, int maxTup) {
     // FIXME: there's got to be some better way to print an exact reference
     // to a declaration, including its context.
     printDecl(llvm::outs(), decl);
-    llvm::outs() << "\n";
+    llvm::outs() << ". MaxTup: " << maxTup << '\n';
   }
 
   void printDecl(llvm::raw_ostream &out, const ValueDecl *decl) {
@@ -83,7 +83,6 @@ public:
       out << ".(accessor)";
     } else {
       printDeclContext(out, decl->getDeclContext());
-      out << decl->getName();
     }
   }
 
@@ -112,32 +111,16 @@ bool ASTScript::execute() const {
   // Hardcode the actual query we want to execute here.
 
   auto &ctx = Config.Compiler.getASTContext();
-  auto swiftUI = ctx.getLoadedModule(ctx.getIdentifier("SwiftUI"));
-  if (!swiftUI) {
-    llvm::errs() << "error: SwiftUI module not loaded\n";
-    return true;
-  }
-
-  auto descriptor =
-      UnqualifiedLookupDescriptor(DeclNameRef(ctx.getIdentifier("View")),
-                                  swiftUI);
-  auto viewLookup = evaluateOrDefault(ctx.evaluator,
-                                      UnqualifiedLookupRequest{descriptor}, {});
-  auto viewProtocol =
-    dyn_cast_or_null<ProtocolDecl>(viewLookup.getSingleTypeResult());
-  if (!viewProtocol) {
-    llvm::errs() << "error: couldn't find SwiftUI.View protocol\n";
-    return true;
-  }
-
-  SmallVector<Decl*, 128> topLevelDecls;
-  swiftUI->getTopLevelDecls(topLevelDecls);
-
-  llvm::errs() << "found " << topLevelDecls.size() << " top-level declarations\n";
-
-  ASTScriptWalker walker(*this, viewProtocol);
-  for (auto decl : topLevelDecls) {
-    decl->walk(walker);
+  for (auto p : ctx.getLoadedModules()) {
+    if (!p.second->isMainModule())
+      continue;
+    SmallVector<Decl*, 128> topLevelDecls;
+    p.second->getTopLevelDecls(topLevelDecls);
+    llvm::dbgs() << "Visiting Module: " << p.first << ". Found " << topLevelDecls.size() << " top level decls.\n";
+    ASTScriptWalker walker(*this);
+    for (auto decl : topLevelDecls) {
+      decl->walk(walker);
+    }
   }
 
   return false;

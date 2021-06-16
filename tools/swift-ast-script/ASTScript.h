@@ -20,6 +20,7 @@
 #include "swift/Basic/LLVM.h"
 
 namespace swift {
+
 namespace scripting {
 class ASTScriptConfiguration;
 
@@ -32,6 +33,10 @@ public:
   static std::unique_ptr<ASTScript> parse(ASTScriptConfiguration &config);
 
   bool execute() const;
+
+  ASTScriptConfiguration &getConfig() const {
+    return Config;
+  }
 };
 
 }

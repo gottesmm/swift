@@ -31,8 +31,13 @@ namespace {
 
 class ASTScriptWalker : public ASTWalker {
   const ASTScript &Script;
+  Optional<unsigned> maxTup;
+  unsigned numScannedTups = 0;
 
 public:
+  unsigned getNumScannedTups() const { return numScannedTups; }
+  Optional<unsigned> getMaxTup() const { return maxTup; }
+
   ASTScriptWalker(const ASTScript &script)
     : Script(script) {}
 
@@ -41,67 +46,51 @@ public:
     return true;
   }
 
-  void visit(const Decl *D) {
-    auto fn = dyn_cast<AbstractFunctionDecl>(D);
-    if (!fn) return;
-
+  void visitAbstractFunctionDecl(const AbstractFunctionDecl *fn) {
     // Suppress warnings.
-    (void) Script;
-
+    (void)Script;
+    bool foundTarget = false;
     for (auto param : *fn->getParameters()) {
-      // The parameter must have function type.
       auto paramType = param->getInterfaceType();
-      auto paramFnType = paramType->getAs<FunctionType>();
-      if (!paramFnType) continue;
-
-      int maxTup = -1;
-      for (auto param : paramFnType->getParams()) {
-        if (auto tup = param.getPlainType()->getAs<TupleType>())  {
-          maxTup = std::max(maxTup, int(tup->getNumElements()));
-        }
-        if (auto tup = param.getParameterType(false, &fn->getASTContext())->getAs<TupleType>())  {
-          maxTup = std::max(maxTup, int(tup->getNumElements()));
+      if (!paramType)
+        continue;
+      if (auto *tup = paramType->getAs<TupleType>()) {
+        // Only record tuples that are larger than 0.
+        if (tup->getNumElements()) {
+          llvm::dbgs() << "Found tuple with eltcount: " << tup->getNumElements() << "\n";
+          maxTup = std::max(maxTup.getValueOr(0), tup->getNumElements());
+          ++numScannedTups;
+          foundTarget = true;
         }
       }
-
-      // Print the function.
-      if (maxTup >= 0)
-        printDecl(fn, maxTup);
     }
-  }
 
-  void printDecl(const ValueDecl *decl, int maxTup) {
-    // FIXME: there's got to be some better way to print an exact reference
-    // to a declaration, including its context.
-    printDecl(llvm::outs(), decl);
-    llvm::outs() << ". MaxTup: " << maxTup << '\n';
-  }
-
-  void printDecl(llvm::raw_ostream &out, const ValueDecl *decl) {
-    if (auto accessor = dyn_cast<AccessorDecl>(decl)) {
-      printDecl(out, accessor->getStorage());
-      out << ".(accessor)";
-    } else {
-      printDeclContext(out, decl->getDeclContext());
-    }
-  }
-
-  void printDeclContext(llvm::raw_ostream &out, const DeclContext *dc) {
-    if (!dc) return;
-    if (auto module = dyn_cast<ModuleDecl>(dc)) {
-      out << module->getName() << ".";
-    } else if (auto extension = dyn_cast<ExtensionDecl>(dc)) {
-      auto *extended = extension->getExtendedNominal();
-      if (extended) {
-        printDecl(out, extended);
-        out << ".";
+    if (auto *fn2 = dyn_cast<FuncDecl>(fn)) {
+      if (auto resultTy = fn2->getResultInterfaceType()) {
+        if (auto *tup = resultTy->getAs<TupleType>()) {
+          // Only record tuples that are larger than 0.
+          if (tup->getNumElements()) {
+            llvm::dbgs() << "Found tuple with eltcount: " << tup->getNumElements() << "\n";
+            maxTup = std::max(maxTup.getValueOr(0), tup->getNumElements());
+            ++numScannedTups;
+            foundTarget = true;
+          }
+        }        
       }
-    } else if (auto decl = dyn_cast_or_null<ValueDecl>(dc->getAsDecl())) {
-      printDecl(out, decl);
-      out << ".";
-    } else {
-      printDeclContext(out, dc->getParent());
     }
+
+    if (foundTarget) {
+      llvm::dbgs() << "Found Target! Source Range:\n";
+      fn->getSourceRange().print(llvm::dbgs(), Script.getConfig().getSourceManager());
+      llvm::dbgs() << "\nDump:\n";
+      fn->print(llvm::dbgs());
+      llvm::dbgs() << '\n';
+    }
+  }
+
+  void visit(const Decl *D) {
+    if (auto *fn = dyn_cast<AbstractFunctionDecl>(D))
+      return visitAbstractFunctionDecl(fn);
   }
 };
 
@@ -121,6 +110,10 @@ bool ASTScript::execute() const {
     for (auto decl : topLevelDecls) {
       decl->walk(walker);
     }
+    llvm::dbgs() << "Num Tuples Scanned: " << walker.getNumScannedTups() << '\n';
+    if (auto val = walker.getMaxTup())
+      llvm::dbgs() << "Max Seen Tuple Size: " << *val << '\n';
+    return false;
   }
 
   return false;

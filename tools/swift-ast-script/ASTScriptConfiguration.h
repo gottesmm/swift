@@ -18,9 +18,12 @@
 #define SWIFT_SCRIPTING_ASTSCRIPTCONFIGURATION_H
 
 #include "swift/Basic/LLVM.h"
+#include "swift/Basic/SourceManager.h"
+#include "swift/Frontend/Frontend.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace swift {
+
 class CompilerInstance;
 
 namespace scripting {
@@ -37,6 +40,14 @@ public:
   /// Returns null if there's a problem.
   static std::unique_ptr<ASTScriptConfiguration>
   parse(CompilerInstance &compiler, ArrayRef<const char *> args);
+
+  SourceManager &getSourceManager() {
+    return Compiler.getSourceMgr();
+  }
+
+  ASTContext &getASTContext() {
+    return Compiler.getASTContext();
+  }
 };
 
 }

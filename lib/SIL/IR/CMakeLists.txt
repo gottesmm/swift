@@ -32,4 +32,5 @@ target_sources(swiftSIL PRIVATE
   SILValue.cpp
   SILWitnessTable.cpp
   TypeLowering.cpp
-  ValueOwnership.cpp)
+  ValueOwnership.cpp
+  InternalOptions.cpp)

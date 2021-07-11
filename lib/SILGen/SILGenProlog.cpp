@@ -21,6 +21,7 @@
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/ParameterList.h"
 #include "swift/AST/PropertyWrappers.h"
+#include "swift/SIL/InternalOptions.h"
 
 using namespace swift;
 using namespace Lowering;
@@ -120,11 +121,14 @@ public:
   }
 
   ManagedValue visitTupleType(CanTupleType t) {
-    SmallVector<ManagedValue, 4> elements;
+    if (!sil::shouldDestructureTuple(t)) {
+      return visitType(t);
+    }
 
     auto &tl = SGF.SGM.Types.getTypeLowering(t, SGF.getTypeExpansionContext());
     bool canBeGuaranteed = tl.isLoadable();
 
+    SmallVector<ManagedValue, 4> elements;
     // Collect the exploded elements.
     for (auto fieldType : t.getElementTypes()) {
       auto elt = visit(fieldType);

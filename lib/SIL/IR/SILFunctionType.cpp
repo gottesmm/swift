@@ -40,9 +40,11 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SaveAndRestore.h"
+#include "swift/SIL/InternalOptions.h"
 
 using namespace swift;
 using namespace swift::Lowering;
+using namespace swift::sil;
 
 SILType SILFunctionType::substInterfaceType(SILModule &M,
                                             SILType interfaceType,
@@ -1344,13 +1346,15 @@ public:
     // Recur into tuples.
     if (origType.isTuple()) {
       auto substTupleType = cast<TupleType>(substType);
-      for (auto eltIndex : indices(substTupleType.getElementTypes())) {
-        AbstractionPattern origEltType =
-          origType.getTupleElementType(eltIndex);
-        CanType substEltType = substTupleType.getElementType(eltIndex);
-        destructure(origEltType, substEltType);
-      }
-      return;
+      //if (shouldDestructureTuple(substTupleType)) {
+        for (auto eltIndex : indices(substTupleType.getElementTypes())) {
+          AbstractionPattern origEltType =
+              origType.getTupleElementType(eltIndex);
+          CanType substEltType = substTupleType.getElementType(eltIndex);
+          destructure(origEltType, substEltType);
+        }
+        return;
+        //}
     }
     
     auto substInterfaceType = Subst.getSubstitutedInterfaceType(origType,
@@ -1606,24 +1610,25 @@ private:
     CanTupleType substTupleTy = dyn_cast<TupleType>(substType);
     if (substTupleTy && !origType.isTypeParameter()) {
       assert(origType.getNumTupleElements() == substTupleTy->getNumElements());
-      switch (ownership) {
-      case ValueOwnership::Default:
-      case ValueOwnership::Owned:
-      case ValueOwnership::Shared:
-        // Expand the tuple.
-        for (auto i : indices(substTupleTy.getElementTypes())) {
-          auto &elt = substTupleTy->getElement(i);
-          auto ownership = elt.getParameterFlags().getValueOwnership();
-          assert(ownership == ValueOwnership::Default);
-          assert(!elt.isVararg());
-          visit(ownership, forSelf,
-                origType.getTupleElementType(i),
-                CanType(elt.getRawType()));
+      if (shouldDestructureTuple(substTupleTy)) {
+        switch (ownership) {
+        case ValueOwnership::Default:
+        case ValueOwnership::Owned:
+        case ValueOwnership::Shared:
+          // Expand the tuple.
+          for (auto i : indices(substTupleTy.getElementTypes())) {
+            auto &elt = substTupleTy->getElement(i);
+            auto ownership = elt.getParameterFlags().getValueOwnership();
+            assert(ownership == ValueOwnership::Default);
+            assert(!elt.isVararg());
+            visit(ownership, forSelf, origType.getTupleElementType(i),
+                  CanType(elt.getRawType()));
+          }
+          return;
+        case ValueOwnership::InOut:
+          // handled below
+          break;
         }
-        return;
-      case ValueOwnership::InOut:
-        // handled below
-        break;
       }
     }
 
@@ -1954,13 +1959,15 @@ static void destructureYieldsForReadAccessor(TypeConverter &TC,
   // Recursively destructure tuples.
   if (origType.isTuple()) {
     auto valueTupleType = cast<TupleType>(valueType);
-    for (auto i : indices(valueTupleType.getElementTypes())) {
-      auto origEltType = origType.getTupleElementType(i);
-      auto valueEltType = valueTupleType.getElementType(i);
-      destructureYieldsForReadAccessor(TC, expansion, origEltType, valueEltType,
-                                       yields, subst);
+    if (shouldDestructureTuple(valueTupleType)) {
+      for (auto i : indices(valueTupleType.getElementTypes())) {
+        auto origEltType = origType.getTupleElementType(i);
+        auto valueEltType = valueTupleType.getElementType(i);
+        destructureYieldsForReadAccessor(TC, expansion, origEltType,
+                                         valueEltType, yields, subst);
+      }
+      return;
     }
-    return;
   }
 
   auto valueInterfaceType =
@@ -4360,14 +4367,23 @@ static bool areABICompatibleParamsOrReturns(SILType a, SILType b,
   // TODO: Should destructure recursively.
   SmallVector<CanType, 1> aElements, bElements;
   if (auto tup = a.getAs<TupleType>()) {
-    auto types = tup.getElementTypes();
-    aElements.append(types.begin(), types.end());
+    if (shouldDestructureTuple(tup)) {
+      auto types = tup.getElementTypes();
+      aElements.append(types.begin(), types.end());
+    } else {
+      aElements.push_back(a.getASTType());
+    }
   } else {
     aElements.push_back(a.getASTType());
   }
+
   if (auto tup = b.getAs<TupleType>()) {
     auto types = tup.getElementTypes();
-    bElements.append(types.begin(), types.end());
+    if (shouldDestructureTuple(tup)) {
+      bElements.append(types.begin(), types.end());
+    } else {
+      bElements.push_back(b.getASTType());
+    }
   } else {
     bElements.push_back(b.getASTType());
   }

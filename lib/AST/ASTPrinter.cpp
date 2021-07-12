@@ -4554,6 +4554,24 @@ public:
     Printer << "(";
 
     auto Fields = T->getElements();
+
+    /// If T is Homogeneous, print it out as a homogeneous tuple.
+    if (T->isHomogenous()) {
+      const TupleTypeElt &TD = Fields[0];
+      Type EltType = TD.getRawType();
+
+      Printer.callPrintStructurePre(PrintStructureKind::TupleElement);
+      SWIFT_DEFER {
+        Printer.printStructurePost(PrintStructureKind::TupleElement);
+      };
+
+      printParameterFlags(Printer, Options, TD.getParameterFlags(),
+                          /*escaping*/ false);
+      visit(EltType);
+      Printer << " x " << Fields.size() << ")";
+      return;
+    }
+
     for (unsigned i = 0, e = Fields.size(); i != e; ++i) {
       if (i)
         Printer << ", ";

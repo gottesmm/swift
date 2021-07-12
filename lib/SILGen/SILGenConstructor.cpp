@@ -28,6 +28,7 @@
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILUndef.h"
 #include "swift/SIL/TypeLowering.h"
+#include "swift/SIL/InternalOptions.h"
 
 using namespace swift;
 using namespace Lowering;
@@ -67,10 +68,12 @@ static RValue emitImplicitValueConstructorArg(SILGenFunction &SGF,
 
   // Restructure tuple arguments.
   if (auto tupleTy = dyn_cast<TupleType>(interfaceType)) {
-    RValue tuple(type);
-    for (auto fieldType : tupleTy.getElementTypes())
-      tuple.addElement(emitImplicitValueConstructorArg(SGF, loc, fieldType, DC));
-    return tuple;
+    if (sil::shouldDestructureTuple(tupleTy)) {
+      RValue tuple(type);
+      for (auto fieldType : tupleTy.getElementTypes())
+        tuple.addElement(emitImplicitValueConstructorArg(SGF, loc, fieldType, DC));
+      return tuple;
+    }
   }
 
   auto &AC = SGF.getASTContext();

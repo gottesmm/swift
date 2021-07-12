@@ -350,7 +350,7 @@ SYNTAX_TOKENS = [
          serialization_code=101),
     Misc('Yield', 'kw_yield', serialization_code=116, text='yield'),
 
-    Misc('Product', 'kw_product', serialization_code=130, text='x'),
+    Misc('Product', 'kw_product', serialization_code=130, text='*'),
 ]
 
 SYNTAX_TOKEN_MAP = {token.name + 'Token': token for token in SYNTAX_TOKENS}

@@ -64,6 +64,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Debug.h"
 #include <algorithm>
 #include <memory>
 
@@ -2761,13 +2762,32 @@ Type TupleType::get(ArrayRef<TupleTypeElt> Fields, const ASTContext &C,
 
   auto arena = getArena(properties);
 
+  // See if we can prove if this is homogeneous. Only canonical tuples without
+  // ownership that have all the exact same element type can be inferred as
+  // homogeneous.
+  bool IsHomogeneous = !hasElementWithOwnership && Fields.size() >= 7;
+  if (IsHomogeneous) {
+    auto FirstEltTy = Fields.front().getType();
+    IsHomogeneous &= !FirstEltTy.isNull() && FirstEltTy->isCanonical();
+    if (IsHomogeneous) {
+      auto *FirstEltTyPtr = FirstEltTy.getPointer();
+      IsHomogeneous &=
+          llvm::all_of(Fields.drop_front(), [&](const TupleTypeElt &Elt) {
+            if (Elt.getType().isNull() || !Elt.getType()->isCanonical())
+              return false;
+            auto *CanonPtr = Elt.getType()->getCanonicalType().getPointer();
+            return CanonPtr == FirstEltTyPtr;
+          });
+    }
+  }
+
   void *InsertPos = nullptr;
   // Check to see if we've already seen this tuple before.
   llvm::FoldingSetNodeID ID;
-  TupleType::Profile(ID, Fields, false/*is homogenous*/);
+  TupleType::Profile(ID, Fields, IsHomogeneous);
 
   if (TupleType *TT
-        = C.getImpl().getArena(arena).TupleTypes.FindNodeOrInsertPos(ID,InsertPos))
+      = C.getImpl().getArena(arena).TupleTypes.FindNodeOrInsertPos(ID,InsertPos))
     return TT;
 
   bool IsCanonical = true;   // All canonical elts means this is canonical.
@@ -2782,7 +2802,7 @@ Type TupleType::get(ArrayRef<TupleTypeElt> Fields, const ASTContext &C,
   // TupleType will copy the fields list into ASTContext owned memory.
   void *mem = C.Allocate(bytes, alignof(TupleType), arena);
   auto New = new (mem) TupleType(Fields, IsCanonical ? &C : nullptr, properties,
-                                 hasElementWithOwnership, false/*is homogenous*/);
+                                 hasElementWithOwnership, IsHomogeneous);
 
   C.getImpl().getArena(arena).TupleTypes.InsertNode(New, InsertPos);
   return New;

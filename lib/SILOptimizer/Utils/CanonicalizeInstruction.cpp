@@ -516,9 +516,6 @@ eliminateRoundTripTupleOfDestructure(TupleInst *tupleInst, CanonicalizeInstructi
     return nextII;
   }
 
-  llvm::dbgs() << "TupleInst: " << *tupleInst;
-  llvm::dbgs() << "DestructureTuple: " << *dti;
-
   // Make sure the types line up.
   if (tupleInst->getType() != dti->getOperand()->getType())
     return nextII;

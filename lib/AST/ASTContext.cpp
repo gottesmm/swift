@@ -2783,6 +2783,7 @@ Type TupleType::get(ArrayRef<TupleTypeElt> Fields, const ASTContext &C,
   void *mem = C.Allocate(bytes, alignof(TupleType), arena);
   auto New = new (mem) TupleType(Fields, IsCanonical ? &C : nullptr, properties,
                                  hasElementWithOwnership, false/*is homogenous*/);
+
   C.getImpl().getArena(arena).TupleTypes.InsertNode(New, InsertPos);
   return New;
 }

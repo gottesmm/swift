@@ -3809,7 +3809,13 @@ NeverNullType TypeResolver::resolveTupleType(TupleTypeRepr *repr,
     diagnose(repr->getLoc(), diag::tuple_duplicate_label);
   }
 
-  return TupleType::get(elements, getASTContext());
+  bool isHomogeneous = elements.size() >= 7;
+  if (isHomogeneous) {
+    isHomogeneous &= llvm::all_of(elements, [&](TupleTypeElt &repr) {
+      return &elements[0] == &repr;
+    });
+  }
+  return TupleType::get(elements, getASTContext(), isHomogeneous);
 }
 
 NeverNullType

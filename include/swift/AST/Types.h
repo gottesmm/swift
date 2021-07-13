@@ -2238,6 +2238,12 @@ public:
     return Bits.TupleType.IsHomogenous;
   }
 
+  /// Set that the given tuple type is a homogeneous tuple. This is a one way
+  /// operation and can not be undone.
+  void setIsHomogeneous() {
+    Bits.TupleType.IsHomogenous = true;
+  }
+
   // Implement isa/cast/dyncast/etc.
   static bool classof(const TypeBase *T) {
     return T->getKind() == TypeKind::Tuple;

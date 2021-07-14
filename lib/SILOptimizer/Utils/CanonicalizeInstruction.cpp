@@ -19,14 +19,17 @@
 // CanonicalizeInstruction defines a default DEBUG_TYPE: "sil-canonicalize"
 
 #include "swift/SILOptimizer/Utils/CanonicalizeInstruction.h"
+#include "swift/AST/Type.h"
 #include "swift/SIL/DebugUtils.h"
 #include "swift/SIL/InstructionUtils.h"
 #include "swift/SIL/Projection.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILFunction.h"
 #include "swift/SIL/SILInstruction.h"
+#include "swift/SIL/ValueUtils.h"
 #include "swift/SILOptimizer/Analysis/SimplifyInstruction.h"
 #include "swift/SILOptimizer/Utils/DebugOptUtils.h"
+#include "swift/SILOptimizer/Utils/InstOptUtils.h"
 #include "swift/SILOptimizer/Utils/OwnershipOptUtils.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Debug.h"
@@ -511,7 +514,9 @@ eliminateRoundTripTupleOfDestructure(TupleInst *tupleInst, CanonicalizeInstructi
     return nextII;
 
   SILValue firstElt = tupleElts[0].get();
-  auto *dti = dyn_cast<DestructureTupleInst>(firstElt->getDefiningInstruction());
+  // We use dyn_cast_or_null in case we have something from an address.
+  auto *dti = dyn_cast_or_null<DestructureTupleInst>(
+      firstElt->getDefiningInstruction());
   if (!dti) {
     return nextII;
   }
@@ -539,19 +544,18 @@ eliminateRoundTripTupleOfDestructure(TupleInst *tupleInst, CanonicalizeInstructi
   return nextII;
 }
 
-/// %x = tuple(hat(%x))
-/// hat(%x2) = destructure_tuple x
-/// 
-/// ->
-/// hat(%x2) = hat(%x)
-static SILBasicBlock::iterator
-eliminateRoundTripDestructureOfTuple(DestructureTupleInst *dti, CanonicalizeInstruction &pass) {
-  auto nextII = std::next(dti->getIterator());
+//===----------------------------------------------------------------------===//
+//                        Destructure Simplifications
+//===----------------------------------------------------------------------===//
 
-  auto *tupleInst = dyn_cast<TupleInst>(dti->getOperand());
-  if (!tupleInst)
-    return nextII;
-
+// %x = tuple(hat(%x))
+// hat(%x2) = destructure_tuple x
+//
+// ->
+// hat(%x2) = hat(%x)
+static SILBasicBlock::iterator eliminateRoundTripDestructureOfTuple(
+    TupleInst *tupleInst, DestructureTupleInst *dti,
+    SILBasicBlock::iterator nextII, CanonicalizeInstruction &pass) {
   // Make sure the types line up.
   if (dti->getOperand()->getType() != tupleInst->getType())
     return nextII;
@@ -566,9 +570,189 @@ eliminateRoundTripDestructureOfTuple(DestructureTupleInst *dti, CanonicalizeInst
   for (auto p : llvm::enumerate(dti->getAllResults())) {
     p.value()->replaceAllUsesWith(tupleInst->getOperand(p.index()));
   }
+  tupleInst->replaceAllUsesOfAllResultsWithUndef();
+  dti->replaceAllUsesOfAllResultsWithUndef();
   nextII = killInstruction(dti, nextII, pass);
   nextII = killInstruction(tupleInst, nextII, pass);
   return nextII;
+}
+
+// We assume that we are going to see one of two patterns:
+//
+//   %alloc = alloc_stack $(Int, Int)
+//   ...
+//   %t0 = tuple_element_addr %alloc, 0
+//   %t1 = tuple_element_addr %alloc, 1
+//   (%0, %1) = destructure_tuple %x
+//   ...
+//   store %0 to %t0
+//   store %1 to %t1
+//
+// Or:
+//
+//   %alloc = alloc_stack $(Int, Int)
+//   ...
+//   (%0, %1) = destructure_tuple %x
+//   ...
+//   %t0 = tuple_element_addr %alloc, 0
+//   store %0 to %t0
+//   %t1 = tuple_element_addr %alloc, 1
+//   store %1 to %t1
+//
+// To:
+//
+//   %alloc = alloc_stack $(Int, Int)
+//   ...
+//   store %x to %alloc
+//
+// We assume everything lines up and there aren't any intervening instructions
+// since this is just looking for code out of SILGen.
+//
+// We iterate over the code sequence twice, once to check for properties and
+// then to optimize instead of using a seenInsts or the like.
+static SILBasicBlock::iterator
+canonicalizeAwayTupleEltAddrDestructurePairs(DestructureTupleInst *dti,
+                                             SILBasicBlock::iterator next,
+                                             CanonicalizeInstruction &pass) {
+  if (dti->getModule().getStage() != SILStage::Raw)
+    return next;
+
+  auto results = dti->getResults();
+  SILValue firstResult = results[0];
+  auto *firstResultUse = firstResult->getSingleUse();
+  if (!firstResultUse)
+    return next;
+
+  SILInstruction *firstInst = nullptr;
+  TupleElementAddrInst *firstTEAI = nullptr;
+  Optional<StoreOwnershipQualifier> storeOwnershipQualifier;
+  Optional<AssignOwnershipQualifier> assignOwnershipQualifier;
+  if (auto *si = dyn_cast<StoreInst>(firstResultUse->getUser())) {
+    firstInst = si;
+    storeOwnershipQualifier = si->getOwnershipQualifier();
+    firstTEAI = dyn_cast<TupleElementAddrInst>(si->getDest());
+  }
+  if (auto *ai = dyn_cast<AssignInst>(firstResultUse->getUser())) {
+    firstInst = ai;
+    assignOwnershipQualifier = ai->getOwnershipQualifier();
+    firstTEAI = dyn_cast<TupleElementAddrInst>(ai->getDest());
+  }
+  if (!firstInst || !firstTEAI || firstTEAI->getFieldIndex() != 0)
+    return next;
+
+  // Ok, we might have found the start of a tuple sequence. Do a forward walk
+  // proving this.
+  unsigned numTupleEltStoreSeen = 1;
+  unsigned maxNumElements = firstTEAI->getTupleType()->getNumElements();
+  SILBasicBlock::iterator lastStore = firstInst->getIterator();
+  for (auto ii = std::next(firstInst->getIterator(), 1),
+            ie = firstInst->getParent()->end();
+       ii != ie && numTupleEltStoreSeen < maxNumElements; ++ii) {
+    if (auto *teai = dyn_cast<TupleElementAddrInst>(&*ii)) {
+      if (teai->getFieldIndex() != numTupleEltStoreSeen ||
+          teai->getOperand() != firstTEAI->getOperand()) {
+        return next;
+      }
+      auto *teaiUse = teai->getSingleUse();
+      if (!teaiUse) {
+        return next;
+      }
+      auto *teaiUser = teaiUse->getUser();
+      if (std::next(teai->getIterator(), 1) != teaiUser->getIterator() ||
+          teaiUser->getKind() != firstInst->getKind() ||
+          &teaiUser->getAllOperands()[CopyLikeInstruction::Dest] != teaiUse) {
+        return next;
+      }
+      // This is an ok tea. Continue.
+      continue;
+    }
+
+    // Equivalent to checking that ii is a store or an assign but additionally
+    // makes sure it is the same kind of instruction as the first instruction.
+    if (ii->getKind() != firstInst->getKind()) {
+      return next;
+    }
+    auto *teai = dyn_cast<TupleElementAddrInst>(
+        ii->getOperand(CopyLikeInstruction::Dest));
+    if (!teai || teai->getFieldIndex() != numTupleEltStoreSeen ||
+        teai->getOperand() != firstTEAI->getOperand()) {
+      return next;
+    }
+
+    if (auto *si = dyn_cast<StoreInst>(ii)) {
+      if (*storeOwnershipQualifier != si->getOwnershipQualifier()) {
+        if (*storeOwnershipQualifier == StoreOwnershipQualifier::Trivial) {
+          if (si->getOwnershipQualifier() != StoreOwnershipQualifier::Trivial) {
+            storeOwnershipQualifier = si->getOwnershipQualifier();
+          }
+        } else {
+          // We have two non-trivial... we can't merge! so bail!
+          if (si->getOwnershipQualifier() != StoreOwnershipQualifier::Trivial) {
+            return next;
+          }
+
+          // Otherwise, we are fine.
+        }
+      }
+    } else {
+      // We do not optimize cases where the assign insts have differing
+      // qualifiers.
+      auto *ai = cast<AssignInst>(ii);
+      if (ai->getOwnershipQualifier() != *assignOwnershipQualifier) {
+        return next;
+      }
+    }
+
+    // Otherwise, we are ok, we can eliminate this store. Stash the last store
+    // so we can just delete all instructions in between the first/last store.
+    lastStore = ii->getIterator();
+    ++numTupleEltStoreSeen;
+  }
+
+  // Then set next to be the instruction after our store. We know that all of
+  // our tuple_element_addr only had single uses, our stores, so we do not need
+  // to worry about any uses after the last store in the block.
+  next = std::next(lastStore->getIterator());
+
+  // Then create a new store at next that stores the destructures operand
+  // directly in the teaiOperand.
+  {
+    SILBuilderWithScope builder(next);
+    if (auto q = storeOwnershipQualifier) {
+      // We have a store qualifier, so we have a store.
+      builder.emitStoreValueOperation(next->getLoc(), dti->getOperand(),
+                                      firstTEAI->getOperand(), *q);
+    } else {
+      // Otherwise, we had an assign.
+      builder.createAssign(next->getLoc(), dti->getOperand(),
+                           firstTEAI->getOperand(), *assignOwnershipQualifier);
+    }
+  }
+
+  // We on purpose recompute std::next of lastStore so we do not destroy our
+  // newly inserted instructions.
+  for (auto ii = firstInst->getIterator(),
+            ie = std::next(lastStore->getIterator());
+       ii != ie;) {
+    auto *inst = &*ii;
+    ++ii;
+    inst->replaceAllUsesOfAllResultsWithUndef();
+    pass.killInstruction(&*inst);
+  }
+
+  return next;
+}
+
+/// SILGen uses a construct called RValue that causes a lot of traffic
+/// back/forth with destructure_tuple/tuple. Here we try to eliminate certain
+/// cases of this.
+static SILBasicBlock::iterator
+eliminateUnnecessaryDestructuresFromRValue(DestructureTupleInst *dti,
+                                           CanonicalizeInstruction &pass) {
+  auto next = std::next(dti->getIterator());
+  if (auto *tupleInst = dyn_cast<TupleInst>(dti->getOperand()))
+    return eliminateRoundTripDestructureOfTuple(tupleInst, dti, next, pass);
+  return canonicalizeAwayTupleEltAddrDestructurePairs(dti, next, pass);
 }
 
 //===----------------------------------------------------------------------===//
@@ -585,7 +769,7 @@ CanonicalizeInstruction::canonicalize(SILInstruction *inst) {
   }
 
   if (auto *dti = dyn_cast<DestructureTupleInst>(inst)) {
-    return eliminateRoundTripDestructureOfTuple(dti, *this);
+    return eliminateUnnecessaryDestructuresFromRValue(dti, *this);
   }
 
   if (auto li = LoadOperation(inst)) {

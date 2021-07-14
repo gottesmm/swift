@@ -16,6 +16,7 @@
 #include "swift/SIL/InstructionUtils.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILBuilder.h"
+#include "swift/SIL/InternalOptions.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/SaveAndRestore.h"
@@ -278,17 +279,20 @@ bool ElementUseCollector::collectUses(SILValue Pointer) {
 
     // Loads are a use of the value.
     if (isa<LoadInst>(User) || isa<LoadBorrowInst>(User)) {
-      if (PointeeType.is<TupleType>())
+      auto tupType = PointeeType.getAs<TupleType>();
+      if (tupType && sil::shouldDestructureTuple(tupType)) {
         UsesToScalarize.push_back(User);
-      else
+      } else {
         Uses.emplace_back(User, PMOUseKind::Load);
+      }
       continue;
     }
 
     // Stores *to* the allocation are writes.
     if (auto *si = dyn_cast<StoreInst>(User)) {
       if (UI->getOperandNumber() == StoreInst::Dest) {
-        if (PointeeType.is<TupleType>()) {
+        auto tupType = PointeeType.getAs<TupleType>();
+        if (tupType && sil::shouldDestructureTuple(tupType)) {
           UsesToScalarize.push_back(User);
           continue;
         }
@@ -322,7 +326,8 @@ bool ElementUseCollector::collectUses(SILValue Pointer) {
     if (auto *CAI = dyn_cast<CopyAddrInst>(User)) {
       // If this is a copy of a tuple, we should scalarize it so that we don't
       // have an access that crosses elements.
-      if (PointeeType.is<TupleType>()) {
+      auto tupType = PointeeType.getAs<TupleType>();
+      if (tupType && sil::shouldDestructureTuple(tupType)) {
         UsesToScalarize.push_back(CAI);
         continue;
       }

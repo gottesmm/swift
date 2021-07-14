@@ -4565,10 +4565,12 @@ public:
         Printer.printStructurePost(PrintStructureKind::TupleElement);
       };
 
+      Printer << Fields.size() << " x ";
+
       printParameterFlags(Printer, Options, TD.getParameterFlags(),
                           /*escaping*/ false);
       visit(EltType);
-      Printer << " x " << Fields.size() << ")";
+      Printer << ")";
       return;
     }
 

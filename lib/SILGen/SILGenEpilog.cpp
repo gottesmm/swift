@@ -67,6 +67,7 @@ static SILValue buildReturnValue(SILGenFunction &SGF, SILLocation loc,
   if (directResults.size() == 1)
     return directResults[0];
 
+  // TODO: We could assert here that we only do this if the tuple is < 7.
   SmallVector<TupleTypeElt, 4> eltTypes;
   for (auto elt : directResults)
     eltTypes.push_back(elt->getType().getASTType());

@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "loadable-address"
+
 #include "FixedTypeInfo.h"
 #include "IRGenMangler.h"
 #include "IRGenModule.h"
@@ -24,6 +25,7 @@
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/IRGen/IRGenSILPasses.h"
 #include "swift/SIL/DebugUtils.h"
+#include "swift/SIL/InternalOptions.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILUndef.h"
@@ -119,6 +121,11 @@ static bool isLargeLoadableType(GenericEnvironment *GenericEnv, SILType t,
     const TypeInfo &TI = Mod.getTypeInfoForLowered(canType);
     auto &nativeSchemaOrigParam = TI.nativeParameterValueSchema(Mod);
     return nativeSchemaOrigParam.requiresIndirect();
+  }
+
+  if (auto tupleType = t.getAs<TupleType>()) {
+    if (!sil::shouldDestructureTuple(tupleType))
+      return true;
   }
   return false;
 }
@@ -2342,40 +2349,39 @@ static bool rewriteFunctionReturn(StructLoweringState &pass) {
   // We (currently) only care about function signatures
   if (pass.isLargeLoadableType(loweredTy, resultTy)) {
     return true;
-  } else if (pass.containsDifferentFunctionSignature(loweredTy, resultTy)) {
-    llvm::SmallVector<SILResultInfo, 2> newSILResultInfo;
-    if (auto tupleType = newSILType.getAs<TupleType>()) {
-      auto originalResults = loweredTy->getResults();
-      for (unsigned int i = 0; i < originalResults.size(); ++i) {
-        auto origResultInfo = originalResults[i];
-        auto canElem = tupleType.getElementType(i);
-        SILType objectType = SILType::getPrimitiveObjectType(canElem);
-        auto newResult = SILResultInfo(objectType.getASTType(), origResultInfo.getConvention());
-        newSILResultInfo.push_back(newResult);
-      }
-    } else {
-      assert(loweredTy->getNumResults() == 1 && "Expected a single result");
-      auto origResultInfo = loweredTy->getSingleResult();
-      auto newResult = SILResultInfo(newSILType.getASTType(), origResultInfo.getConvention());
+  }
+
+  if (!pass.containsDifferentFunctionSignature(loweredTy, resultTy))
+    return false;
+
+  llvm::SmallVector<SILResultInfo, 2> newSILResultInfo;
+  if (auto tupleType = newSILType.getAs<TupleType>()) {
+    auto originalResults = loweredTy->getResults();
+    for (unsigned int i = 0; i < originalResults.size(); ++i) {
+      auto origResultInfo = originalResults[i];
+      auto canElem = tupleType.getElementType(i);
+      SILType objectType = SILType::getPrimitiveObjectType(canElem);
+      auto newResult = SILResultInfo(objectType.getASTType(),
+                                     origResultInfo.getConvention());
       newSILResultInfo.push_back(newResult);
     }
-
-    auto NewTy = SILFunctionType::get(
-        loweredTy->getSubstGenericSignature(),
-        loweredTy->getExtInfo(),
-        loweredTy->getCoroutineKind(),
-        loweredTy->getCalleeConvention(),
-        loweredTy->getParameters(),
-        loweredTy->getYields(),
-        newSILResultInfo, loweredTy->getOptionalErrorResult(),
-        loweredTy->getPatternSubstitutions(),
-        loweredTy->getInvocationSubstitutions(),
-        F->getModule().getASTContext(),
-        loweredTy->getWitnessMethodConformanceOrInvalid());
-    F->rewriteLoweredTypeUnsafe(NewTy);
-    return true;
+  } else {
+    assert(loweredTy->getNumResults() == 1 && "Expected a single result");
+    auto origResultInfo = loweredTy->getSingleResult();
+    auto newResult =
+        SILResultInfo(newSILType.getASTType(), origResultInfo.getConvention());
+    newSILResultInfo.push_back(newResult);
   }
-  return false;
+
+  auto NewTy = SILFunctionType::get(
+      loweredTy->getSubstGenericSignature(), loweredTy->getExtInfo(),
+      loweredTy->getCoroutineKind(), loweredTy->getCalleeConvention(),
+      loweredTy->getParameters(), loweredTy->getYields(), newSILResultInfo,
+      loweredTy->getOptionalErrorResult(), loweredTy->getPatternSubstitutions(),
+      loweredTy->getInvocationSubstitutions(), F->getModule().getASTContext(),
+      loweredTy->getWitnessMethodConformanceOrInvalid());
+  F->rewriteLoweredTypeUnsafe(NewTy);
+  return true;
 }
 
 void LoadableByAddress::runOnFunction(SILFunction *F) {
@@ -2757,7 +2763,8 @@ bool LoadableByAddress::recreateTupleInstr(
   auto *currIRMod = getIRGenModule()->IRGen.getGenModule(F);
   GenericEnvironment *genEnv = getSubstGenericEnvironment(F);
   auto resultTy = tupleInstr->getType();
-  auto newResultTy = MapperCache.getNewSILType(genEnv, resultTy, *currIRMod);
+  auto newResultTy =
+      MapperCache.getNewSILType(genEnv, resultTy, *currIRMod).getObjectType();
   if (resultTy == newResultTy)
     return true;
 
@@ -2768,8 +2775,9 @@ bool LoadableByAddress::recreateTupleInstr(
   for (auto elem : tupleInstr->getElements()) {
     elems.push_back(elem);
   }
-  auto *newTuple = tupleBuilder.createTuple(tupleInstr->getLoc(), newResultTy,
-                                            elems);
+  auto *newTuple = tupleBuilder.createTuple(tupleInstr->getLoc(),
+                                            newResultTy.getObjectType(), elems);
+  assert(newTuple->getType().isObject());
   tupleInstr->replaceAllUsesWith(newTuple);
   Delete.push_back(tupleInstr);
   return true;

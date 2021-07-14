@@ -21,8 +21,10 @@
 #include "Scope.h"
 #include "SwitchEnumBuilder.h"
 #include "swift/AST/DiagnosticsSIL.h"
+#include "swift/AST/TypeExpansionContext.h"
 #include "swift/Basic/ProfileCounter.h"
 #include "swift/SIL/BasicBlockUtils.h"
+#include "swift/SIL/InternalOptions.h"
 #include "swift/SIL/SILArgument.h"
 #include "llvm/Support/SaveAndRestore.h"
 
@@ -487,7 +489,7 @@ SILGenFunction::prepareIndirectResultInit(CanType formalResultType,
 
 void SILGenFunction::emitReturnExpr(SILLocation branchLoc,
                                     Expr *ret) {
-  SmallVector<SILValue, 4> directResults;
+  SmallVector<SILValue, 4> directSILResults;
 
   if (F.getConventions().hasIndirectSILResults()) {
     // Indirect return of an address-only value.
@@ -495,9 +497,8 @@ void SILGenFunction::emitReturnExpr(SILLocation branchLoc,
 
     // Build an initialization which recursively destructures the tuple.
     SmallVector<CleanupHandle, 4> resultCleanups;
-    InitializationPtr resultInit =
-      prepareIndirectResultInit(ret->getType()->getCanonicalType(),
-                                directResults, resultCleanups);
+    InitializationPtr resultInit = prepareIndirectResultInit(
+        ret->getType()->getCanonicalType(), directSILResults, resultCleanups);
 
     // Emit the result expression into the initialization.
     emitExprInto(ret, resultInit.get());
@@ -510,10 +511,32 @@ void SILGenFunction::emitReturnExpr(SILLocation branchLoc,
     // SILValue return.
     FullExpr scope(Cleanups, CleanupLocation(ret));
     RValue RV = emitRValue(ret).ensurePlusOne(*this, CleanupLocation(ret));
-    std::move(RV).forwardAll(*this, directResults);
+
+    // See if our return type was a homogeneous tuple. In such a case, we need
+    // to implode into one value and pass that. Otherwise, we build the actual
+    // tuple later.
+    auto directResults = F.getConventions().getDirectSILResults();
+    if (std::distance(directResults.begin(), directResults.end()) == 1) {
+      auto returnValueTy = directResults.begin()->getReturnValueType(
+          SGM.M, F.getLoweredFunctionType(), TypeExpansionContext::minimal());
+      if (CanTupleType tupType = dyn_cast<TupleType>(returnValueTy)) {
+        if (!sil::shouldDestructureTuple(tupType)) {
+          SILValue homogeneousTuple =
+              std::move(RV).forwardAsSingleValue(*this, CleanupLocation(ret));
+          directSILResults.push_back(homogeneousTuple);
+        }
+      }
+    }
+
+    // If we did not already use our RV, it means we did not have a homogeneous
+    // tuple so we need to forward. The tuple will result will be reconstructed
+    // as appropriate in the epilogBB from our component parts.
+    if (!directSILResults.size()) {
+      std::move(RV).forwardAll(*this, directSILResults);
+    }
   }
 
-  Cleanups.emitBranchAndCleanups(ReturnDest, branchLoc, directResults);
+  Cleanups.emitBranchAndCleanups(ReturnDest, branchLoc, directSILResults);
 }
 
 void StmtEmitter::visitReturnStmt(ReturnStmt *S) {

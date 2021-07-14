@@ -1346,7 +1346,7 @@ public:
     // Recur into tuples.
     if (origType.isTuple()) {
       auto substTupleType = cast<TupleType>(substType);
-      //if (shouldDestructureTuple(substTupleType)) {
+      if (shouldDestructureTuple(substTupleType)) {
         for (auto eltIndex : indices(substTupleType.getElementTypes())) {
           AbstractionPattern origEltType =
               origType.getTupleElementType(eltIndex);
@@ -1354,7 +1354,7 @@ public:
           destructure(origEltType, substEltType);
         }
         return;
-        //}
+      }
     }
     
     auto substInterfaceType = Subst.getSubstitutedInterfaceType(origType,

@@ -18,6 +18,7 @@
 #include "RValue.h"
 #include "SILGenFunction.h"
 #include "swift/AST/GenericEnvironment.h"
+#include "swift/SIL/InternalOptions.h"
 
 using namespace swift;
 using namespace Lowering;
@@ -750,9 +751,12 @@ ResultPlanPtr ResultPlanBuilder::buildTopLevelResult(Initialization *init,
 ResultPlanPtr ResultPlanBuilder::build(Initialization *init,
                                        AbstractionPattern origType,
                                        CanType substType) {
-  // Destructure original tuples.
+  // Destructure original tuples if they were not homogeneous tuples.
   if (origType.isTuple()) {
-    return buildForTuple(init, origType, cast<TupleType>(substType));
+    auto substTupleType = cast<TupleType>(substType);
+    if (sil::shouldDestructureTuple(substTupleType)) {
+      return buildForTuple(init, origType, substTupleType);
+    }
   }
 
   // Otherwise, grab the next result.

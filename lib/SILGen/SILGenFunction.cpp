@@ -27,6 +27,7 @@
 #include "swift/AST/ParameterList.h"
 #include "swift/AST/PropertyWrappers.h"
 #include "swift/AST/SourceFile.h"
+#include "swift/SIL/InternalOptions.h"
 #include "swift/SIL/SILArgument.h"
 #include "swift/SIL/SILProfiler.h"
 #include "swift/SIL/SILUndef.h"
@@ -960,13 +961,14 @@ void SILGenFunction::emitGeneratorFunction(SILDeclRef function, VarDecl *var) {
   auto resultType = contextualType->getCanonicalType();
   auto origResultType = AbstractionPattern(resultType);
 
-  SmallVector<SILValue, 4> directResults;
+  SmallVector<SILValue, 4> directSILResults;
 
   if (F.getConventions().hasIndirectSILResults()) {
     Scope scope(Cleanups, CleanupLocation(var));
 
     SmallVector<CleanupHandle, 4> cleanups;
-    auto init = prepareIndirectResultInit(resultType, directResults, cleanups);
+    auto init =
+        prepareIndirectResultInit(resultType, directSILResults, cleanups);
 
     emitApplyOfStoredPropertyInitializer(loc, anchorVar, subs, resultType,
                                          origResultType,
@@ -984,10 +986,24 @@ void SILGenFunction::emitGeneratorFunction(SILDeclRef function, VarDecl *var) {
                                                        origResultType,
                                                        SGFContext())
                     .ensurePlusOne(*this, loc);
-    std::move(result).forwardAll(*this, directResults);
+
+    if (CanTupleType tupType = dyn_cast<TupleType>(resultType)) {
+      if (!sil::shouldDestructureTuple(tupType)) {
+        SILValue homogeneousTuple =
+            std::move(result).forwardAsSingleValue(*this, loc);
+        directSILResults.push_back(homogeneousTuple);
+      }
+    }
+
+    // If we did not already use our RV, it means we did not have a homogeneous
+    // tuple so we need to forward. The tuple will result will be reconstructed
+    // as appropriate in the epilogBB from our component parts.
+    if (!directSILResults.size()) {
+      std::move(result).forwardAll(*this, directSILResults);
+    }
   }
 
-  Cleanups.emitBranchAndCleanups(ReturnDest, loc, directResults);
+  Cleanups.emitBranchAndCleanups(ReturnDest, loc, directSILResults);
   emitEpilog(loc);
 }
 

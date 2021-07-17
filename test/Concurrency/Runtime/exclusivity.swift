@@ -14,6 +14,9 @@
 
 // NOTE: The cases that we are talking about handling below refer to the cases
 // documented in Exclusivity.cpp.
+//
+// NOTE: We test cases that involve custom executors in
+// custom_executors_exclusivity.cpp.
 
 import _Concurrency
 import StdlibUnittest

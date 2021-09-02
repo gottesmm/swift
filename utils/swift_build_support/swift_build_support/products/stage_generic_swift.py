@@ -150,7 +150,7 @@ updated without updating swift.py?")
     @property
     def _enable_experimental_distributed(self):
         return [('SWIFT_ENABLE_EXPERIMENTAL_DISTRIBUTED:BOOL',
-                 self.args.enable_experimental_distributed)]
+                 False)]
 
     @classmethod
     def is_build_script_impl_product(cls):

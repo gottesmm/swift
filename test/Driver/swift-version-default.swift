@@ -1,5 +1,5 @@
 // RUN: %empty-directory(%t)
-// RUN: %swiftc_driver_plain -target %target-triple -module-cache-path %t -typecheck -Xfrontend -verify %s
+// RUN: %swiftc_driver_plain %resource-dir-opt -target %target-triple -module-cache-path %t -typecheck -Xfrontend -verify %s
 
 // This test should be updated to match the expected default Swift version
 // when swiftc is invoked directly.

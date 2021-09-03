@@ -898,7 +898,8 @@ std::shared_ptr<sma::Module> createSMAModel(ModuleDecl *M) {
 } // unnamed namespace
 
 int swift::doGenerateModuleAPIDescription(StringRef MainExecutablePath,
-                                          ArrayRef<std::string> Args) {
+                                          ArrayRef<std::string> Args,
+                                          Optional<StringRef> ResourceDir) {
   std::vector<const char *> CStringArgs;
   for (auto &S : Args) {
     CStringArgs.push_back(S.c_str());
@@ -921,6 +922,8 @@ int swift::doGenerateModuleAPIDescription(StringRef MainExecutablePath,
   }
 
   Invocation.setMainExecutablePath(MainExecutablePath);
+  if (ResourceDir)
+    Invocation.setRuntimeResourcePath(*ResourceDir);
 
   CompilerInstance CI;
   CI.addDiagnosticConsumer(&PDC);

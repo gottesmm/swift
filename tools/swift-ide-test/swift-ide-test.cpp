@@ -3816,10 +3816,13 @@ int main(int argc, char *argv[]) {
   }
 
   if (options::Action == ActionType::GenerateModuleAPIDescription) {
+    Optional<StringRef> r;
+    if (options::ResourceDir.size())
+      r.emplace(options::ResourceDir);
     return doGenerateModuleAPIDescription(
         llvm::sys::fs::getMainExecutable(
             argv[0], reinterpret_cast<void *>(&anchorForGetMainExecutable)),
-        options::InputFilenames);
+        options::InputFilenames, r);
   }
 
   if (options::Action == ActionType::DumpCompletionCache) {

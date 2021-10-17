@@ -83,6 +83,8 @@ TYPE_ATTR(pseudogeneric)
 TYPE_ATTR(yields)
 TYPE_ATTR(yield_once)
 TYPE_ATTR(yield_many)
+// Used at the SIL level to mark a type as moveOnly.
+TYPE_ATTR(moveOnly)
 
 // SIL metatype attributes.
 TYPE_ATTR(thin)

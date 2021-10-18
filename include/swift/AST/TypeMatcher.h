@@ -304,6 +304,7 @@ class TypeMatcher {
     TRIVIAL_CASE(SILBlockStorageType)
     TRIVIAL_CASE(SILBoxType)
     TRIVIAL_CASE(ProtocolCompositionType)
+    TRIVIAL_CASE(SILMoveOnlyType)
 
     bool visitParametrizedProtocolType(CanParametrizedProtocolType firstParametrizedProto,
                                        Type secondType,

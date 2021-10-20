@@ -206,6 +206,8 @@ static bool hasOpaqueArchetype(TypeExpansionContext context,
   case SILInstructionKind::ExplicitCopyValueInst:
   case SILInstructionKind::MoveValueInst:
   case SILInstructionKind::MarkMustCheckInst:
+  case SILInstructionKind::CopyableToMoveOnlyValueInst:
+  case SILInstructionKind::MoveOnlyToCopyableValueInst:
 #define UNCHECKED_REF_STORAGE(Name, ...)                                       \
   case SILInstructionKind::StrongCopy##Name##ValueInst:
 #define ALWAYS_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, ...)            \

@@ -1278,6 +1278,10 @@ ValueOwnershipKind ForwardingOperand::getForwardingOwnershipKind() const {
     return ofti->getForwardingOwnershipKind();
   }
 
+  if (auto *move = dyn_cast<MoveOnlyToCopyableValueInst>(user)) {
+    return move->getForwardingOwnershipKind();
+  }
+
   llvm_unreachable("Unhandled forwarding inst?!");
 }
 
@@ -1341,6 +1345,9 @@ void ForwardingOperand::setForwardingOwnershipKind(
     }
     return;
   }
+
+  assert(!isa<MoveOnlyToCopyableValueInst>(user) &&
+         "MoveOnlyToCopyableValueInst can not have its ownership changed");
 
   llvm_unreachable("Out of sync with OperandOwnership");
 }
@@ -1408,6 +1415,9 @@ void ForwardingOperand::replaceOwnershipKind(ValueOwnershipKind oldKind,
     }
     return;
   }
+
+  assert(!isa<MoveOnlyToCopyableValueInst>(user) &&
+         "MoveOnlyToCopyableValueInst can not have its ownership changed");
 
   llvm_unreachable("Missing Case! Out of sync with OperandOwnership");
 }

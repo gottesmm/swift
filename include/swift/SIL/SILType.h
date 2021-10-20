@@ -594,27 +594,20 @@ public:
   bool isAnyObject() const { return getASTType()->isAnyObject(); }
 
   /// Returns true if this SILType is a move only wrapper type.
-  ///
-  /// Canonical way to check if a SILType is move only. Using is/getAs/castTo
-  /// will look through moveonly-ness.
-  bool isMoveOnly() const { return getRawASTType()->is<SILMoveOnlyType>(); }
+  bool isMoveOnly() const { return getASTType()->is<SILMoveOnlyType>(); }
 
-  /// Return *this if already move only... otherwise, wrap the current type
-  /// within a move only type wrapper and return that. Idempotent!
+  /// Wrap the current type within a move only type wrapper.
   SILType asMoveOnly() const {
     if (isMoveOnly())
       return *this;
-    auto newType = SILMoveOnlyType::get(getRawASTType());
+    auto newType = SILMoveOnlyType::get(getASTType());
     return SILType::getPrimitiveType(newType, getCategory());
   }
 
-  /// Return this SILType, removing moveonly-ness.
-  ///
-  /// Is idempotent.
   SILType withoutMoveOnly() const {
     if (!isMoveOnly())
       return *this;
-    auto moveOnly = getRawASTType()->castTo<SILMoveOnlyType>();
+    auto moveOnly = getASTType()->castTo<SILMoveOnlyType>();
     return SILType::getPrimitiveType(moveOnly->getInnerType(), getCategory());
   }
 

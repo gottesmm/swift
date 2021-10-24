@@ -13,6 +13,7 @@
 #define DEBUG_TYPE "sil-inliner"
 
 #include "swift/SILOptimizer/Utils/SILInliner.h"
+#include "swift/AST/Builtins.h"
 #include "swift/SIL/PrettyStackTrace.h"
 #include "swift/SIL/SILDebugScope.h"
 #include "swift/SIL/TypeSubstCloner.h"
@@ -20,6 +21,7 @@
 #include "swift/SILOptimizer/Utils/SILOptFunctionBuilder.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
+
 using namespace swift;
 
 static bool canInlineBeginApply(BeginApplyInst *BA) {
@@ -289,6 +291,7 @@ protected:
   void visitHopToExecutorInst(HopToExecutorInst *Inst);
 
   void visitTerminator(SILBasicBlock *BB);
+  void visitBuiltinInst(BuiltinInst *BI);
 
   /// This hook is called after either of the top-level visitors:
   /// cloneReachableBlocks or cloneSILFunction.
@@ -628,6 +631,7 @@ void SILInlineCloner::visitDebugValueInst(DebugValueInst *Inst) {
 
   return SILCloner<SILInlineCloner>::visitDebugValueInst(Inst);
 }
+
 void SILInlineCloner::visitHopToExecutorInst(HopToExecutorInst *Inst) {
   // Drop hop_to_executor in non async functions.
   if (!Apply.getFunction()->isAsync()) {
@@ -637,6 +641,7 @@ void SILInlineCloner::visitHopToExecutorInst(HopToExecutorInst *Inst) {
 
   return SILCloner<SILInlineCloner>::visitHopToExecutorInst(Inst);
 }
+
 const SILDebugScope *
 SILInlineCloner::getOrCreateInlineScope(const SILDebugScope *CalleeScope) {
   if (!CalleeScope)
@@ -663,6 +668,42 @@ SILInlineCloner::getOrCreateInlineScope(const SILDebugScope *CalleeScope) {
       ParentScope ? getOrCreateInlineScope(ParentScope) : nullptr, InlinedAt);
   InlinedScopeCache.insert({CalleeScope, InlinedScope});
   return InlinedScope;
+}
+
+void SILInlineCloner::visitBuiltinInst(BuiltinInst *Inst) {
+  if (IKind == InlineKind::MandatoryInline) {
+    if (auto kind = Inst->getBuiltinKind()) {
+      if (*kind == BuiltinValueKind::Move) {
+        auto otherResultAddr = getOpValue(Inst->getOperand(0));
+        auto otherSrcAddr = getOpValue(Inst->getOperand(1));
+        auto otherType = otherSrcAddr->getType();
+
+        // If our otherType is loadable, convert it to move_value.
+        if (otherType.isLoadable(*Inst->getFunction())) {
+          getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
+          // We stash otherValue in originalOtherValue in case we need to
+          // perform a writeback.
+          auto opLoc = getOpLocation(Inst->getLoc());
+
+          assert(otherType.isAddress());
+
+          SILValue otherValue = getBuilder().emitLoadValueOperation(
+              opLoc, otherSrcAddr, LoadOwnershipQualifier::Take);
+
+          auto *mvi = getBuilder().createMoveValue(opLoc, otherValue);
+
+          getBuilder().emitStoreValueOperation(opLoc, mvi, otherResultAddr,
+                                               StoreOwnershipQualifier::Init);
+
+          // We know that Inst returns a tuple value that isn't used by anything
+          // else, so this /should/ be safe.
+          return recordClonedInstruction(Inst, mvi);
+        }
+      }
+    }
+  }
+
+  return SILCloner<SILInlineCloner>::visitBuiltinInst(Inst);
 }
 
 //===----------------------------------------------------------------------===//

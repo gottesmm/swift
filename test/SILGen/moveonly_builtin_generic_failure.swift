@@ -6,5 +6,5 @@
 // types.
 
 func addressOnlyMove<T>(t: T) -> T {
-    Builtin.move(t)
+    _move(t)
 }

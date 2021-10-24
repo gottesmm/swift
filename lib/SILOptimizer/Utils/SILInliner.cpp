@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "swift/SIL/SILInstruction.h"
 #define DEBUG_TYPE "sil-inliner"
 
 #include "swift/SILOptimizer/Utils/SILInliner.h"
@@ -700,6 +701,36 @@ void SILInlineCloner::visitBuiltinInst(BuiltinInst *Inst) {
           return recordClonedInstruction(Inst, mvi);
         }
       }
+
+      if (*kind == BuiltinValueKind::Copy) {
+        auto otherResultAddr = getOpValue(Inst->getOperand(0));
+        auto otherSrcAddr = getOpValue(Inst->getOperand(1));
+        auto otherType = otherSrcAddr->getType();
+
+        if (otherType.isLoadable(*Inst->getFunction())) {
+          getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
+          // We stash otherValue in originalOtherValue in case we need to
+          // perform a writeback.
+          auto opLoc = getOpLocation(Inst->getLoc());
+
+          assert(otherType.isAddress());
+
+          SILValue otherValue = getBuilder().emitLoadValueOperation(
+              opLoc, otherSrcAddr, LoadOwnershipQualifier::Take);
+
+          auto *mvi = getBuilder().createExplicitCopyValue(opLoc, otherValue);
+
+          getBuilder().emitStoreValueOperation(opLoc, mvi, otherResultAddr,
+                                               StoreOwnershipQualifier::Init);
+          // Store the loaded value back into memory.
+          getBuilder().emitStoreValueOperation(opLoc, otherValue, otherSrcAddr,
+                                               StoreOwnershipQualifier::Init);
+
+          // We know that Inst returns a tuple value that isn't used by anything
+          // else, so this /should/ be safe.
+          return recordClonedInstruction(Inst, mvi);
+        }
+      }
     }
   }
 
@@ -878,6 +909,7 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
   case SILInstructionKind::RetainValueAddrInst:
   case SILInstructionKind::UnmanagedRetainValueInst:
   case SILInstructionKind::CopyValueInst:
+  case SILInstructionKind::ExplicitCopyValueInst:
   case SILInstructionKind::DeallocBoxInst:
   case SILInstructionKind::DeallocExistentialBoxInst:
   case SILInstructionKind::DeallocRefInst:

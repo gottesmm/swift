@@ -660,24 +660,22 @@ void SILInlineCloner::visitBuiltinInst(BuiltinInst *Inst) {
         auto otherResultAddr = getOpValue(Inst->getOperand(0));
         auto otherSrcAddr = getOpValue(Inst->getOperand(1));
         auto otherType = otherSrcAddr->getType();
+        auto opLoc = getOpLocation(Inst->getLoc());
 
         if (!otherType.isLoadable(*Inst->getFunction())) {
-          // If otherType is not loadable, emit a diagnostic since it was used
-          // on a generic or existential value.
-          diagnose(Inst->getModule().getASTContext(),
-                   getOpLocation(Inst->getLoc()).getSourceLoc(),
-                   diag::move_operator_used_on_generic_or_existential_value);
-          return SILCloner<SILInlineCloner>::visitBuiltinInst(Inst);
+          // If otherType is not loadable, convert the builtin to a move_addr.
+          auto *mai =
+              getBuilder().createMoveAddr(opLoc, otherSrcAddr, otherResultAddr);
+          return recordClonedInstruction(Inst, mai);
         }
 
         // If our otherType is loadable, convert it to move_value.
         getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
-        // We stash otherValue in originalOtherValue in case we need to
-        // perform a writeback.
-        auto opLoc = getOpLocation(Inst->getLoc());
 
         assert(otherType.isAddress());
 
+        // We stash otherValue in originalOtherValue in case we need to
+        // perform a writeback.
         SILValue otherValue = getBuilder().emitLoadValueOperation(
             opLoc, otherSrcAddr, LoadOwnershipQualifier::Take);
 

@@ -664,9 +664,9 @@ void SILInlineCloner::visitBuiltinInst(BuiltinInst *Inst) {
 
         if (!otherType.isLoadable(*Inst->getFunction())) {
           // If otherType is not loadable, convert the builtin to a move_addr.
-          auto *mai =
-              getBuilder().createMoveAddr(opLoc, otherSrcAddr, otherResultAddr);
-          return recordClonedInstruction(Inst, mai);
+          getBuilder().createMarkMoveAddr(opLoc, otherSrcAddr, otherResultAddr);
+          auto *tup = getBuilder().createTuple(opLoc, {});
+          return recordFoldedValue(Inst, tup);
         }
 
         // If our otherType is loadable, convert it to move_value.

@@ -1341,6 +1341,15 @@ SILCloner<ImplClass>::visitCopyAddrInst(CopyAddrInst *Inst) {
                 Inst->isInitializationOfDest()));
 }
 
+template <typename ImplClass>
+void SILCloner<ImplClass>::visitMarkMoveAddrInst(MarkMoveAddrInst *Inst) {
+  getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
+  auto *MVI = getBuilder().createMarkMoveAddr(getOpLocation(Inst->getLoc()),
+                                              getOpValue(Inst->getSrc()),
+                                              getOpValue(Inst->getDest()));
+  recordClonedInstruction(Inst, MVI);
+}
+
 template<typename ImplClass>
 void
 SILCloner<ImplClass>::visitBindMemoryInst(BindMemoryInst *Inst) {

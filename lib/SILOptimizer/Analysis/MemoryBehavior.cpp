@@ -171,6 +171,7 @@ public:
   MemBehavior visitLoadInst(LoadInst *LI);
   MemBehavior visitStoreInst(StoreInst *SI);
   MemBehavior visitCopyAddrInst(CopyAddrInst *CAI);
+  MemBehavior visitMarkMoveAddrInst(MarkMoveAddrInst *MAI);
   MemBehavior visitApplyInst(ApplyInst *AI);
   MemBehavior visitTryApplyInst(TryApplyInst *AI);
   MemBehavior visitBeginApplyInst(BeginApplyInst *AI);
@@ -301,6 +302,25 @@ MemBehavior MemoryBehaviorVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
   return MemBehavior::None;
 }
 
+MemBehavior
+MemoryBehaviorVisitor::visitMarkMoveAddrInst(MarkMoveAddrInst *MAI) {
+  bool mayWrite = mayAlias(MAI->getDest());
+  bool mayRead = mayAlias(MAI->getSrc());
+
+  if (mayRead) {
+    if (mayWrite)
+      return MemBehavior::MayReadWrite;
+
+    // mark_move_addr doesn't semantically perform a take of src.
+    return MemBehavior::MayRead;
+  }
+
+  if (mayWrite)
+    return MemBehavior::MayWrite;
+
+  return MemBehavior::None;
+}
+
 MemBehavior MemoryBehaviorVisitor::visitBuiltinInst(BuiltinInst *BI) {
   // If our callee is not a builtin, be conservative and return may have side
   // effects.
@@ -368,6 +388,7 @@ static bool hasEscapingUses(SILValue address, int &numChecks) {
       case SILInstructionKind::LoadInst:
       case SILInstructionKind::StoreInst:
       case SILInstructionKind::CopyAddrInst:
+      case SILInstructionKind::MarkMoveAddrInst:
       case SILInstructionKind::DestroyAddrInst:
       case SILInstructionKind::DeallocStackInst:
       case SILInstructionKind::EndAccessInst:

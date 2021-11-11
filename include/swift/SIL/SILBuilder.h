@@ -1271,6 +1271,12 @@ public:
                   MoveValueInst(getSILDebugLocation(loc), operand));
   }
 
+  MarkMoveAddrInst *createMarkMoveAddr(SILLocation loc, SILValue srcAddr,
+                                       SILValue takeAddr) {
+    return insert(new (getModule()) MarkMoveAddrInst(getSILDebugLocation(loc),
+                                                     srcAddr, takeAddr));
+  }
+
   UnconditionalCheckedCastInst *
   createUnconditionalCheckedCast(SILLocation Loc, SILValue op,
                                  SILType destLoweredTy,

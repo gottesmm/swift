@@ -643,6 +643,10 @@ RuntimeEffect swift::getRuntimeEffect(SILInstruction *inst, SILType &impactType)
       return RuntimeEffect::MetaData | RuntimeEffect::RefCounting;
     return RuntimeEffect::MetaData;
   }
+  case SILInstructionKind::MarkMoveAddrInst: {
+    return RuntimeEffect::MetaData;
+  }
+
   case SILInstructionKind::StoreInst:
     switch (cast<StoreInst>(inst)->getOwnershipQualifier()) {
       case StoreOwnershipQualifier::Unqualified:

@@ -170,6 +170,17 @@ bool GatherWritesVisitor::visitUse(Operand *op, AccessUseType useTy) {
     }
     return true;
 
+  case SILInstructionKind::MarkMoveAddrInst:
+    if (cast<MarkMoveAddrInst>(user)->getDest() == op->get()) {
+      writeAccumulator.push_back(op);
+      return true;
+    }
+
+    // This operand is the move source, we just return true. This is because
+    // mark_move_addr semantically is treated as a copy_addr of the source. The
+    // checker determines if we can convert it to a move.
+    return true;
+
   // If this value is dependent on another, conservatively consider it a write.
   //
   // FIXME: explain why a mark_dependence effectively writes to storage.

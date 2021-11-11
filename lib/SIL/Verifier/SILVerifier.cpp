@@ -592,6 +592,11 @@ struct ImmutableAddressUseVerifier {
         break;
       case SILInstructionKind::EndAccessInst:
         break;
+      case SILInstructionKind::MarkMoveAddrInst:
+        // We model mark_move_addr as a copy_addr [init]. So no mutation can
+        // happen. The checker will prove eventually that we can convert it to a
+        // copy_addr [take] [init].
+        break;
       case SILInstructionKind::CopyAddrInst:
         if (isConsumingOrMutatingCopyAddrUse(use))
           return true;
@@ -2629,6 +2634,17 @@ public:
   void checkCopyAddrInst(CopyAddrInst *SI) {
     require(SI->getSrc()->getType().isAddress(),
             "Src value should be lvalue");
+    require(SI->getDest()->getType().isAddress(),
+            "Dest address should be lvalue");
+    requireSameType(SI->getDest()->getType(), SI->getSrc()->getType(),
+                    "Store operand type and dest type mismatch");
+    require(F.isTypeABIAccessible(SI->getDest()->getType()),
+            "cannot directly copy type with inaccessible ABI");
+  }
+
+  void checkMarkMoveAddrInst(MarkMoveAddrInst *SI) {
+    require(F.hasOwnership(), "Only valid in OSSA.");
+    require(SI->getSrc()->getType().isAddress(), "Src value should be lvalue");
     require(SI->getDest()->getType().isAddress(),
             "Dest address should be lvalue");
     requireSameType(SI->getDest()->getType(), SI->getSrc()->getType(),

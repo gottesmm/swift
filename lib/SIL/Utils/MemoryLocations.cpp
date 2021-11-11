@@ -365,6 +365,11 @@ bool MemoryLocations::analyzeLocationUsesRecursively(SILValue V, unsigned locIdx
       case SILInstructionKind::SwitchEnumAddrInst:
       case SILInstructionKind::WitnessMethodInst:
         break;
+      case SILInstructionKind::MarkMoveAddrInst:
+        // We do not want the memory lifetime verifier to verify move_addr inst
+        // since the MarkMoveAddrChecker will validate that its uses are
+        // correct.
+        return false;
       default:
         return false;
     }

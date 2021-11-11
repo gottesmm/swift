@@ -593,6 +593,12 @@ ABSTRACT_VALUE_AND_INST(SingleValueInstruction, ValueBase, SILInstruction)
   // effects relative to other OSSA values like copy_value.
   SINGLE_VALUE_INST(MoveValueInst, move_value,
                     SingleValueInstruction, None, DoesNotRelease)
+  // A move_addr is an OSSA only instruction. It lowers to copy_addr [take] to
+  // [initialization] when lowering from OSSA. It is a separate opcode so that
+  // it can be used for diagnostic purposes (and then lowered by the diagnostic
+  // pass).
+  NON_VALUE_INST(MarkMoveAddrInst, move_addr,
+                 SILInstruction, None, DoesNotRelease)
 
   // IsUnique does not actually write to memory but should be modeled
   // as such. Its operand is a pointer to an object reference. The

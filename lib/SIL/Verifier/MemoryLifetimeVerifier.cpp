@@ -354,6 +354,14 @@ void MemoryLifetimeVerifier::initDataflowInBlock(SILBasicBlock *block,
         genBits(state, CAI->getDest());
         break;
       }
+      case SILInstructionKind::MarkMoveAddrInst: {
+        auto *MMAI = cast<MarkMoveAddrInst>(&I);
+        // We do not treat the move addr inst as invalidating its src since we
+        // are going to prove that we do not inappropriately reuse the memory
+        // later.
+        genBits(state, MMAI->getDest());
+        break;
+      }
       case SILInstructionKind::InjectEnumAddrInst: {
         auto *IEAI = cast<InjectEnumAddrInst>(&I);
         int enumIdx = locations.getLocationIdx(IEAI->getOperand());

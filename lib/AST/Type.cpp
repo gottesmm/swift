@@ -313,19 +313,25 @@ ExistentialLayout TypeBase::getExistentialLayout() {
 }
 
 ExistentialLayout CanType::getExistentialLayout() {
-  if (auto existential = dyn_cast<ExistentialType>(*this))
+  CanType ty = *this;
+
+  // Always remove one layer of move only ness.
+  if (auto mv = dyn_cast<SILMoveOnlyType>(ty))
+    ty = mv->getInnerType();
+
+  if (auto existential = dyn_cast<ExistentialType>(ty))
     return existential->getConstraintType()->getExistentialLayout();
 
-  if (auto metatype = dyn_cast<ExistentialMetatypeType>(*this))
+  if (auto metatype = dyn_cast<ExistentialMetatypeType>(ty))
     return metatype->getInstanceType()->getExistentialLayout();
 
-  if (auto proto = dyn_cast<ProtocolType>(*this))
+  if (auto proto = dyn_cast<ProtocolType>(ty))
     return ExistentialLayout(proto);
 
-  if (auto param = dyn_cast<ParametrizedProtocolType>(*this))
+  if (auto param = dyn_cast<ParametrizedProtocolType>(ty))
     return ExistentialLayout(param);
 
-  auto comp = cast<ProtocolCompositionType>(*this);
+  auto comp = cast<ProtocolCompositionType>(ty);
   return ExistentialLayout(comp);
 }
 

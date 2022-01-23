@@ -1057,7 +1057,8 @@ public:
                                     SILType SILTy, const SILDebugScope *DS,
                                     SILLocation VarLoc,
                                     SILDebugVariable VarInfo,
-                                    IndirectionKind Indirection) {
+                                    IndirectionKind Indirection,
+                                    TransformInsertedKind TransformInserted) {
     // TODO: fix demangling for C++ types (SR-13223).
     if (swift::TypeBase *ty = SILTy.getASTType().getPointer()) {
       if (MetatypeType *metaTy = dyn_cast<MetatypeType>(ty))
@@ -1071,11 +1072,13 @@ public:
     assert(IGM.DebugInfo && "debug info not enabled");
     if (VarInfo.ArgNo) {
       PrologueLocation AutoRestore(IGM.DebugInfo.get(), Builder);
-      IGM.DebugInfo->emitVariableDeclaration(Builder, Storage, Ty, DS, VarLoc,
-                                             VarInfo, Indirection);
+      IGM.DebugInfo->emitVariableDeclaration(
+          Builder, Storage, Ty, DS, VarLoc, VarInfo, Indirection,
+          ArtificialKind::RealValue, TransformInserted);
     } else
-      IGM.DebugInfo->emitVariableDeclaration(Builder, Storage, Ty, DS, VarLoc,
-                                             VarInfo, Indirection);
+      IGM.DebugInfo->emitVariableDeclaration(
+          Builder, Storage, Ty, DS, VarLoc, VarInfo, Indirection,
+          ArtificialKind::RealValue, TransformInserted);
   }
 
   void emitFailBB() {
@@ -4974,7 +4977,8 @@ void IRGenSILFunction::visitDebugValueInst(DebugValueInst *i) {
     return;
 
   emitDebugVariableDeclaration(Copy, DbgTy, SILTy, i->getDebugScope(),
-                               i->getLoc(), *VarInfo, Indirection);
+                               i->getLoc(), *VarInfo, Indirection,
+                               TransformInsertedKind(i->isTransformInserted()));
 }
 
 void IRGenSILFunction::visitFixLifetimeInst(swift::FixLifetimeInst *i) {
@@ -5252,8 +5256,9 @@ void IRGenSILFunction::emitDebugInfoForAllocStack(AllocStackInst *i,
     return;
 
   VarDecl *Decl = i->getDecl();
-  // Describe the underlying alloca. This way an llvm.dbg.declare instrinsic
-  // is used, which is valid for the entire lifetime of the alloca.
+  // Describe the underlying alloca. This way an llvm.dbg.addr instrinsic is
+  // used, which assuming we do not invalidate it due to a move function is
+  // valid for the entire lifetime of the alloca.
   if (auto *BitCast = dyn_cast<llvm::BitCastInst>(addr)) {
     auto *Op0 = BitCast->getOperand(0);
     if (auto *Alloca = dyn_cast<llvm::AllocaInst>(Op0))
@@ -5340,10 +5345,10 @@ void IRGenSILFunction::emitDebugInfoForAllocStack(AllocStackInst *i,
   }
 
   bindArchetypes(DbgTy.getType());
+  // TODO: Look into how this effects vars.
   if (IGM.DebugInfo)
-    emitDebugVariableDeclaration(addr, DbgTy, SILTy, DS,
-                                 i->getLoc(), *VarInfo,
-                                 Indirection);
+    emitDebugVariableDeclaration(addr, DbgTy, SILTy, DS, i->getLoc(), *VarInfo,
+                                 Indirection, TransformInsertedKind::No);
 }
 
 void IRGenSILFunction::visitAllocStackInst(swift::AllocStackInst *i) {

@@ -219,17 +219,19 @@ public:
   bool buildDebugInfoExpression(const SILDebugVariable &VarInfo,
                                 SmallVectorImpl<uint64_t> &Operands);
 
-  void emitVariableDeclaration(IRBuilder &Builder,
-                               ArrayRef<llvm::Value *> Storage,
-                               DebugTypeInfo Ty, const SILDebugScope *DS,
-                               Optional<SILLocation> VarLoc,
-                               SILDebugVariable VarInfo,
-                               IndirectionKind = DirectValue,
-                               ArtificialKind = RealValue);
+  void emitVariableDeclaration(
+      IRBuilder &Builder, ArrayRef<llvm::Value *> Storage, DebugTypeInfo Ty,
+      const SILDebugScope *DS, Optional<SILLocation> VarLoc,
+      SILDebugVariable VarInfo, IndirectionKind = DirectValue,
+      ArtificialKind = RealValue,
+      TransformInsertedKind IsTransformInserted = TransformInsertedKind::No);
   void emitDbgIntrinsic(IRBuilder &Builder, llvm::Value *Storage,
                         llvm::DILocalVariable *Var, llvm::DIExpression *Expr,
                         unsigned Line, unsigned Col, llvm::DILocalScope *Scope,
-                        const SILDebugScope *DS, bool InCoroContext);
+                        const SILDebugScope *DS, bool InCoroContext,
+                        Optional<llvm::BasicBlock::iterator> insertPt,
+                        TransformInsertedKind IsTransformInserted,
+                        ForceDbgDeclare_t = ForceDbgDeclare_t::No);
 
   void emitGlobalVariableDeclaration(llvm::GlobalVariable *Storage,
                                      StringRef Name, StringRef LinkageName,
@@ -2482,11 +2484,17 @@ bool IRGenDebugInfoImpl::buildDebugInfoExpression(
   return true;
 }
 
+static ForceDbgDeclare_t
+convertArtificialToForceDbgDeclare(ArtificialKind kind) {
+  return kind == ArtificialValue ? ForceDbgDeclare_t::Yes
+                                 : ForceDbgDeclare_t::No;
+}
+
 void IRGenDebugInfoImpl::emitVariableDeclaration(
     IRBuilder &Builder, ArrayRef<llvm::Value *> Storage, DebugTypeInfo DbgTy,
     const SILDebugScope *DS, Optional<SILLocation> DbgInstLoc,
     SILDebugVariable VarInfo, IndirectionKind Indirection,
-    ArtificialKind Artificial) {
+    ArtificialKind Artificial, TransformInsertedKind TransformInserted) {
   assert(DS && "variable has no scope");
 
   if (Opts.DebugInfoLevel <= IRGenDebugInfoLevel::LineTables)
@@ -2549,7 +2557,11 @@ void IRGenDebugInfoImpl::emitVariableDeclaration(
   llvm::StringRef UniqueName = VarNames.insert(VarInfo.Name).first->getKey();
   VarID Key(VarScope, UniqueName, DVarLine, DVarCol);
   auto CachedVar = LocalVarCache.find(Key);
-  if (CachedVar != LocalVarCache.end()) {
+
+  // If this debug inst was not inserted by a transform and is in our cache, use
+  // the cache instead.
+  if (TransformInserted == TransformInsertedKind::No &&
+      CachedVar != LocalVarCache.end()) {
     Var = cast<llvm::DILocalVariable>(CachedVar->second);
   } else {
     // The llvm.dbg.value(undef) emitted for zero-sized variables get filtered
@@ -2562,7 +2574,11 @@ void IRGenDebugInfoImpl::emitVariableDeclaration(
     else
       Var = DBuilder.createAutoVariable(VarScope, VarInfo.Name, Unit, DVarLine,
                                         DITy, Preserve, Flags);
-    LocalVarCache.insert({Key, llvm::TrackingMDNodeRef(Var)});
+
+    // If this debug info was inserted and was asked to not be tracked... do not
+    // add it to the cache.
+    if (TransformInserted == TransformInsertedKind::No)
+      LocalVarCache.insert({Key, llvm::TrackingMDNodeRef(Var)});
   }
 
   auto appendDIExpression =
@@ -2620,7 +2636,9 @@ void IRGenDebugInfoImpl::emitVariableDeclaration(
     if (DIExpr)
       emitDbgIntrinsic(
           Builder, Piece, Var, DIExpr, DInstLine, DInstLoc.column, Scope, DS,
-          Indirection == CoroDirectValue || Indirection == CoroIndirectValue);
+          Indirection == CoroDirectValue || Indirection == CoroIndirectValue,
+          Builder.GetInsertPoint(), TransformInserted,
+          convertArtificialToForceDbgDeclare(Artificial));
   }
 
   // Emit locationless intrinsic for variables that were optimized away.
@@ -2629,33 +2647,32 @@ void IRGenDebugInfoImpl::emitVariableDeclaration(
       emitDbgIntrinsic(Builder, llvm::ConstantInt::get(IGM.Int64Ty, 0), Var,
                        DIExpr, DInstLine, DInstLoc.column, Scope, DS,
                        Indirection == CoroDirectValue ||
-                           Indirection == CoroIndirectValue);
+                           Indirection == CoroIndirectValue,
+                       Builder.GetInsertBlock()->end(), TransformInserted,
+                       convertArtificialToForceDbgDeclare(Artificial));
   }
 }
 
 void IRGenDebugInfoImpl::emitDbgIntrinsic(
     IRBuilder &Builder, llvm::Value *Storage, llvm::DILocalVariable *Var,
     llvm::DIExpression *Expr, unsigned Line, unsigned Col,
-    llvm::DILocalScope *Scope, const SILDebugScope *DS, bool InCoroContext) {
+    llvm::DILocalScope *Scope, const SILDebugScope *DS, bool InCoroContext,
+    Optional<llvm::BasicBlock::iterator> insertPt,
+    TransformInsertedKind IsTransformInserted,
+    ForceDbgDeclare_t forceDbgDeclare) {
   // Set the location/scope of the intrinsic.
   auto *InlinedAt = createInlinedAt(DS);
   auto DL =
       llvm::DILocation::get(IGM.getLLVMContext(), Line, Col, Scope, InlinedAt);
   auto *BB = Builder.GetInsertBlock();
 
-  // An alloca may only be described by exactly one dbg.declare.
-  if (isa<llvm::AllocaInst>(Storage) &&
-      !llvm::FindDbgDeclareUses(Storage).empty())
-    return;
-
   // Fragment DIExpression cannot cover the whole variable
   // or going out-of-bound.
-  if (auto Fragment = Expr->getFragmentInfo())
+  if (auto Fragment = Expr->getFragmentInfo()) {
     if (auto VarSize = Var->getSizeInBits()) {
       unsigned FragSize = Fragment->SizeInBits;
       unsigned FragOffset = Fragment->OffsetInBits;
-      if (FragOffset + FragSize > *VarSize ||
-          FragSize == *VarSize) {
+      if (FragOffset + FragSize > *VarSize || FragSize == *VarSize) {
         // Drop the fragment part
         assert(Expr->isValid());
         // Since this expression is valid, DW_OP_LLVM_fragment
@@ -2664,49 +2681,79 @@ void IRGenDebugInfoImpl::emitDbgIntrinsic(
         Expr = DBuilder.createExpression(OrigElements.drop_back(3));
       }
     }
+  }
 
-  // A dbg.declare is only meaningful if there is a single alloca for
-  // the variable that is live throughout the function.
+  struct DbgInserter {
+    llvm::DIBuilder &builder;
+    ForceDbgDeclare_t forceDbgDeclare;
+
+    llvm::Instruction *insert(llvm::Value *Addr, llvm::DILocalVariable *VarInfo,
+                              llvm::DIExpression *Expr,
+                              const llvm::DILocation *DL,
+                              llvm::Instruction *InsertBefore) {
+      if (forceDbgDeclare == ForceDbgDeclare_t::Yes)
+        return builder.insertDeclare(Addr, VarInfo, Expr, DL, InsertBefore);
+      return builder.insertDbgAddrIntrinsic(Addr, VarInfo, Expr, DL,
+                                            InsertBefore);
+    }
+
+    llvm::Instruction *insert(llvm::Value *Addr, llvm::DILocalVariable *VarInfo,
+                              llvm::DIExpression *Expr,
+                              const llvm::DILocation *DL,
+                              llvm::BasicBlock *Block) {
+      if (forceDbgDeclare == ForceDbgDeclare_t::Yes)
+        return builder.insertDeclare(Addr, VarInfo, Expr, DL, Block);
+      return builder.insertDbgAddrIntrinsic(Addr, VarInfo, Expr, DL, Block);
+    }
+  };
+  DbgInserter inserter{DBuilder, forceDbgDeclare};
+
+  // If we have a single alloca, just insert the debug in
   if (auto *Alloca = dyn_cast<llvm::AllocaInst>(Storage)) {
     auto *ParentBB = Alloca->getParent();
     auto InsertBefore = std::next(Alloca->getIterator());
+    if (insertPt)
+      InsertBefore = *insertPt;
     if (InsertBefore != ParentBB->end())
-      DBuilder.insertDeclare(Alloca, Var, Expr, DL, &*InsertBefore);
+      inserter.insert(Alloca, Var, Expr, DL, &*InsertBefore);
     else
-      DBuilder.insertDeclare(Alloca, Var, Expr, DL, ParentBB);
-  } else if ((isa<llvm::IntrinsicInst>(Storage) &&
-              cast<llvm::IntrinsicInst>(Storage)->getIntrinsicID() ==
-                  llvm::Intrinsic::coro_alloca_get)) {
-    // FIXME: The live range of a coroutine alloca within the function may be
-    // limited, so using a dbg.addr instead of a dbg.declare would be more
-    // appropriate.
-    DBuilder.insertDeclare(Storage, Var, Expr, DL, BB);
-  } else if (InCoroContext) {
+      inserter.insert(Alloca, Var, Expr, DL, ParentBB);
+    return;
+  }
+
+  if ((isa<llvm::IntrinsicInst>(Storage) &&
+       cast<llvm::IntrinsicInst>(Storage)->getIntrinsicID() ==
+           llvm::Intrinsic::coro_alloca_get)) {
+    inserter.insert(Storage, Var, Expr, DL, BB);
+    return;
+  }
+
+  if (InCoroContext) {
     // Function arguments in async functions are emitted without a shadow copy
     // (that would interfer with coroutine splitting) but with a dbg.declare to
     // give CoroSplit.cpp license to emit a shadow copy for them pointing inside
     // the Swift Context argument that is valid throughout the function.
     auto &EntryBlock = BB->getParent()->getEntryBlock();
     if (auto *InsertBefore = &*EntryBlock.getFirstInsertionPt())
-      DBuilder.insertDeclare(Storage, Var, Expr, DL, InsertBefore);
+      inserter.insert(Storage, Var, Expr, DL, InsertBefore);
     else
-      DBuilder.insertDeclare(Storage, Var, Expr, DL, &EntryBlock);
-  } else {
-    // Insert a dbg.value at the current insertion point.
-    if (isa<llvm::Argument>(Storage) && !Var->getArg() &&
-        BB->getFirstNonPHIOrDbg())
-      // SelectionDAGISel only generates debug info for a dbg.value
-      // that is associated with a llvm::Argument if either its !DIVariable
-      // is marked as argument or there is no non-debug intrinsic instruction
-      // before it. So In the case of associating a llvm::Argument with a
-      // non-argument debug variable -- usually via a !DIExpression -- we
-      // need to make sure that dbg.value is before any non-phi / no-dbg
-      // instruction.
-      DBuilder.insertDbgValueIntrinsic(Storage, Var, Expr, DL,
-                                       BB->getFirstNonPHIOrDbg());
-    else
-      DBuilder.insertDbgValueIntrinsic(Storage, Var, Expr, DL, BB);
+      inserter.insert(Storage, Var, Expr, DL, &EntryBlock);
+    return;
   }
+
+  // Insert a dbg.value at the current insertion point.
+  if (isa<llvm::Argument>(Storage) && !Var->getArg() &&
+      BB->getFirstNonPHIOrDbg())
+    // SelectionDAGISel only generates debug info for a dbg.value
+    // that is associated with a llvm::Argument if either its !DIVariable
+    // is marked as argument or there is no non-debug intrinsic instruction
+    // before it. So In the case of associating a llvm::Argument with a
+    // non-argument debug variable -- usually via a !DIExpression -- we
+    // need to make sure that dbg.value is before any non-phi / no-dbg
+    // instruction.
+    inserter.insert(Storage, Var, Expr, DL, BB->getFirstNonPHIOrDbg());
+  else
+    inserter.insert(Storage, Var, Expr, DL, BB);
 }
 
 void IRGenDebugInfoImpl::emitGlobalVariableDeclaration(
@@ -2875,20 +2922,24 @@ void IRGenDebugInfo::emitArtificialFunction(IRBuilder &Builder,
 
 void IRGenDebugInfo::emitVariableDeclaration(
     IRBuilder &Builder, ArrayRef<llvm::Value *> Storage, DebugTypeInfo Ty,
-    const SILDebugScope *DS, Optional<SILLocation> VarLoc, SILDebugVariable VarInfo,
-    IndirectionKind Indirection, ArtificialKind Artificial) {
+    const SILDebugScope *DS, Optional<SILLocation> VarLoc,
+    SILDebugVariable VarInfo, IndirectionKind Indirection,
+    ArtificialKind Artificial, TransformInsertedKind TransformInserted) {
   static_cast<IRGenDebugInfoImpl *>(this)->emitVariableDeclaration(
-      Builder, Storage, Ty, DS, VarLoc, VarInfo, Indirection, Artificial);
+      Builder, Storage, Ty, DS, VarLoc, VarInfo, Indirection, Artificial,
+      TransformInserted);
 }
 
-void IRGenDebugInfo::emitDbgIntrinsic(IRBuilder &Builder, llvm::Value *Storage,
-                                      llvm::DILocalVariable *Var,
-                                      llvm::DIExpression *Expr, unsigned Line,
-                                      unsigned Col, llvm::DILocalScope *Scope,
-                                      const SILDebugScope *DS,
-                                      bool InCoroContext) {
+void IRGenDebugInfo::emitDbgIntrinsic(
+    IRBuilder &Builder, llvm::Value *Storage, llvm::DILocalVariable *Var,
+    llvm::DIExpression *Expr, unsigned Line, unsigned Col,
+    llvm::DILocalScope *Scope, const SILDebugScope *DS, bool InCoroContext,
+    Optional<llvm::BasicBlock::iterator> InsertPt,
+    TransformInsertedKind TransformInsertedKind,
+    ForceDbgDeclare_t ForceDbgDeclare) {
   static_cast<IRGenDebugInfoImpl *>(this)->emitDbgIntrinsic(
-      Builder, Storage, Var, Expr, Line, Col, Scope, DS, InCoroContext);
+      Builder, Storage, Var, Expr, Line, Col, Scope, DS, InCoroContext,
+      InsertPt, TransformInsertedKind, ForceDbgDeclare);
 }
 
 void IRGenDebugInfo::emitGlobalVariableDeclaration(

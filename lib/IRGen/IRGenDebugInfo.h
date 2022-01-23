@@ -46,6 +46,25 @@ enum IndirectionKind {
 };
 enum ArtificialKind : bool { RealValue = false, ArtificialValue = true };
 
+/// Attached to DebugInfo if the debug info was inserted by a transform and it
+/// should not be uniqued or modified by later passes. This is a sign of a
+/// debug_value where the frontend is telling IRGen and later parts of the
+/// compiler to consider this a special instance of a debug info that should not
+/// be uniqued and should also be emitted.
+enum class TransformInsertedKind : bool {
+  No,
+  Yes,
+};
+
+/// Used to signal to emitDbgIntrinsic that we actually want to emit dbg.declare
+/// instead of dbg.addr. By default, we now emit llvm.dbg.addr instead of
+/// llvm.dbg.declare for normal variables. This is not true for metadata which
+/// truly are function wide and should be llvm.dbg.declare.
+enum class ForceDbgDeclare_t : bool {
+  No,
+  Yes,
+};
+
 /// Helper object that keeps track of the current CompileUnit, File,
 /// LexicalScope, and knows how to translate a \c SILLocation into an
 /// \c llvm::DebugLoc.
@@ -136,21 +155,28 @@ public:
   void emitArtificialFunction(IRBuilder &Builder,
                               llvm::Function *Fn, SILType SILTy = SILType());
 
-  /// Emit a dbg.declare intrinsic at the current insertion point and
+  /// Emit a dbg.addr intrinsic at the current insertion point and
   /// the Builder's current debug location.
-  void emitVariableDeclaration(IRBuilder &Builder,
-                               ArrayRef<llvm::Value *> Storage,
-                               DebugTypeInfo Ty, const SILDebugScope *DS,
-                               Optional<SILLocation> VarLoc,
-                               SILDebugVariable VarInfo,
-                               IndirectionKind Indirection = DirectValue,
-                               ArtificialKind Artificial = RealValue);
+  void emitVariableDeclaration(
+      IRBuilder &Builder, ArrayRef<llvm::Value *> Storage, DebugTypeInfo Ty,
+      const SILDebugScope *DS, Optional<SILLocation> VarLoc,
+      SILDebugVariable VarInfo, IndirectionKind Indirection = DirectValue,
+      ArtificialKind Artificial = RealValue,
+      TransformInsertedKind TransformInserted = TransformInsertedKind::No);
 
-  /// Emit a dbg.declare or dbg.value intrinsic, depending on Storage.
-  void emitDbgIntrinsic(IRBuilder &Builder, llvm::Value *Storage,
-                        llvm::DILocalVariable *Var, llvm::DIExpression *Expr,
-                        unsigned Line, unsigned Col, llvm::DILocalScope *Scope,
-                        const SILDebugScope *DS, bool InCoroContext = false);
+  /// Emit a dbg.addr or dbg.value intrinsic, depending on Storage. If \p
+  /// ForceDbgDeclare is set to Yes, then instead of emitting a dbg.addr, we
+  /// will insert a dbg.declare. Please only use that if you know that the given
+  /// value can never be moved and have its lifetime ended early (e.x.: type
+  /// metadata).
+  void
+  emitDbgIntrinsic(IRBuilder &Builder, llvm::Value *Storage,
+                   llvm::DILocalVariable *Var, llvm::DIExpression *Expr,
+                   unsigned Line, unsigned Col, llvm::DILocalScope *Scope,
+                   const SILDebugScope *DS, bool InCoroContext = false,
+                   Optional<llvm::BasicBlock::iterator> InsertPt = None,
+                   TransformInsertedKind = TransformInsertedKind::No,
+                   ForceDbgDeclare_t ForceDbgDeclare = ForceDbgDeclare_t::No);
 
   enum { NotHeapAllocated = false };
   

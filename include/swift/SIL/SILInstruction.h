@@ -4741,6 +4741,7 @@ class DebugValueInst final
   friend SILBuilder;
 
   TailAllocatedDebugVariable VarInfo;
+  bool transformInserted = false;
 
   DebugValueInst(SILDebugLocation DebugLoc, SILValue Operand,
                  SILDebugVariable Var, bool poisonRefs);
@@ -4755,6 +4756,15 @@ class DebugValueInst final
   size_t numTrailingObjects(OverloadToken<char>) const { return 1; }
 
 public:
+  bool isTransformInserted() const { return transformInserted; }
+
+  /// Mark this debug_value as being inserted by an optimizer pass and that it
+  /// should not be uniqued and should be unconditonally emitted by IRGen.
+  ///
+  /// This is useful as a way to propagate late at the SIL level debug info such
+  /// that IRGen and the backend's job is simplified.
+  void markTransformInserted() { transformInserted = true; }
+
   /// Return the underlying variable declaration that this denotes,
   /// or null if we don't have one.
   VarDecl *getDecl() const;

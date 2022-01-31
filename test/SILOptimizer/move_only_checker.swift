@@ -10,6 +10,9 @@ public class Klass {
     var k: Klass? = nil
 }
 
+public class SubKlass : Klass {
+}
+
 public final class FinalKlass {
     var k: Klass? = nil
 }
@@ -134,6 +137,20 @@ public func classAccessConsumeField(_ x: Klass) {
     for _ in 0..<1024 {
         classConsume(x2.k!)
     }
+}
+
+public func classCast1(_ x: Klass) -> SubKlass {
+    @_noImplicitCopy let x2 = x // expected-error {{'x2' consumed more than once}}
+    let y = x2 as! SubKlass // expected-note {{consuming use}}
+    classConsume(x2) // expected-note {{consuming use}}
+    return y
+}
+
+public func classCast3(_ x: SubKlass) -> Klass {
+    @_noImplicitCopy let x2 = x // expected-error {{'x2' consumed more than once}}
+    let y = x2 as Klass // expected-note {{consuming use}}
+    classConsume(x2) // expected-note {{consuming use}}
+    return y
 }
 
 /////////////////

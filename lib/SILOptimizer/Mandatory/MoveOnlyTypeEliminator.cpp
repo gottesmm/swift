@@ -157,6 +157,19 @@ struct SILMoveOnlyTypeEliminatorVisitor
   NEED_TO_CONVERT_FORWARDING_TO_NONE_IF_TRIVIAL_RESULT(Tuple)
 #undef NEED_TO_CONVERT_FORWARDING_TO_NONE_IF_TRIVIAL_RESULT
 
+#define RAUW_IF_INPUT_OUTPUT_TYPE_THE_SAME(CLS)                                \
+  bool visit##CLS##Inst(CLS##Inst *inst) {                                     \
+    if (inst->getType() != inst->getOperand()->getType())                      \
+      return false;                                                            \
+    inst->replaceAllUsesWith(inst->getOperand());                              \
+    inst->eraseFromParent();                                                   \
+    return true;                                                               \
+  }
+  RAUW_IF_INPUT_OUTPUT_TYPE_THE_SAME(Upcast)
+  RAUW_IF_INPUT_OUTPUT_TYPE_THE_SAME(UnconditionalCheckedCast)
+  RAUW_IF_INPUT_OUTPUT_TYPE_THE_SAME(UncheckedAddrCast)
+#undef RAUW_IF_INPUT_OUTPUT_TYPE_THE_SAME
+
 #define NO_UPDATE_NEEDED(CLS)                                                  \
   bool visit##CLS##Inst(CLS##Inst *inst) { return false; }
   NO_UPDATE_NEEDED(AllocStack)
@@ -172,16 +185,13 @@ struct SILMoveOnlyTypeEliminatorVisitor
   NO_UPDATE_NEEDED(DestroyAddr)
   NO_UPDATE_NEEDED(DeallocStack)
   NO_UPDATE_NEEDED(Branch)
-  NO_UPDATE_NEEDED(UncheckedAddrCast)
   NO_UPDATE_NEEDED(RefElementAddr)
-  NO_UPDATE_NEEDED(Upcast)
   NO_UPDATE_NEEDED(CheckedCastBranch)
   NO_UPDATE_NEEDED(Object)
   NO_UPDATE_NEEDED(OpenExistentialRef)
   NO_UPDATE_NEEDED(ConvertFunction)
   NO_UPDATE_NEEDED(RefToBridgeObject)
   NO_UPDATE_NEEDED(BridgeObjectToRef)
-  NO_UPDATE_NEEDED(UnconditionalCheckedCast)
 #undef NO_UPDATE_NEEDED
 };
 

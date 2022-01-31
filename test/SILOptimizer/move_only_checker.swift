@@ -744,7 +744,6 @@ public func enumPatternMatchIfLet2(_ x: EnumTy) {
     }
 }
 
-// This is wrong.
 public func enumPatternMatchSwitch1(_ x: EnumTy) {
     @_noImplicitCopy let x2 = x // expected-error {{'x2' consumed more than once}}
     switch x2 { // expected-note {{consuming use}}

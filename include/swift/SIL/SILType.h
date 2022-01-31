@@ -488,7 +488,7 @@ public:
   /// given tuple element.  The result will have the same value
   /// category as the base type.
   SILType getTupleElementType(unsigned index) const {
-    return SILType(castTo<TupleType>().getElementType(index), getCategory());
+    return SILType(semanticCastTo<TupleType>().getElementType(index), getCategory());
   }
 
   /// Return the immediate superclass type of this type, or null if

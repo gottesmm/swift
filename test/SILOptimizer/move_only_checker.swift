@@ -793,3 +793,13 @@ public func enumPatternMatchSwitch2WhereClause2(_ x: EnumTy) {
         break
     }
 }
+
+/////////////////
+// Tuple Tests //
+/////////////////
+
+public func tupleTest1(_ x: Klass) -> Klass {
+    @_noImplicitCopy let x2 = (x, x)
+    let y = x2.0
+    return x2.1
+}

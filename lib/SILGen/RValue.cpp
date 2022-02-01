@@ -448,6 +448,12 @@ RValue::RValue(SILGenFunction &SGF, SILLocation l, CanType formalType,
     return;
   }
 
+  // If we have a move only type, we need to ensure v is at +1 and unwrap it
+  // using moveonly_to_copyable [owned].
+  if (v.getType().isMoveOnly() && v.getType().withoutMoveOnly().is<TupleType>()) {
+    v = SGF.B.createOwnedMoveOnlyToCopyableValue(l, v.ensurePlusOne(SGF, l));
+  }
+
   ExplodeTupleValue(values, SGF, l).visit(formalType, v);
   assert(values.size() == getRValueSize(type));
   verify(SGF);
@@ -463,6 +469,13 @@ RValue::RValue(SILGenFunction &SGF, Expr *expr, ManagedValue v)
   }
 
   assert(v && "creating r-value with consumed value");
+
+  // If we have a move only type, we need to ensure v is at +1 and unwrap it
+  // using moveonly_to_copyable [owned].
+  if (v.getType().isMoveOnly() && v.getType().withoutMoveOnly().is<TupleType>()) {
+    v = SGF.B.createOwnedMoveOnlyToCopyableValue(expr,
+                                                 v.ensurePlusOne(SGF, expr));
+  }
   ExplodeTupleValue(values, SGF, expr).visit(type, v);
   assert(values.size() == getRValueSize(type));
   verify(SGF);
@@ -502,6 +515,9 @@ void RValue::addElement(SILGenFunction &SGF, ManagedValue element,
   assert(!isInSpecialState() && "cannot add elements to an in-context r-value");
   --elementsToBeAdded;
 
+  if (element.getType().isMoveOnly() && element.getType().withoutMoveOnly().is<TupleType>()) {
+    element = SGF.B.createOwnedMoveOnlyToCopyableValue(l, element.ensurePlusOne(SGF, l));
+  }
   ExplodeTupleValue(values, SGF, l).visit(formalType, element);
 
   assert(!isComplete() || values.size() == getRValueSize(type));

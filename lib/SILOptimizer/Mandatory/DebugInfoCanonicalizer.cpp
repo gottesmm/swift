@@ -98,6 +98,12 @@ struct DebugInfoCanonicalizer {
     return dt;
   }
 
+  PostOrderFunctionInfo *getPostOrderInfo() {
+    if (!poi)
+      poi = poa->get(fn);
+    return poi;
+  }
+
   bool process();
   bool process2();
 
@@ -193,7 +199,7 @@ bool DebugInfoCanonicalizer::process2() {
   for (auto &block : *fn) {
     for (auto &inst : block) {
       if (isInterestingInst(&inst)) {
-        funcLetBoundaryInsts.push_back(&block);
+        funcLetBoundaryBlocks.insert(&block);
         continue;
       }
 
@@ -219,17 +225,19 @@ bool DebugInfoCanonicalizer::process2() {
   std::vector<BlockState2> blockStates;
   llvm::DenseMap<SILBasicBlock *, BlockState2 *> blockToStateMap;
   unsigned numDebugInsts = debugInsts.size();
-  for (auto &pair : llvm::enumerate(*fn)) {
+
+  // Setup our blocks in rpo order.
+  for (auto &pair : llvm::enumerate(getPostOrderInfo()->getReversePostOrder())) {
     BlockState2 &state = blockStates[pair.index()];
-    state.block = &pair.value();
+    state.block = pair.value();
     state.entry.resize(numDebugInsts);
     state.exit.resize(numDebugInsts);
-    blockToStateMap[&pair.value()] = &state;
+    blockToStateMap[pair.value()] = &state;
   }
 
-  // In case, we need to malloc, we reuse tmp in between rounds.
-  SmallBitVector tmp(numDebugInsts);
   {
+    // In case, we need to malloc, we reuse tmp in between rounds.
+    SmallBitVector tmp(numDebugInsts);
     bool firstRound = true;
     bool dataflowChanged = false;
     do {
@@ -262,14 +270,29 @@ bool DebugInfoCanonicalizer::process2() {
 
   // Ok, we have completed our dataflow, lets clone debug_values. We walk each
   // of our funclet boundary blocks from top to bottom cloning as we go.
+  llvm::SmallDenseMap<SILDebugVariable, DebugValueInst *> topState;
   for (auto *block : funcLetBoundaryBlocks) {
-    Smal
+    SWIFT_DEFER { topState.clear(); };
+
+    auto &state = blockToStateMap[block];
+    for (int setBitIndex = state->entry.find_first(); setBitIndex != -1;
+         setBitIndex = state->entry.find_next(setBitIndex)) {
+      auto *dvi = debugInsts[setBitIndex];
+      topState[*dvi->getVarInfo()] = dvi;
+    }
+
     for (auto &inst : *block) {
       if (isInterestingInst(&inst)) {
-        // dump;
+        for (auto &pair : topState) {
+          cloneDebugValue(pair.second, &inst);
+        }
+        continue;
       }
 
-      
+      if (auto *dvi = dyn_cast<DebugValueInst>(&inst)) {
+        topState[*dvi->getVarInfo()] = dvi;
+        continue;
+      }
     }
   }
 }

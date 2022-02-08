@@ -16,35 +16,18 @@
 /// SILDebugVariable after all coroutine-func-let boundary instructions. This in
 /// practice this as an algorithm works as follows:
 ///
-/// 1. We walk the CFG along successors. By doing this we guarantee that we
-/// visit
-///    blocks after their dominators.
+/// 1. We go through the function and gather up "interesting instructions" that
+///    are funclet boundaries.
 ///
-/// 2. When we visit a block, we walk the block from start->end. During this
-/// walk:
-///
-///    a. We grab a new block state from the centralized block->blockState map.
-///    This
-///       state is a [SILDebugVariable : DebugValueInst].
-///
-///    b. If we see a debug_value, we map blockState[debug_value.getDbgVar()] =
-///       debug_value. This ensures that when we get to the bottom of the block,
-///       we have pairs of SILDebugVariable + last debug_value on it.
-///
-///    c. If we see any coroutine funclet boundaries, we clone the current
-///    tracked
-///       set of our block state and then walk up the dom tree dumping in each
-///       block any debug_value with a SILDebugVariable that we have not already
-///       dumped. This is maintained by using a visited set of SILDebugVariable
-///       for each funclet boundary.
-///
-/// The end result is that at the beginning of each funclet we will basically
-/// declare the debug info for an addr.
 ///
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "sil-onone-debuginfo-canonicalizer"
 
+#include "swift/Basic/LLVM.h"
+#include "swift/Basic/BlotMapVector.h"
+#include "swift/Basic/STLExtras.h"
+#include "swift/SIL/SILValue.h"
 #include "swift/Basic/Defer.h"
 #include "swift/Basic/FrozenMultiMap.h"
 #include "swift/SIL/ApplySite.h"
@@ -68,6 +51,14 @@ using namespace swift;
 
 static void cloneDebugValue(DebugValueInst *original,
                             SILInstruction *insertPt) {
+  if (auto *ti = dyn_cast<TermInst>(insertPt)) {
+    for (auto *succBlock : ti->getSuccessorBlocks()) {
+      auto *result = original->clone(&*succBlock->begin());
+      cast<DebugValueInst>(result)->markTransformInserted();
+    }
+    return;
+  }
+
   auto *result = original->clone(&*std::next(insertPt->getIterator()));
   cast<DebugValueInst>(result)->markTransformInserted();
 }
@@ -79,17 +70,24 @@ static void cloneDebugValue(DebugValueInst *original,
 namespace {
 
 struct BlockState {
-  llvm::SmallMapVector<SILDebugVariable, DebugValueInst *, 4> debugValues;
+  // A map from a SILDebugVariable to the last debug_value associated with it in
+  // this block.
+  SmallBlotMapVector<SILDebugVariable, DebugValueInst *, 4> firstDebugValues;
+  SmallBlotMapVector<SILDebugVariable, DebugValueInst *, 4> lastDebugValues;
 };
 
 struct DebugInfoCanonicalizer {
   SILFunction *fn;
   DominanceAnalysis *da;
   DominanceInfo *dt;
+  PostOrderAnalysis *poa;
+  PostOrderFunctionInfo *poi;
+
   llvm::MapVector<SILBasicBlock *, BlockState> blockToBlockState;
 
-  DebugInfoCanonicalizer(SILFunction *fn, DominanceAnalysis *da)
-      : fn(fn), da(da), dt(nullptr) {}
+  DebugInfoCanonicalizer(SILFunction *fn, DominanceAnalysis *da,
+                         PostOrderAnalysis *poa)
+      : fn(fn), da(da), dt(nullptr), poa(poa), poi(nullptr) {}
 
   // We only need the dominance info if we actually see a funclet boundary. So
   // make this lazy so we only create the dom tree in functions that actually
@@ -101,6 +99,7 @@ struct DebugInfoCanonicalizer {
   }
 
   bool process();
+  bool process2();
 
   /// NOTE: insertPt->getParent() may not equal startBlock! This is b/c if we
   /// are propagating from a yield, we want to begin in the yields block, not
@@ -131,7 +130,7 @@ struct DebugInfoCanonicalizer {
       LLVM_DEBUG(llvm::dbgs() << "Visiting idom: "
                               << domTreeNode->getBlock()->getDebugID() << '\n');
       auto &domBlockState = blockToBlockState[domTreeNode->getBlock()];
-      for (auto &pred : domBlockState.debugValues) {
+      for (auto &pred : domBlockState.lastDebugValues) {
         // If we see a nullptr, we had a SILUndef. Do not clone, but mark this
         // as a debug var we have seen so if it is again defined in previous
         // blocks, we don't clone.
@@ -163,8 +162,370 @@ struct DebugInfoCanonicalizer {
 
 } // namespace
 
+static bool isInterestingInst(SILInstruction *inst) {
+  // This handles begin_apply.
+  if (auto fas = FullApplySite::isa(inst)) {
+    if (fas.beginsCoroutineEvaluation())
+      return true;
+  }
+  if (isa<HopToExecutorInst>(inst))
+    return true;
+  if (isa<EndApplyInst>(inst) || isa<AbortApplyInst>(inst))
+    return true;
+  return false;
+}
+
+struct BlockState2 {
+  SmallBitVector entry;
+  SmallBitVector gen;
+  SmallBitVector kill;
+  SmallBitVector exit;
+  bool hasInitializedExit = false;
+
+  SILBasicBlock *block;
+
+  BlockState2(SILBasicBlock *block) : block(block) {}
+};
+
+bool DebugInfoCanonicalizer::process2() {
+  SmallSetVector<SILBasicBlock *, 32> funcLetBoundaryBlocks;
+  SmallVector<DebugValueInst *, 32> debugInsts;
+  for (auto &block : *fn) {
+    for (auto &inst : block) {
+      if (isInterestingInst(&inst)) {
+        funcLetBoundaryInsts.push_back(&block);
+        continue;
+      }
+
+      if (auto *dvi = dyn_cast<DebugValueInst>(&inst)) {
+        if (dvi->getVarInfo()) {
+          debugInsts.push_back(dvi);
+          continue;
+        }
+      }
+    }
+  }
+
+  // If we don't have any funclet boundaries, just exit. We do not have any work
+  // to do.
+  if (funcLetBoundaryBlocks.empty())
+    return false;
+
+  // Ok, we need to perform dataflow. Initialize our blocks.
+  //
+  // We could have performed this earlier, but we only want to allocate memory
+  // if we are actually going to process.
+  using BlockIndexPair = std::pair<SILBasicBlock *, unsigned>;
+  std::vector<BlockState2> blockStates;
+  llvm::DenseMap<SILBasicBlock *, BlockState2 *> blockToStateMap;
+  unsigned numDebugInsts = debugInsts.size();
+  for (auto &pair : llvm::enumerate(*fn)) {
+    BlockState2 &state = blockStates[pair.index()];
+    state.block = &pair.value();
+    state.entry.resize(numDebugInsts);
+    state.exit.resize(numDebugInsts);
+    blockToStateMap[&pair.value()] = &state;
+  }
+
+  // In case, we need to malloc, we reuse tmp in between rounds.
+  SmallBitVector tmp(numDebugInsts);
+  {
+    bool firstRound = true;
+    bool dataflowChanged = false;
+    do {
+      dataflowChanged = false;
+
+      for (auto &state : blockStates) {
+        tmp = state.entry;
+
+        // Union predecessors.
+        for (auto *predBlock : state.block->getPredecessorBlocks()) {
+          tmp &= blockToStateMap[predBlock]->exit;
+        }
+
+        // If we are in the first round or we made a change in our
+        // entry... perform the transfer.
+        if (tmp != state.entry || firstRound) {
+          state.entry = tmp;
+          tmp.reset(state.kill);
+          tmp |= state.gen;
+          state.exit = tmp;
+
+          // Since we changed, we need to run again.
+          dataflowChanged = true;
+        }
+      }
+
+      firstRound = false;
+    } while (dataflowChanged);
+  }
+
+  // Ok, we have completed our dataflow, lets clone debug_values. We walk each
+  // of our funclet boundary blocks from top to bottom cloning as we go.
+  for (auto *block : funcLetBoundaryBlocks) {
+    Smal
+    for (auto &inst : *block) {
+      if (isInterestingInst(&inst)) {
+        // dump;
+      }
+
+      
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 bool DebugInfoCanonicalizer::process() {
+#if false
   bool madeChange = false;
+
+  FrozenMultiMap<SILDebugVariable, DebugValueInst *> debugVarToDebugValues;
+  FrozenMultiMap<SILBasicBlock *, SILInstruction *> blockToInterestingInsts;
+
+  {
+    BasicBlockWorklist worklist(&*fn->begin());
+
+    while (auto *block = worklist.pop()) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "BB: Visiting. bb" << block->getDebugID() << '\n');
+
+      // Then for each instruction in the block...
+      auto &blockState = blockToBlockState[block];
+      for (auto &inst : *block) {
+        // If we have a debug_value with varInfo...
+        if (auto *dvi = dyn_cast<DebugValueInst>(&inst)) {
+          if (auto varInfo = dvi->getVarInfo()) {
+            // Always unconditionally map varInfo to this DVI. We want to track
+            // in each block the last debug_value associated with a specific
+            // SILDebugVariable.
+            auto iter = blockState.lastDebugValues.insert({*varInfo, dvi});
+
+            // If we did not insert, then update iter.first.
+            if (!iter.second) {
+              (*iter.first)->second = dvi;
+            } else {
+              // If we did insert, then this was the first debug_value in this
+              // block. Track this.
+              blockState.firstDebugValues.insert({*varInfo, dvi});
+            }
+            continue;
+          }
+        }
+
+        // If we find an interesting inst, dump the current set of inblock
+        // debug_var that we are tracking. Also add it to the
+        // blockToInterestingInsts multi-map for use in the global dataflow
+        // case.
+        if (isInterestingInst(&inst)) {
+          for (auto &pair : blockState.lastDebugValues) {
+            cloneDebugValue(pair->second, &inst);
+          }
+          blockToInterestingInsts.insert(block, &inst);
+          continue;
+        }
+      }
+
+      // Once we have finished processing this blocks instructions, walk through
+      // blockState.debugValues and put all last debug_values into the global
+      // debug_value that we are processing.
+      for (auto &pair : blockState.lastDebugValues) {
+        debugVarToDebugValues.insert(pair->first, pair->second);
+      }
+    }
+  }
+
+  // Sort our multi-maps so that they are now in multi-map form.
+  debugVarToDebugValues.setFrozen();
+  blockToInterestingInsts.setFrozen();
+
+  // Ok at this point, we are prepared to perform our global dataflow. The
+  // information that we have gathered are:
+  //
+  // 1. We know that any coroutine edges that were in the same block as any of
+  //    our debug_value were handled earlier when we were gathering things. Thus
+  //    we only need to handle the last debug_value in each block which we
+  //    tracked above and only coroutine edges that are not in its own block.
+  //
+  // 2. We also tracked above the first debug_value for each SILDebugVariable in
+  //    each block. This acts as a kill and allows us to properly handle
+  //    coroutine edges that happen in a block before any other debug_value have
+  //    been seen.
+  SmallSetVector<DebugValueInst *, 8> undefDebugValue;
+  for (auto pair : debugVarToDebugValues.getRange()) {
+    SWIFT_DEFER { undefDebugValue.clear(); };
+
+    auto ii = pair.second.begin();
+    DebugValueInst *dominatingDebugValue = *ii;
+
+    // Can this ever happen early? I don't think so.
+    assert(!isa<SILUndef>(dominatingDebugValue->getOperand()));
+
+    auto *dominatingBlock = dominatingDebugValue->getParent();
+    ++ii;
+    auto restRange = llvm::make_range(ii, pair.second.end());
+
+    // If we only found a single debug_value for this SILDebugValue, then just
+    // visit successors placing debug_value at all interesting instructions that
+    // we reach.
+    if (ii == pair.second.end()) {
+      BasicBlockWorklist worklist(dominatingBlock);
+      while (auto *block = worklist.pop()) {
+        if (auto range = blockToInterestingInsts.find(block)) {
+          for (auto *inst : *range) {
+            cloneDebugValue(dominatingDebugValue, inst);
+          }
+        }
+
+        for (auto *succBlock : block->getSuccessorBlocks())
+          worklist.pushIfNotVisited(succBlock);
+      }
+      continue;
+    }
+
+    // Ok, lets first create a BasicBlock worklist, already visit our dominating
+    // block and then add our dominating block's successor blocks.
+    BasicBlockWorklist worklist(dominatingBlock);
+    worklist.pop();
+    for (auto *succBlocks : dominatingBlock->getSuccessorBlocks()) {
+      worklist.pushIfNotVisited(succBlocks);
+    }
+
+    // Now we visit blocks until we run out of blocks.
+    while (auto *block = worklist.pop()) {
+      auto &state = blockToBlockState[block];
+
+      for (auto *succBlock : block->getSuccessorBlocks())
+        worklist.pushIfNotVisited(succBlock);
+    }
+  }
+
+    // First handle the case where our dominating debug value has other
+    // debug_value in the same block. In that case, walk from
+    // dominatingDebugValue to end of block, cloning debug values if we see any
+    // interesting insts. Once we have reached the end, we assign the last seen
+    // debug_value to dominating debug_value and then proceed below.
+    if (llvm::any_of(restRange, [&](DebugValueInst *dvi) {
+      return dvi->getParent() == dominatingBlock;
+    })) {
+      // We update currDebugValue in the loop below so that when we are done it
+      // contains the last debug_value in the given block.
+      auto *currDebugValue = dominatingDebugValue;
+      for (auto ii = std::next(dominatingDebugValue->getIterator()),
+             ie = dominatingBlock->end(); ii != ie; ++ii) {
+        if (auto *dvi = dyn_cast<DebugValueInst>(&*ii)) {
+          if (auto varInfo = dvi->getVarInfo()) {
+            if (*varInfo == *currDebugValue->getVarInfo())
+              currDebugValue = dvi;
+          }
+          continue;
+        }
+        if (isInterestingInst(&*ii)) {
+          cloneDebugValue(currDebugValue, &*ii);
+        }
+      }
+
+      // Reassign dominating debug value to be the last one in the dominating
+      // block. This doesn't effect our analysis and allows us to work in a more
+      // general way below.
+      dominatingDebugValue = currDebugValue;
+    }
+
+    // Ok! At this point we have found a single dominating debug_value that is
+    // live out of our initial dominating block.
+    BasicBlockWorklist innerWorklist(dominatingDebugValue->getParent());
+    while (auto *block = innerWorklist.pop()) {
+      if (auto range = blockToInterestingInsts.find(block)) {
+        for (auto *insts : *range) {
+          
+        }
+      }
+
+      for (auto *succBlock : block->getSuccessorBlocks())
+        innerWorklist.pushIfNotVisited(succBlock);
+    }
+  }
+
+  // We perform an optimistic dataflow with the following lattice states.
+  //
+  // Unknown -> HasValue -> Invalidated
+  //
+  // We treat reinitialization after invalidation as new values.
 
   // We walk along successor edges depth first. This guarantees that we will
   // visit any dominator of a specific block before we visit that block since
@@ -194,7 +555,7 @@ bool DebugInfoCanonicalizer::process() {
         // nullptr.
         if (isa<SILUndef>(dvi->getOperand())) {
           LLVM_DEBUG(llvm::dbgs() << "        SILUndef.\n");
-          auto iter = state.debugValues.insert({*debugInfo, nullptr});
+          auto iter = state.lastDebugValues.insert({*debugInfo, nullptr});
           if (!iter.second)
             iter.first->second = nullptr;
           continue;
@@ -202,7 +563,7 @@ bool DebugInfoCanonicalizer::process() {
 
         // Otherwise, we may have a new debug_value to track. Try to begin
         // tracking it...
-        auto iter = state.debugValues.insert({*debugInfo, dvi});
+        auto iter = state.lastDebugValues.insert({*debugInfo, dvi});
 
         // If we already have one, we failed to insert... So update the iter
         // by hand. We track the last instance always.
@@ -216,25 +577,13 @@ bool DebugInfoCanonicalizer::process() {
       // Otherwise, check if we have a coroutine boundary non-terminator
       // instruction. If we do, we just dump the relevant debug_value right
       // afterwards.
-      auto shouldHandleNonTermInst = [](SILInstruction *inst) -> bool {
-        // This handles begin_apply.
-        if (auto fas = FullApplySite::isa(inst)) {
-          if (fas.beginsCoroutineEvaluation())
-            return true;
-        }
-        if (isa<HopToExecutorInst>(inst))
-          return true;
-        if (isa<EndApplyInst>(inst) || isa<AbortApplyInst>(inst))
-          return true;
-        return false;
-      };
-      if (shouldHandleNonTermInst(&inst)) {
+      if (isInterestingInst(&inst)) {
         LLVM_DEBUG(llvm::dbgs() << "        Found apply edge!.\n");
         // Clone all of the debug_values that we are currently tracking both
         // after the begin_apply,
         SWIFT_DEFER { seenDebugVars.clear(); };
 
-        for (auto &pred : state.debugValues) {
+        for (auto &pred : state.lastDebugValues) {
           // If we found a SILUndef, mark this debug var as seen but do not
           // clone.
           if (!pred.second) {
@@ -270,7 +619,7 @@ bool DebugInfoCanonicalizer::process() {
 
           LLVM_DEBUG(llvm::dbgs() << "        Visiting Succ: bb"
                                   << succBlock->getDebugID() << '\n');
-          for (auto &pred : state.debugValues) {
+          for (auto &pred : state.lastDebugValues) {
             if (!pred.second)
               continue;
             LLVM_DEBUG(llvm::dbgs() << "            Cloning: " << *pred.second);
@@ -295,6 +644,8 @@ bool DebugInfoCanonicalizer::process() {
   }
 
   return madeChange;
+#endif
+ return false;  
 }
 
 //===----------------------------------------------------------------------===//
@@ -306,7 +657,8 @@ namespace {
 class DebugInfoCanonicalizerTransform : public SILFunctionTransform {
   void run() override {
     DebugInfoCanonicalizer canonicalizer(getFunction(),
-                                         getAnalysis<DominanceAnalysis>());
+                                         getAnalysis<DominanceAnalysis>(),
+                                         getAnalysis<PostOrderAnalysis>());
     if (canonicalizer.process()) {
       invalidateAnalysis(SILAnalysis::InvalidationKind::Instructions);
     }

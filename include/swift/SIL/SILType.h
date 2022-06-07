@@ -594,20 +594,20 @@ public:
   bool isAnyObject() const { return getASTType()->isAnyObject(); }
 
   /// Returns true if this SILType is a move only wrapper type.
-  bool isMoveOnly() const { return getASTType()->is<SILMoveOnlyType>(); }
+  bool isMoveOnly() const { return getRawASTType()->is<SILMoveOnlyType>(); }
 
   /// Wrap the current type within a move only type wrapper.
   SILType asMoveOnly() const {
     if (isMoveOnly())
       return *this;
-    auto newType = SILMoveOnlyType::get(getASTType());
+    auto newType = SILMoveOnlyType::get(getRawASTType());
     return SILType::getPrimitiveType(newType, getCategory());
   }
 
   SILType withoutMoveOnly() const {
     if (!isMoveOnly())
       return *this;
-    auto moveOnly = getASTType()->castTo<SILMoveOnlyType>();
+    auto moveOnly = getRawASTType()->castTo<SILMoveOnlyType>();
     return SILType::getPrimitiveType(moveOnly->getInnerType(), getCategory());
   }
 

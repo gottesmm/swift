@@ -533,8 +533,6 @@ static void printSILFunctionNameAndType(llvm::raw_ostream &OS,
 }
 
 namespace {
-  
-class SILPrinter;
 
 // 1. Accumulate opcode-specific comments in this stream.
 // 2. Start emitting comments: lineComments.start()
@@ -598,6 +596,10 @@ protected:
     return opcodeCommentString.size();
   }
 };
+
+} // namespace
+
+namespace swift {
 
 /// SILPrinter class - This holds the internal implementation details of
 /// printing SIL structures.
@@ -2761,7 +2763,8 @@ public:
     }
   }
 };
-} // end anonymous namespace
+
+} // namespace swift
 
 static void printBlockID(raw_ostream &OS, SILBasicBlock *bb) {
   SILPrintContext Ctx(OS);

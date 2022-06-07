@@ -7596,7 +7596,7 @@ class CopyableToMoveOnlyValueInst
 
   CopyableToMoveOnlyValueInst(SILDebugLocation DebugLoc, SILValue operand)
       : UnaryInstructionBase(DebugLoc, operand,
-                             operand->getType().asMoveOnly()) {}
+                             operand->getType().addingMoveOnlyWrapper()) {}
 };
 
 /// Convert from an @moveOnly wrapper type to the underlying copyable type. Can
@@ -7634,7 +7634,7 @@ class MoveOnlyToCopyableValueInst
                               SILValue operand,
                               OwnershipKind forwardingOwnershipKind)
       : UnaryInstructionBase(DebugLoc, operand,
-                             operand->getType().withoutMoveOnly()),
+                             operand->getType().removingMoveOnlyWrapper()),
         OwnershipForwardingMixin(
             SILInstructionKind::MoveOnlyToCopyableValueInst,
             forwardingOwnershipKind) {}

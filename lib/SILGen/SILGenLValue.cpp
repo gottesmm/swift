@@ -4064,7 +4064,7 @@ SILValue SILGenFunction::emitSemanticLoad(SILLocation loc,
   }
 
   // Harder case: the srcTL and the rvalueTL match without move only.
-  if (srcType.withoutMoveOnly() == rvalueType.withoutMoveOnly()) {
+  if (srcType.removingMoveOnlyWrapper() == rvalueType.removingMoveOnlyWrapper()) {
     // Ok, we know that one must be move only and the other must not be. Thus we
     // perform one of two things:
     //
@@ -4107,16 +4107,16 @@ void SILGenFunction::emitSemanticLoadInto(SILLocation loc,
   // Then see if our source address was a move only type and our dest was
   // not. In such a case, just cast away the move only and perform a
   // copy_addr. We are going to error on this later after SILGen.
-  if (srcTL.getLoweredType().withoutMoveOnly() ==
-      destTL.getLoweredType().withoutMoveOnly()) {
+  if (srcTL.getLoweredType().removingMoveOnlyWrapper() ==
+      destTL.getLoweredType().removingMoveOnlyWrapper()) {
     // In such a case, for now emit B.createCopyAddr. In the future, insert the
     // address version of moveonly_to_copyable.
     if (src->getType().isMoveOnly())
       src = B.createUncheckedAddrCast(loc, src,
-                                      srcTL.getLoweredType().withoutMoveOnly());
+                                      srcTL.getLoweredType().removingMoveOnlyWrapper());
     if (dest->getType().isMoveOnly())
       dest = B.createUncheckedAddrCast(
-          loc, dest, destTL.getLoweredType().withoutMoveOnly());
+          loc, dest, destTL.getLoweredType().removingMoveOnlyWrapper());
     B.createCopyAddr(loc, src, dest, isTake, isInit);
     return;
   }

@@ -188,7 +188,7 @@ public:
   ///    type. This is done under the assumption that in all cases where we are
   ///    performing these AST queries on SILType, we are not interested in the
   ///    move only-ness of the value (which we can query separately anyways).
-  CanType getASTType() const { return withoutMoveOnly().getRawASTType(); }
+  CanType getASTType() const { return removingMoveOnlyWrapper().getRawASTType(); }
 
 private:
   /// Returns the canonical AST type references by this SIL type without looking
@@ -601,27 +601,31 @@ public:
   /// Returns true if this SILType is a move only wrapper type.
   bool isMoveOnly() const { return getRawASTType()->is<SILMoveOnlyType>(); }
 
-  /// Wrap the current type within a move only type wrapper.
-  SILType asMoveOnly() const {
+  /// Wrap the current type within a move only type wrapper if it is
+  /// copyable. If this is already a move only type, just return *this.
+  SILType addingMoveOnlyWrapper() const {
     if (isMoveOnly())
       return *this;
     auto newType = SILMoveOnlyType::get(getRawASTType());
     return SILType::getPrimitiveType(newType, getCategory());
   }
 
-  SILType withoutMoveOnly() const {
+  /// If this type is a copyable type wrapped in a move only wrapper, unwrap the
+  /// type and return it. If this is not a move only wrapped type, return *this.
+  SILType removingMoveOnlyWrapper() const {
     if (!isMoveOnly())
       return *this;
     auto moveOnly = getRawASTType()->castTo<SILMoveOnlyType>();
     return SILType::getPrimitiveType(moveOnly->getInnerType(), getCategory());
   }
 
-  /// If \p otherType is move only, return this type that is move only as
-  /// well. Otherwise, returns self. Useful for propagating "move only"-ness
-  /// from a parent type to a subtype.
-  SILType copyMoveOnly(SILType otherType) const {
+  /// If \p otherType is a copyable type wrapped in a move only wrapper type,
+  /// return this type that is move only as well. Otherwise, returns
+  /// self. Useful for propagating "move only"-ness from a parent type to a
+  /// subtype.
+  SILType copyingMoveOnlyWrapper(SILType otherType) const {
     if (otherType.isMoveOnly()) {
-      return asMoveOnly();
+      return addingMoveOnlyWrapper();
     }
     return *this;
   }

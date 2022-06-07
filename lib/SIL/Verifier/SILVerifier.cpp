@@ -5402,7 +5402,7 @@ public:
     require(cvt->getOperand()->getType().isObject(),
             "Operand value should be an object");
     require(!cvt->getType().isMoveOnly(), "Output should not move only");
-    require(cvt->getType() == cvt->getOperand()->getType().withoutMoveOnly(),
+    require(cvt->getType() == cvt->getOperand()->getType().removingMoveOnlyWrapper(),
             "Result and operand must have the same type, today.");
   }
 
@@ -5410,7 +5410,7 @@ public:
     require(cvt->getOperand()->getType().isObject(),
             "Operand value should be an object");
     require(cvt->getType().isMoveOnly(), "Output should be move only");
-    require(cvt->getType() == cvt->getOperand()->getType().asMoveOnly(),
+    require(cvt->getType() == cvt->getOperand()->getType().addingMoveOnlyWrapper(),
             "Result and operand must have the same type, today.");
   }
 

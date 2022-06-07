@@ -567,7 +567,7 @@ public:
   bool unsafelyEliminateMoveOnly() {
     if (!Type.isMoveOnly())
       return false;
-    Type = Type.withoutMoveOnly();
+    Type = Type.removingMoveOnlyWrapper();
     return true;
   }
 

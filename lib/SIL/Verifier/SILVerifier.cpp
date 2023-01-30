@@ -2332,8 +2332,10 @@ public:
     switch (BAI->getAccessKind()) {
     case SILAccessKind::Init:
     case SILAccessKind::Deinit:
-      require(BAI->getEnforcement() == SILAccessEnforcement::Static,
-              "init/deinit accesses cannot use non-static enforcement");
+      require(BAI->getEnforcement() == SILAccessEnforcement::Static ||
+                  BAI->getModule().getStage() == SILStage::Raw,
+              "init/deinit accesses cannot use non-static enforcement in "
+              "canonical SIL");
       break;
 
     case SILAccessKind::Read:
@@ -2395,8 +2397,10 @@ public:
     switch (BUAI->getAccessKind()) {
     case SILAccessKind::Init:
     case SILAccessKind::Deinit:
-      require(BUAI->getEnforcement() == SILAccessEnforcement::Static,
-              "init/deinit accesses cannot use non-static enforcement");
+      require(BUAI->getEnforcement() == SILAccessEnforcement::Static ||
+                  BUAI->getModule().getStage() == SILStage::Raw,
+              "init/deinit accesses cannot use non-static enforcement in "
+              "canonical SIL");
       break;
     case SILAccessKind::Read:
     case SILAccessKind::Modify:

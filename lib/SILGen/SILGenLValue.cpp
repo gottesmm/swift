@@ -35,6 +35,7 @@
 #include "swift/SIL/MemAccessUtils.h"
 #include "swift/SIL/PrettyStackTrace.h"
 #include "swift/SIL/SILArgument.h"
+#include "swift/SIL/SILInstruction.h"
 #include "swift/SIL/SILUndef.h"
 #include "swift/SIL/TypeLowering.h"
 #include "llvm/ADT/STLExtras.h"
@@ -597,8 +598,11 @@ static SILValue enterAccessScope(SILGenFunction &SGF, SILLocation loc,
                                  SGFAccessKind accessKind,
                                  SILAccessEnforcement enforcement,
                                  Optional<ActorIsolation> actorIso) {
-  auto silAccessKind = isReadAccess(accessKind) ? SILAccessKind::Read
-                                                : SILAccessKind::Modify;
+  auto silAccessKind = SILAccessKind::Modify;
+  if (isReadAccess(accessKind))
+    silAccessKind = SILAccessKind::Read;
+  else if (isConsumeAccess(accessKind))
+    silAccessKind = SILAccessKind::Deinit;
 
   assert(SGF.isInFormalEvaluationScope() &&
          "tried to enter access scope without a writeback scope!");
@@ -2974,6 +2978,8 @@ static AccessKind mapAccessKind(SGFAccessKind accessKind) {
   case SGFAccessKind::Write:
     return AccessKind::Write;
 
+  case SGFAccessKind::OwnedAddressConsume:
+  case SGFAccessKind::OwnedObjectConsume:
   case SGFAccessKind::ReadWrite:
     return AccessKind::ReadWrite;
   }
@@ -3736,6 +3742,8 @@ LValue SILGenLValue::visitKeyPathApplicationExpr(KeyPathApplicationExpr *e,
       return true;
 
     case SGFAccessKind::ReadWrite:
+    case SGFAccessKind::OwnedAddressConsume:
+    case SGFAccessKind::OwnedObjectConsume:
       return false;
     }
     llvm_unreachable("bad access kind");
@@ -4810,6 +4818,20 @@ ManagedValue SILGenFunction::emitBorrowedLValue(SILLocation loc,
   // If project() returned an owned value, and the caller cares, borrow it.
   if (value.hasCleanup() && !isIgnored)
     value = value.formalAccessBorrow(*this, loc);
+  return value;
+}
+
+ManagedValue SILGenFunction::emitConsumedLValue(SILLocation loc, LValue &&src,
+                                                TSanKind tsanKind) {
+  assert(isConsumeAccess(src.getAccessKind()));
+
+  ManagedValue base;
+  PathComponent &&component =
+      drillToLastComponent(*this, loc, std::move(src), base, tsanKind);
+
+  auto value =
+      drillIntoComponent(*this, loc, std::move(component), base, tsanKind);
+
   return value;
 }
 

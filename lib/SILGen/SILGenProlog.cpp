@@ -583,13 +583,24 @@ static void emitCaptureArguments(SILGenFunction &SGF,
     auto *box = SGF.F.begin()->createFunctionArgument(
         SILType::getPrimitiveObjectType(boxTy), VD);
     box->setClosureCapture(true);
+
+    // If we have a noncopyable type, then just setup the box as our
+    // varLoc. Every time we re-access the VarLoc box, we will reproject the box
+    // and create a new debug_value_addr. The reason why we do this is that the
+    // move checker needs a separate project_box base for each separate access
+    // we need to check so we can tell the difference in between the difference
+    // accesses.
+    if (box->getType().getSILBoxFieldType(&SGF.F, 0).isMoveOnly()) {
+      SGF.VarLocs[VD] = SILGenFunction::VarLoc::get(box, box);
+      break;
+    }
+
+    // Otherwise, if we have a copyable type, we just project_box once for the
+    // entire function and create a single debug_value_addr.
     SILValue addr = SGF.B.createProjectBox(VD, box, 0);
-    if (addr->getType().isMoveOnly())
-      addr = SGF.B.createMarkMustCheckInst(
-          VD, addr, MarkMustCheckInst::CheckKind::ConsumableAndAssignable);
-    SGF.VarLocs[VD] = SILGenFunction::VarLoc::get(addr, box);
     SILDebugVariable DbgVar(VD->isLet(), ArgNo);
     SGF.B.createDebugValueAddr(Loc, addr, DbgVar);
+    SGF.VarLocs[VD] = SILGenFunction::VarLoc::get(addr, box);
     break;
   }
   case CaptureKind::Immutable:

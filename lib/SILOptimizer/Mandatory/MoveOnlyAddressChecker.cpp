@@ -312,8 +312,14 @@ static bool memInstMustConsume(Operand *memOper) {
     return applySite.getArgumentOperandConvention(*memOper).isOwnedConvention();
   }
   case SILInstructionKind::PartialApplyInst: {
-    // If we are on the stack, we do not consume. Otherwise, we do.
-    return !cast<PartialApplyInst>(memInst)->isOnStack();
+    // If we are on the stack or have an inout convention, we do not
+    // consume. Otherwise, we do.
+    auto *pai = cast<PartialApplyInst>(memInst);
+    if (pai->isOnStack())
+      return false;
+    ApplySite applySite(pai);
+    auto convention = applySite.getArgumentConvention(*memOper);
+    return convention.isInoutConvention();
   }
   case SILInstructionKind::DestroyAddrInst:
     return true;
@@ -979,7 +985,7 @@ struct GatherUsesVisitor : public AccessUseVisitor {
   /// marked value. For the move operator though we will want this to be the
   /// base address that we are checking which should be the operand of the mark
   /// must check value.
-  SILValue getRootAddress() const { return markedValue; }
+  SILValue getRootAddress() const { return markedValue->getOperand(); }
 
   /// Returns true if we emitted an error.
   bool checkForExclusivityHazards(LoadInst *li) {
@@ -1262,18 +1268,37 @@ bool GatherUsesVisitor::visitUse(Operand *op, AccessUseType useTy) {
     }
   }
 
+  // A partial apply that is on the stack or that uses our operand as an inout
+  // parameter is a liveness use.
+  if (auto *pai = dyn_cast<PartialApplyInst>(op->getUser())) {
+    LLVM_DEBUG(llvm::dbgs() << "Have partial apply!\n");
+    ApplySite applySite(pai);
+    auto convention = applySite.getArgumentConvention(*op);
+    if (pai->isOnStack() || convention.isInoutConvention()) {
+      auto leafRange = TypeTreeLeafTypeRange::get(op->get(), getRootAddress());
+      if (!leafRange) {
+        LLVM_DEBUG(llvm::dbgs() << "Failed to compute leaf type range!\n");
+        return false;
+      }
+
+      useState.livenessUses.insert({user, *leafRange});
+      return true;
+    }
+  }
+
   // Now that we have handled or loadTakeOrCopy, we need to now track our
   // additional pure takes.
   if (::memInstMustConsume(op)) {
+    LLVM_DEBUG(llvm::dbgs() << "Pure consuming use: " << *user);
     auto leafRange = TypeTreeLeafTypeRange::get(op->get(), getRootAddress());
     if (!leafRange)
       return false;
-    LLVM_DEBUG(llvm::dbgs() << "Pure consuming use: " << *user);
     useState.takeInsts.insert({user, *leafRange});
     return true;
   }
 
   if (auto fas = FullApplySite::isa(op->getUser())) {
+    LLVM_DEBUG(llvm::dbgs() << "Found full applysite: " << *op->getUser());
     switch (fas.getArgumentConvention(*op)) {
     case SILArgumentConvention::Indirect_In_Guaranteed: {
       auto leafRange = TypeTreeLeafTypeRange::get(op->get(), getRootAddress());

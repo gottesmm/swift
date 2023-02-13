@@ -666,11 +666,28 @@ void DiagnosticEmitter::emitAddressInstLoadedAndConsumed(
             sil_moveonlychecker_notconsumable_but_assignable_was_consumed_global_var;
       }
     }
+  } else if (auto *pbi = dyn_cast<ProjectBoxInst>(markedValue->getOperand())) {
+    auto boxType = pbi->getOperand()->getType().castTo<SILBoxType>();
+    if (boxType->getLayout()->isMutable()) {
+      diag = diag::sil_moveonlychecker_notconsumable_but_assignable_was_consumed_escaping_var;
+    } else {
+      diag = diag::sil_moveonlychecker_notconsumable_but_assignable_was_consumed_escaping_let;
+    }
+  } else if (auto *fArg = dyn_cast<SILFunctionArgument>(markedValue->getOperand())) {
+    // If allocbox_to_stack eliminated the box for an escaping var, we may have
+    // a mark_must_check on a SILFunctionArgument.
+    assert(fArg->isClosureCapture());
+    if (!cast<VarDecl>(fArg->getDecl())->isLet()) {
+      diag = diag::sil_moveonlychecker_notconsumable_but_assignable_was_consumed_escaping_var;
+    } else {
+      diag = diag::sil_moveonlychecker_notconsumable_but_assignable_was_consumed_escaping_let;
+    }
   }
 
   if (!diag) {
-    llvm::report_fatal_error(
-        "Unknown address assignable but not consumable case!");
+    llvm::errs() << "Unknown address assignable but not consumable case!\n";
+    llvm::errs() << "MarkMustCheckInst: " << *markedValue;
+    llvm::report_fatal_error("error!");
   }
 
   diagnose(markedValue->getModule().getASTContext(), markedValue, *diag,

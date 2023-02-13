@@ -355,6 +355,22 @@ void SILGenFunction::emitCaptures(SILLocation loc,
     // Get an address value for a SILValue if it is address only in an type
     // expansion context without opaque archetype substitution.
     auto getAddressValue = [&](SILValue entryValue) -> SILValue {
+      // Before we do anything, see if our entry value is a SILFunctionArgument
+      // of a closure captured box containing a move only type. In such a case,
+      // we need to eagerly emit a project_box.
+      if (auto *fArg = dyn_cast<SILFunctionArgument>(entryValue)) {
+        if (fArg->getType().is<SILBoxType>() &&
+            fArg->getType().getSILBoxFieldType(fArg->getFunction(), 0).isMoveOnly()) {
+          entryValue = B.createProjectBox(vd, entryValue, 0);
+          if (auto *vd = dyn_cast<VarDecl>(fArg->getDecl())) {
+            SILDebugVariable DbgVar(vd->isLet(), fArg->getIndex());
+            B.createDebugValueAddr(loc, entryValue, DbgVar);
+          }
+          entryValue = B.createMarkMustCheckInst(
+              vd, entryValue, MarkMustCheckInst::CheckKind::NoConsumeOrAssign);
+        }
+      }
+
       if (SGM.M.useLoweredAddresses()
           && SGM.Types
                  .getTypeLowering(

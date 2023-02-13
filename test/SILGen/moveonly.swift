@@ -334,7 +334,7 @@ func moveOnlyStructCopyableKlassNonConsumingUse() {
 // CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_ADDR]]
 // CHECK:   [[GEP:%.*]] = struct_element_addr [[ACCESS]] : $*NonTrivialStruct, #NonTrivialStruct.nonTrivialCopyableStruct
 // CHECK:   [[BORROW:%.*]] = load_borrow [[GEP]]
-// CHECK:   [[FN:%.*]] = function_ref @$s8moveonly9borrowValyyAA24NonTrivialCopyableStructVF : 
+// CHECK:   [[FN:%.*]] = function_ref @$s8moveonly9borrowValyyAA24NonTrivialCopyableStructVF :
 // CHECK:   apply [[FN]]([[BORROW]])
 // CHECK:   end_borrow [[BORROW]]
 // CHECK:   end_access [[ACCESS]]
@@ -639,4 +639,217 @@ func testGlobalAssign() {
     varGlobal = NonTrivialStruct()
     varGlobal.nonTrivialStruct2 = NonTrivialStruct2()
     varGlobal.nonTrivialStruct2 = NonTrivialStruct2()
+}
+
+////////////////////////////
+// Escaping Closure Tests //
+////////////////////////////
+
+// Closure Caller
+//
+// CHECK-LABEL: sil hidden [ossa] @$s8moveonly20closureVarTestBorrowyyF : $@convention(thin) () -> () {
+// CHECK: [[BOX:%.*]] = alloc_box ${ var NonTrivialStruct }, var, name "x"
+// CHECK: [[BORROWED_BOX:%.*]] = begin_borrow [lexical] [[BOX]]
+// CHECK: [[PROJECTED_BORROWED_BOX:%.*]] = project_box [[BORROWED_BOX]]
+// CHECK: mark_must_check [consumable_and_assignable] [[PROJECTED_BORROWED_BOX]]
+// CHECK: } // end sil function '$s8moveonly20closureVarTestBorrowyyF'
+//
+// Closure Callee
+//
+// CHECK_LABEL: sil private [ossa] @$s8moveonly20closureVarTestBorrowyyFyycfU_ : $@convention(thin) (@guaranteed { var NonTrivialStruct }) -> () {
+// CHECK: bb0([[BOX:%.*]] :
+//
+// First access.
+// CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK:   debug_value [[PROJECT_BOX]]
+// CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
+// CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
+// CHECK:   [[LOADED_VAL:%.*]] = load_borrow [[ACCESS]]
+// CHECK:   apply {{%.*}}([[LOADED_VAL]])
+// CHECK:   end_borrow [[LOADED_VAL]]
+// CHECK:   end_access [[ACCESS]]
+//
+// Second access.
+// CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK:   debug_value [[PROJECT_BOX]]
+// CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
+// CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
+// CHECK:   [[LOADED_VAL:%.*]] = load_borrow [[ACCESS]]
+// CHECK:   apply {{%.*}}([[LOADED_VAL]])
+// CHECK:   end_borrow [[LOADED_VAL]]
+// CHECK:   end_access [[ACCESS]]
+//
+// GEP Access 1
+// CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK:   debug_value [[PROJECT_BOX]]
+// CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
+// CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
+// CHECK:   [[GEP:%.*]] = struct_element_addr [[ACCESS]]
+// CHECK:   [[LOADED_VAL:%.*]] = load_borrow [[GEP]]
+// CHECK:   apply {{%.*}}([[LOADED_VAL]])
+// CHECK:   end_borrow [[LOADED_VAL]]
+// CHECK:   end_access [[ACCESS]]
+//
+// GEP Access 2
+// CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK:   debug_value [[PROJECT_BOX]]
+// CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
+// CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
+// CHECK:   [[GEP:%.*]] = struct_element_addr [[ACCESS]]
+// CHECK:   [[LOADED_VAL:%.*]] = load_borrow [[GEP]]
+// CHECK:   apply {{%.*}}([[LOADED_VAL]])
+// CHECK:   end_borrow [[LOADED_VAL]]
+// CHECK:   end_access [[ACCESS]]
+// CHECK: } // end sil function '$s8moveonly20closureVarTestBorrowyyFyycfU_'
+func closureVarTestBorrow() {
+    var x = NonTrivialStruct()
+    x = NonTrivialStruct()
+    let f = {
+        borrowVal(x)
+        borrowVal(x)
+        borrowVal(x.nonTrivialStruct2)
+        borrowVal(x.nonTrivialStruct2)
+    }
+
+    _ = f
+}
+
+// Closure Caller
+//
+// CHECK-LABEL: sil hidden [ossa] @$s8moveonly21closureVarTestConsumeyyF : $@convention(thin) () -> () {
+// CHECK: [[BOX:%.*]] = alloc_box ${ var NonTrivialStruct }, var, name "x"
+// CHECK: [[BORROWED_BOX:%.*]] = begin_borrow [lexical] [[BOX]]
+// CHECK: [[PROJECTED_BORROWED_BOX:%.*]] = project_box [[BORROWED_BOX]]
+// CHECK: mark_must_check [consumable_and_assignable] [[PROJECTED_BORROWED_BOX]]
+// CHECK: } // end sil function '$s8moveonly21closureVarTestConsumeyyF'
+//
+// Closure Callee
+//
+// CHECK-LABEL: sil private [ossa] @$s8moveonly21closureVarTestConsumeyyFyycfU_ : $@convention(thin) (@guaranteed { var NonTrivialStruct }) -> () {
+// CHECK: bb0([[BOX:%.*]] :
+//
+// let _ = x
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: [[LOADED_VAL:%.*]] = load [copy] [[ACCESS]]
+// CHECK: [[MOVED_VALUE:%.*]] = move_value [[LOADED_VAL]]
+// CHECK: destroy_value [[MOVED_VALUE]]
+//
+// let _ = x.nonTrivialStruct2
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]
+// CHECK: [[LOADED_VAL:%.*]] = load [copy] [[GEP]]
+// CHECK: [[MOVED_VALUE:%.*]] = move_value [[LOADED_VAL]]
+// CHECK: destroy_value [[MOVED_VALUE]]
+//
+// consumeVal(x)
+//
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [deinit] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: [[LOADED_VAL:%.*]] = load [take] [[ACCESS]]
+// CHECK: apply {{%.*}}([[LOADED_VAL]])
+//
+// consumeVal(x.nonTrivialStruct2)
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [deinit] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]
+// CHECK: [[LOADED_VAL:%.*]] = load [take] [[GEP]]
+// CHECK: apply {{%.*}}([[LOADED_VAL]])
+// CHECK: } // end sil function '$s8moveonly21closureVarTestConsumeyyFyycfU_'
+func closureVarTestConsume() {
+    var x = NonTrivialStruct()
+    x = NonTrivialStruct()
+    let f = {
+        let _ = x
+        let _ = x.nonTrivialStruct2
+        consumeVal(x)
+        consumeVal(x.nonTrivialStruct2)
+    }
+
+    _ = f
+}
+
+// Closure Caller
+//
+// CHECK-LABEL: sil hidden [ossa] @$s8moveonly20closureVarTestAssignyyF : $@convention(thin) () -> () {
+// CHECK: [[BOX:%.*]] = alloc_box ${ var NonTrivialStruct }, var, name "x"
+// CHECK: [[BORROWED_BOX:%.*]] = begin_borrow [lexical] [[BOX]]
+// CHECK: [[PROJECTED_BORROWED_BOX:%.*]] = project_box [[BORROWED_BOX]]
+// CHECK: mark_must_check [consumable_and_assignable] [[PROJECTED_BORROWED_BOX]]
+// CHECK: } // end sil function '$s8moveonly20closureVarTestAssignyyF'
+//
+// Closure Callee
+//
+// CHECK-LABEL: sil private [ossa] @$s8moveonly20closureVarTestAssignyyFyycfU_ : $@convention(thin) (@guaranteed { var NonTrivialStruct }) -> () {
+// CHECK: bb0([[BOX:%.*]] :
+//
+// x = NonTrivialStruct()
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: assign {{%.*}} to [[ACCESS]]
+// CHECK: end_access [[ACCESS]]
+//
+// x = NonTrivialStruct()
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: assign {{%.*}} to [[ACCESS]]
+// CHECK: end_access [[ACCESS]]
+//
+// x.nonTrivialStruct2 = NonTrivialStruct2()
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]
+// CHECK: assign {{%.*}} to [[GEP]]
+// CHECK: end_access [[ACCESS]]
+//
+// x.nonTrivialStruct2 = NonTrivialStruct2()
+// CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
+// CHECK: debug_value [[PROJECT_BOX]]
+// CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
+// CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
+// CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]
+// CHECK: assign {{%.*}} to [[GEP]]
+// CHECK: end_access [[ACCESS]]
+//
+// CHECK: } // end sil function '$s8moveonly20closureVarTestAssignyyFyycfU_'
+func closureVarTestAssign() {
+    var x = NonTrivialStruct()
+    x = NonTrivialStruct()
+    let f = {
+        x = NonTrivialStruct()
+        x = NonTrivialStruct()
+        x.nonTrivialStruct2 = NonTrivialStruct2()
+        x.nonTrivialStruct2 = NonTrivialStruct2()
+    }
+
+    _ = f
+}
+
+func closureInClosure() {
+    var x = NonTrivialStruct()
+    x = NonTrivialStruct()
+    let f = {
+        let _ = x
+        let g = {
+            let _ = x
+        }
+        let g2 = {
+            let _ = x
+        }
+    }
 }

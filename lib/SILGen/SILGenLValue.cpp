@@ -1075,7 +1075,14 @@ namespace {
       Value(value),
       Enforcement(enforcement),
       IsRValue(isRValue) {
-        assert(IsRValue || value.getType().isAddress());
+      assert(
+          IsRValue || value.getType().isAddress() ||
+          (value.getType().is<SILBoxType>() &&
+           value.getType()
+               .getSILBoxFieldType(value.getUnmanagedValue()->getFunction(), 0)
+               .isMoveOnly() &&
+           cast<SILFunctionArgument>(value.getUnmanagedValue())
+               ->isClosureCapture()));
     }
 
     virtual bool isLoadingPure() const override { return true; }
@@ -1084,8 +1091,37 @@ namespace {
                          ManagedValue base) && override {
       assert(!base && "value component must be root of lvalue path");
 
+      // Before we do anything, see if we have a non-copyable value in a box. In
+      // such a case, we need to reproject.
+      if (Value.getType().is<SILBoxType>()) {
+        SILType boxedType = Value.getType().getSILBoxFieldType(&SGF.F, 0);
+        assert(boxedType.isMoveOnly() && "Box value types can only contain a noncopyable type.");
+        auto *arg = cast<SILFunctionArgument>(Value.getUnmanagedValue());
+        SILValue addr = SGF.B.createProjectBox(loc, arg, 0);
+        if (auto *vd = dyn_cast<VarDecl>(arg->getDecl())) {
+          SILDebugVariable DbgVar(vd->isLet(), arg->getIndex());
+          SGF.B.createDebugValueAddr(loc, addr, DbgVar);
+        }
+
+        auto checkKind = MarkMustCheckInst::CheckKind::AssignableButNotConsumable;
+        if (isReadAccess(getAccessKind())) {
+          checkKind = MarkMustCheckInst::CheckKind::NoConsumeOrAssign;
+        }
+        addr = SGF.B.createMarkMustCheckInst(loc, addr, checkKind);
+
+        if (!Enforcement)
+          return ManagedValue::forLValue(addr);
+
+        addr =
+          enterAccessScope(SGF, loc, base, addr, getTypeData(), getAccessKind(),
+                           *Enforcement, takeActorIsolation());
+        return ManagedValue::forLValue(addr);
+      }
+
       if (!Enforcement)
         return Value;
+
+      assert(Value.getType().isAddress() && "Must have an address here?!");
 
       SILValue addr = Value.getLValueAddress();
       addr =
@@ -3000,8 +3036,15 @@ void LValue::addNonMemberVarComponent(SILGenFunction &SGF, SILLocation loc,
         assert((!ActorIso || Storage->isTopLevelGlobal()) &&
                "local var should not be actor isolated!");
       }
-      assert(address.isLValue() &&
-             "physical lvalue decl ref must evaluate to an address");
+
+      assert((address.isLValue() ||
+              (address.getType().is<SILBoxType>() &&
+               address.getType().getSILBoxFieldType(&SGF.F, 0).isMoveOnly() &&
+               cast<SILFunctionArgument>(address.getUnmanagedValue())
+                   ->isClosureCapture())) &&
+             "Must have either a physical copyable lvalue decl ref that "
+             "evaluates to an address or a closure captured box that contains "
+             "a non-copyable type that we will reproject on each access");
 
       Optional<SILAccessEnforcement> enforcement;
       if (!Storage->isLet()) {

@@ -661,7 +661,6 @@ func testGlobalAssign() {
 //
 // First access.
 // CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK:   debug_value [[PROJECT_BOX]]
 // CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
 // CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
 // CHECK:   [[LOADED_VAL:%.*]] = load_borrow [[ACCESS]]
@@ -671,7 +670,6 @@ func testGlobalAssign() {
 //
 // Second access.
 // CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK:   debug_value [[PROJECT_BOX]]
 // CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
 // CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
 // CHECK:   [[LOADED_VAL:%.*]] = load_borrow [[ACCESS]]
@@ -681,7 +679,6 @@ func testGlobalAssign() {
 //
 // GEP Access 1
 // CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK:   debug_value [[PROJECT_BOX]]
 // CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
 // CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
 // CHECK:   [[GEP:%.*]] = struct_element_addr [[ACCESS]]
@@ -692,7 +689,6 @@ func testGlobalAssign() {
 //
 // GEP Access 2
 // CHECK:   [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK:   debug_value [[PROJECT_BOX]]
 // CHECK:   [[MARKED_PROJECT_BOX:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
 // CHECK:   [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_PROJECT_BOX]]
 // CHECK:   [[GEP:%.*]] = struct_element_addr [[ACCESS]]
@@ -730,7 +726,6 @@ func closureVarTestBorrow() {
 //
 // let _ = x
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: [[LOADED_VAL:%.*]] = load [copy] [[ACCESS]]
@@ -739,7 +734,6 @@ func closureVarTestBorrow() {
 //
 // let _ = x.nonTrivialStruct2
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [no_consume_or_assign] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [read] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]
@@ -750,7 +744,6 @@ func closureVarTestBorrow() {
 // consumeVal(x)
 //
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [deinit] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: [[LOADED_VAL:%.*]] = load [take] [[ACCESS]]
@@ -758,7 +751,6 @@ func closureVarTestBorrow() {
 //
 // consumeVal(x.nonTrivialStruct2)
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [deinit] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]
@@ -794,7 +786,6 @@ func closureVarTestConsume() {
 //
 // x = NonTrivialStruct()
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: assign {{%.*}} to [[ACCESS]]
@@ -802,7 +793,6 @@ func closureVarTestConsume() {
 //
 // x = NonTrivialStruct()
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: assign {{%.*}} to [[ACCESS]]
@@ -810,7 +800,6 @@ func closureVarTestConsume() {
 //
 // x.nonTrivialStruct2 = NonTrivialStruct2()
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]
@@ -819,7 +808,6 @@ func closureVarTestConsume() {
 //
 // x.nonTrivialStruct2 = NonTrivialStruct2()
 // CHECK: [[PROJECT_BOX:%.*]] = project_box [[BOX]]
-// CHECK: debug_value [[PROJECT_BOX]]
 // CHECK: [[MARKED_BOX_ADDR:%.*]] = mark_must_check [assignable_but_not_consumable] [[PROJECT_BOX]]
 // CHECK: [[ACCESS:%.*]] = begin_access [modify] [unknown] [[MARKED_BOX_ADDR]]
 // CHECK: [[GEP:%.*]] = struct_element_addr [[ACCESS]]

@@ -364,7 +364,7 @@ void SILGenFunction::emitCaptures(SILLocation loc,
           entryValue = B.createProjectBox(vd, entryValue, 0);
           if (auto *vd = dyn_cast<VarDecl>(fArg->getDecl())) {
             SILDebugVariable DbgVar(vd->isLet(), fArg->getIndex());
-            B.createDebugValueAddr(loc, entryValue, DbgVar);
+            //B.createDebugValueAddr(loc, entryValue, DbgVar);
           }
           entryValue = B.createMarkMustCheckInst(
               vd, entryValue, MarkMustCheckInst::CheckKind::NoConsumeOrAssign);

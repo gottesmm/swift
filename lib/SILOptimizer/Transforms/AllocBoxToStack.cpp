@@ -1088,6 +1088,7 @@ static void rewriteApplySites(AllocBoxToStackState &pass) {
   // operands that we will not need, and remove the existing
   // ApplySite.
   SILOptFunctionBuilder FuncBuilder(*pass.T);
+  SmallVector<SILFunction *, 1> functionsToMaybeDelete;
   for (auto &It : AppliesToSpecialize) {
     if (!It.has_value()) {
       continue;
@@ -1102,11 +1103,18 @@ static void rewriteApplySites(AllocBoxToStackState &pass) {
     Apply.getInstruction()->replaceAllUsesPairwiseWith(Replacement);
 
     auto *FRI = cast<FunctionRefInst>(Apply.getCallee());
+    functionsToMaybeDelete.push_back(FRI->getReferencedFunction());
     Apply.getInstruction()->eraseFromParent();
 
-    // TODO: Erase from module if there are no more uses.
     if (FRI->use_empty())
       FRI->eraseFromParent();
+  }
+
+  // If any of our functions have a ref count of 0, then we can erase them.
+  while (!functionsToMaybeDelete.empty()) {
+    auto *fn = functionsToMaybeDelete.pop_back_val();
+    if (fn->getRefCount() == 0)
+      FuncBuilder.eraseFunction(fn);
   }
 }
 
@@ -1130,6 +1138,7 @@ static unsigned rewritePromotedBoxes(AllocBoxToStackState &pass) {
 }
 
 namespace {
+
 class AllocBoxToStack : public SILFunctionTransform {
   /// The entry point to the transformation.
   void run() override {
@@ -1160,8 +1169,48 @@ class AllocBoxToStack : public SILFunctionTransform {
     }
   }
 };
+
+class EarlyAllocBoxToStack : public SILFunctionTransform {
+  /// The entry point to the transformation.
+  void run() override {
+    // Don't rerun on deserialized functions. Nothing should have changed.
+    if (getFunction()->wasDeserializedCanonical())
+      return;
+
+    AllocBoxToStackState pass(this);
+    for (auto &BB : *getFunction()) {
+      for (auto &I : BB)
+        if (auto *ABI = dyn_cast<AllocBoxInst>(&I)) {
+          if (ABI->getAddressType().isMoveOnly())
+            continue;
+          if (canPromoteAllocBox(ABI, pass.PromotedOperands))
+            pass.Promotable.push_back(ABI);
+        }
+    }
+
+    if (!pass.Promotable.empty()) {
+      auto Count = rewritePromotedBoxes(pass);
+      NumStackPromoted += Count;
+      if (Count) {
+        if (StackNesting::fixNesting(getFunction()) ==
+            StackNesting::Changes::CFG)
+          pass.CFGChanged = true;
+      }
+
+      invalidateAnalysis(
+          pass.CFGChanged
+              ? SILAnalysis::InvalidationKind::FunctionBody
+              : SILAnalysis::InvalidationKind::CallsAndInstructions);
+    }
+  }
+};
+
 } // end anonymous namespace
 
 SILTransform *swift::createAllocBoxToStack() {
   return new AllocBoxToStack();
+}
+
+SILTransform *swift::createEarlyAllocBoxToStack() {
+  return new EarlyAllocBoxToStack();
 }

@@ -125,7 +125,7 @@ static void addMandatoryDiagnosticOptPipeline(SILPassPipelinePlan &P) {
   // This guarantees that stack-promotable boxes have [static] enforcement.
   P.addAccessEnforcementSelection();
 
-  P.addAllocBoxToStack();
+  P.addEarlyAllocBoxToStack();
   P.addNoReturnFolding();
   addDefiniteInitialization(P);
 
@@ -162,6 +162,10 @@ static void addMandatoryDiagnosticOptPipeline(SILPassPipelinePlan &P) {
   P.addMoveOnlyObjectChecker();
   // Check noImplicitCopy and move only types for addresses.
   P.addMoveOnlyAddressChecker();
+  // Now that we have performed all of the ownership checking, run the full
+  // allocbox to stack. This ensures that we properly convert destroy_value to
+  // deinits.
+  P.addAllocBoxToStack();
   // Convert last destroy_value to deinits.
   P.addMoveOnlyDeinitInsertion();
   // Lower move only wrapped trivial types.

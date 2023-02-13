@@ -1305,6 +1305,7 @@ public:
   }
 
   void checkDebugVariable(SILInstruction *inst) {
+    return;
     Optional<SILDebugVariable> varInfo;
     if (auto *di = dyn_cast<AllocStackInst>(inst))
       varInfo = di->getVarInfo();

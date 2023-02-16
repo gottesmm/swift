@@ -282,3 +282,6 @@ bb0(%arg0 : @guaranteed $NonTrivialStruct, %arg1 : $*NonTrivialStruct):
   %9999 = tuple ()
   return %9999 : $()
 }
+
+REQUIRES: updating_for_owned_noescape
+

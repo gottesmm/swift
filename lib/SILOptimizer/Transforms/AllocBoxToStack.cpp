@@ -1110,12 +1110,20 @@ static void rewriteApplySites(AllocBoxToStackState &pass) {
       FRI->eraseFromParent();
   }
 
+  /* TODO: Invalidate analyses after deleting functions here so that passes
+     don't try to run on them again.
+     We also have to be careful not to erase functions that have externally
+     accessible linkage here.
+>>>>>>> jckarter/move-only-closures-integrate
   // If any of our functions have a ref count of 0, then we can erase them.
   while (!functionsToMaybeDelete.empty()) {
     auto *fn = functionsToMaybeDelete.pop_back_val();
     if (fn->getRefCount() == 0)
       FuncBuilder.eraseFunction(fn);
   }
+=======
+<<<<<<< HEAD
+   */
 }
 
 /// Clone closure bodies and rewrite partial applies. Returns the number of
@@ -1183,11 +1191,11 @@ class DiagnosticAllocBoxToStack : public SILFunctionTransform {
       for (auto &I : BB)
         if (auto *ABI = dyn_cast<AllocBoxInst>(&I)) {
           // If we are running early and have a moveonly type, skip this box.
-          if (ABI->getAddressType().isMoveOnly() && isEarly)
+          if (/*ABI->getAddressType().isMoveOnly() && isEarly)
             continue;
 
           // If we are running late and have a non-move only type, skip it.
-          if (!ABI->getAddressType().isMoveOnly() && !isEarly)
+          if (!ABI->getAddressType().isMoveOnly() && */!isEarly)
             continue;
 
           if (canPromoteAllocBox(ABI, pass.PromotedOperands))

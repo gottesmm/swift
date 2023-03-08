@@ -9070,7 +9070,7 @@ parseDeclDeinit(ParseDeclOptions Flags, DeclAttributes &Attributes) {
   auto *ED = dyn_cast<ExtensionDecl>(CurDeclContext);
   if (!(isa<StructDecl>(CurDeclContext) || isa<EnumDecl>(CurDeclContext) ||
         isa<ClassDecl>(CurDeclContext) || (ED && ED->isObjCImplementation()))) {
-    diagnose(DestructorLoc, diag::destructor_decl_outside_class);
+    diagnose(DestructorLoc, diag::destructor_decl_outside_class_or_noncopyable);
 
     // Tell the type checker not to touch this destructor.
     DD->setInvalid();

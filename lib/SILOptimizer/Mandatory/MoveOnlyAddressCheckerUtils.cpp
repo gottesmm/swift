@@ -359,7 +359,7 @@ static bool isInOutDefThatNeedsEndOfFunctionLiveness(SILValue value) {
     }
   }
 
-  if (auto *pbi = dyn_cast<ProjectBoxInst>(value)) {
+  if (auto *pbi = dyn_cast<ProjectBoxInst>(stripAccessMarkers(value))) {
     if (auto *fArg = dyn_cast<SILFunctionArgument>(pbi->getOperand())) {
       if (!fArg->isClosureCapture())
         return false;

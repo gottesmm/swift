@@ -8309,6 +8309,11 @@ public:
     /// uninitialized state), but we are ok with the user assigning a new value,
     /// completely assigning over the value at once.
     AssignableButNotConsumable,
+
+    /// A signal to the move checker that the given value cannot be consumed or
+    /// assigned, but is allowed to be initialized. This is used for situations
+    /// like class initializers.
+    InitableButNotConsumable,
   };
 
 private:
@@ -8327,6 +8332,8 @@ private:
 public:
   CheckKind getCheckKind() const { return kind; }
 
+  void setCheckKind(CheckKind newKind) { kind = newKind; }
+
   bool hasMoveCheckerKind() const {
     switch (kind) {
     case CheckKind::Invalid:
@@ -8334,6 +8341,7 @@ public:
     case CheckKind::ConsumableAndAssignable:
     case CheckKind::NoConsumeOrAssign:
     case CheckKind::AssignableButNotConsumable:
+    case CheckKind::InitableButNotConsumable:
       return true;
     }
   }

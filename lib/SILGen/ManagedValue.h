@@ -53,18 +53,26 @@ class SILGenFunction;
 /// non-trivial type.
 ///
 class ManagedValue {
+public:
+  enum class Flags {
+    IsLValueOrInContext = 0x1,
+    HasFormalAccessScope = 0x2,
+  };
+
+  using Options = OptionSet<Flags>;
+
+private:
   /// The value (or address of an address-only value) being managed, and
   /// whether it represents an lvalue.  InContext is represented with the lvalue
   /// flag set but with a null SILValue.
-  llvm::PointerIntPair<SILValue, 1, bool> valueAndFlag;
-  
+  llvm::PointerIntPair<SILValue, 2, bool> valueAndFlags;
+
   /// A handle to the cleanup that destroys this value, or
   /// CleanupHandle::invalid() if the value has no cleanup.
   CleanupHandle cleanup;
 
-  explicit ManagedValue(SILValue value, bool isLValue, CleanupHandle cleanup)
-    : valueAndFlag(value, isLValue), cleanup(cleanup) {
-  }
+  explicit ManagedValue(SILValue value, Options options, CleanupHandle cleanup)
+      : valueAndFlags(value, options.toRaw()), cleanup(cleanup) {}
 
 public:
   
@@ -75,7 +83,7 @@ public:
   /// Please do not introduce new uses of this method! Instead use one of the
   /// static constructors below.
   ManagedValue(SILValue value, CleanupHandle cleanup)
-    : valueAndFlag(value, false), cleanup(cleanup) {
+      : valueAndFlags(value, {}), cleanup(cleanup) {
     assert(value && "No value specified?!");
     assert((!getType().isObject() ||
             value->getOwnershipKind() != OwnershipKind::None ||

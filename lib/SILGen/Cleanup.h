@@ -189,6 +189,7 @@ class LLVM_LIBRARY_VISIBILITY CleanupManager {
   friend class CleanupStateRestorationScope;
   friend class SharedBorrowFormalEvaluation;
   friend class FormalEvaluationScope;
+  friend class ManagedValue;
 
 public:
   CleanupManager(SILGenFunction &SGF)
@@ -294,6 +295,12 @@ private:
   // cleanup at \p depth. If
   std::tuple<Cleanup::Flags, Optional<SILValue>>
   getFlagsAndWritebackBuffer(CleanupHandle depth);
+
+  bool isFormalAccessCleanup(CleanupHandle depth) {
+    auto state = getFlagsAndWritebackBuffer(depth);
+    using RawTy = std::underlying_type<Cleanup::Flags>::type;
+    return RawTy(std::get<0>(state)) & RawTy(Cleanup::Flags::FormalAccessCleanup);
+  }
 };
 
 /// An RAII object that allows the state of a cleanup to be

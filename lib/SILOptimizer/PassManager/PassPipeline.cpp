@@ -154,6 +154,9 @@ static void addMandatoryDiagnosticOptPipeline(SILPassPipelinePlan &P) {
   // resolution of nonescaping closure lifetimes to correctly check the use
   // of move-only values as captures in nonescaping closures as borrows.
 
+  // A small optimization pass that eliminates temporary allocations inserted by
+  // the frontend.
+
   // Check noImplicitCopy and move only types for objects and addresses.
   P.addMoveOnlyChecker();
   // Convert last destroy_value to deinits.

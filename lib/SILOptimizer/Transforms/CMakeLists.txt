@@ -22,7 +22,7 @@ target_sources(swiftSILOptimizer PRIVATE
   DifferentiabilityWitnessDevirtualizer.cpp
   EagerSpecializer.cpp
   GenericSpecializer.cpp
-  MoveOnlyDeinitInsertion.cpp
+  MoveOnlyDeinitDevirtualization.cpp
   Outliner.cpp
   PartialApplySimplification.cpp
   PerformanceInliner.cpp

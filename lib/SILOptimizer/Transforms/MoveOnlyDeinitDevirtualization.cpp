@@ -1,4 +1,4 @@
-//===--- MoveOnlyDeinitInsertion.cpp --------------------------------------===//
+//===--- MoveOnlyDeinitDevirtualization.cpp -------------------------------===//
 //
 // This source file is part of the Swift.org open source project
 //
@@ -12,8 +12,9 @@
 ///
 /// \file
 ///
-/// This pass runs after move only checking has occurred and transforms last
-/// destroy_value of move only types into a call to the move only types deinit.
+/// This pass runs after move only checking has occurred and devirtualizes the
+/// last destroy_value of move only types into a call to the move only types
+/// deinit.
 ///
 //===----------------------------------------------------------------------===//
 

@@ -1,8 +1,8 @@
-//===--- MoveOnlyDeinitInsertion.cpp --------------------------------------===//
+//===--- MoveOnlyDeinitDevirtualizer.cpp ----------------------------------===//
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2022 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2023 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See https://swift.org/LICENSE.txt for license information
@@ -63,7 +63,8 @@ static bool performTransform(SILFunction &fn) {
       if (auto *dvi = dyn_cast<DestroyValueInst>(inst)) {
         auto destroyType = dvi->getOperand()->getType();
         if (destroyType.isMoveOnlyNominalType() &&
-            !isa<DropDeinitInst>(lookThroughOwnershipInsts(dvi->getOperand()))) {
+            !isa<DropDeinitInst>(
+                lookThroughOwnershipInsts(dvi->getOperand()))) {
           LLVM_DEBUG(llvm::dbgs() << "Handling: " << *dvi);
           auto *nom = destroyType.getNominalOrBoundGenericNominal();
           assert(nom);
@@ -128,13 +129,6 @@ namespace {
 class SILMoveOnlyDeinitInsertionPass : public SILFunctionTransform {
   void run() override {
     auto *fn = getFunction();
-
-    // Don't rerun diagnostics on deserialized functions.
-    if (getFunction()->wasDeserializedCanonical())
-      return;
-
-    assert(fn->getModule().getStage() == SILStage::Raw &&
-           "Should only run on Raw SIL");
     LLVM_DEBUG(llvm::dbgs() << "===> MoveOnly Deinit Insertion. Visiting: "
                             << fn->getName() << '\n');
     if (performTransform(*fn)) {
@@ -145,6 +139,6 @@ class SILMoveOnlyDeinitInsertionPass : public SILFunctionTransform {
 
 } // anonymous namespace
 
-SILTransform *swift::createMoveOnlyDeinitInsertion() {
+SILTransform *swift::createMoveOnlyDeinitDevirtualizer() {
   return new SILMoveOnlyDeinitInsertionPass();
 }

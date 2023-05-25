@@ -284,88 +284,6 @@ using namespace swift::siloptimizer;
 //                           MARK: Memory Utilities
 //===----------------------------------------------------------------------===//
 
-static bool memInstMustInitialize(Operand *memOper) {
-  SILValue address = memOper->get();
-
-  SILInstruction *memInst = memOper->getUser();
-
-  switch (memInst->getKind()) {
-  default:
-    return false;
-
-  case SILInstructionKind::CopyAddrInst: {
-    auto *CAI = cast<CopyAddrInst>(memInst);
-    return CAI->getDest() == address && CAI->isInitializationOfDest();
-  }
-  case SILInstructionKind::ExplicitCopyAddrInst: {
-    auto *CAI = cast<ExplicitCopyAddrInst>(memInst);
-    return CAI->getDest() == address && CAI->isInitializationOfDest();
-  }
-  case SILInstructionKind::MarkUnresolvedMoveAddrInst: {
-    return cast<MarkUnresolvedMoveAddrInst>(memInst)->getDest() == address;
-  }
-  case SILInstructionKind::InitExistentialAddrInst:
-  case SILInstructionKind::InitEnumDataAddrInst:
-  case SILInstructionKind::InjectEnumAddrInst:
-    return true;
-
-  case SILInstructionKind::BeginApplyInst:
-  case SILInstructionKind::TryApplyInst:
-  case SILInstructionKind::ApplyInst: {
-    FullApplySite applySite(memInst);
-    return applySite.isIndirectResultOperand(*memOper);
-  }
-  case SILInstructionKind::StoreInst: {
-    auto qual = cast<StoreInst>(memInst)->getOwnershipQualifier();
-    return qual == StoreOwnershipQualifier::Init ||
-           qual == StoreOwnershipQualifier::Trivial;
-  }
-
-#define NEVER_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, ...)             \
-  case SILInstructionKind::Store##Name##Inst:                                  \
-    return cast<Store##Name##Inst>(memInst)->isInitializationOfDest();
-#include "swift/AST/ReferenceStorage.def"
-  }
-}
-
-static bool memInstMustReinitialize(Operand *memOper) {
-  SILValue address = memOper->get();
-
-  SILInstruction *memInst = memOper->getUser();
-
-  switch (memInst->getKind()) {
-  default:
-    return false;
-
-  case SILInstructionKind::CopyAddrInst: {
-    auto *CAI = cast<CopyAddrInst>(memInst);
-    return CAI->getDest() == address && !CAI->isInitializationOfDest();
-  }
-  case SILInstructionKind::ExplicitCopyAddrInst: {
-    auto *CAI = cast<ExplicitCopyAddrInst>(memInst);
-    return CAI->getDest() == address && !CAI->isInitializationOfDest();
-  }
-  case SILInstructionKind::YieldInst: {
-    auto *yield = cast<YieldInst>(memInst);
-    return yield->getYieldInfoForOperand(*memOper).isIndirectInOut();
-  }
-  case SILInstructionKind::BeginApplyInst:
-  case SILInstructionKind::TryApplyInst:
-  case SILInstructionKind::ApplyInst: {
-    FullApplySite applySite(memInst);
-    return applySite.getArgumentOperandConvention(*memOper).isInoutConvention();
-  }
-  case SILInstructionKind::StoreInst:
-    return cast<StoreInst>(memInst)->getOwnershipQualifier() ==
-           StoreOwnershipQualifier::Assign;
-
-#define NEVER_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, ...)             \
-  case SILInstructionKind::Store##Name##Inst:                                  \
-    return !cast<Store##Name##Inst>(memInst)->isInitializationOfDest();
-#include "swift/AST/ReferenceStorage.def"
-  }
-}
-
 /// Is this a reinit instruction that we know how to convert into its init form.
 static bool isReinitToInitConvertibleInst(SILInstruction *memInst) {
   switch (memInst->getKind()) {
@@ -424,49 +342,6 @@ static void convertMemoryReinitToInitForm(SILInstruction *memInst,
   // the debugger knows that the variable is in a usable form again.
   insertDebugValueBefore(memInst->getNextInstruction(), debugVar,
                          stripAccessMarkers(dest));
-}
-
-static bool memInstMustConsume(Operand *memOper) {
-  SILValue address = memOper->get();
-
-  SILInstruction *memInst = memOper->getUser();
-
-  switch (memInst->getKind()) {
-  default:
-    return false;
-
-  case SILInstructionKind::CopyAddrInst: {
-    auto *CAI = cast<CopyAddrInst>(memInst);
-    return (CAI->getSrc() == address && CAI->isTakeOfSrc()) ||
-           (CAI->getDest() == address && !CAI->isInitializationOfDest());
-  }
-  case SILInstructionKind::ExplicitCopyAddrInst: {
-    auto *CAI = cast<CopyAddrInst>(memInst);
-    return (CAI->getSrc() == address && CAI->isTakeOfSrc()) ||
-           (CAI->getDest() == address && !CAI->isInitializationOfDest());
-  }
-  case SILInstructionKind::BeginApplyInst:
-  case SILInstructionKind::TryApplyInst:
-  case SILInstructionKind::ApplyInst: {
-    FullApplySite applySite(memInst);
-    return applySite.getArgumentOperandConvention(*memOper).isOwnedConvention();
-  }
-  case SILInstructionKind::PartialApplyInst: {
-    // If we are on the stack or have an inout convention, we do not
-    // consume. Otherwise, we do.
-    auto *pai = cast<PartialApplyInst>(memInst);
-    if (pai->isOnStack())
-      return false;
-    ApplySite applySite(pai);
-    auto convention = applySite.getArgumentConvention(*memOper);
-    return !convention.isInoutConvention();
-  }
-  case SILInstructionKind::DestroyAddrInst:
-    return true;
-  case SILInstructionKind::LoadInst:
-    return cast<LoadInst>(memInst)->getOwnershipQualifier() ==
-           LoadOwnershipQualifier::Take;
-  }
 }
 
 /// Returns true if \p value a function argument from an inout argument or a
@@ -1551,7 +1426,7 @@ bool GatherUsesVisitor::visitUse(Operand *op) {
   LLVM_DEBUG(llvm::dbgs() << "Visiting user: " << *user;);
 
   // First check if we have init/reinit. These are quick/simple.
-  if (::memInstMustInitialize(op)) {
+  if (moveonlyutils::memInstMustInitialize(op)) {
     LLVM_DEBUG(llvm::dbgs() << "Found init: " << *user);
 
     // TODO: What about copy_addr of itself. We really should just pre-process
@@ -1565,7 +1440,7 @@ bool GatherUsesVisitor::visitUse(Operand *op) {
     return true;
   }
 
-  if (::memInstMustReinitialize(op)) {
+  if (moveonlyutils::memInstMustReinitialize(op)) {
     LLVM_DEBUG(llvm::dbgs() << "Found reinit: " << *user);
     assert(!useState.reinitInsts.count(user));
     auto leafRange = TypeTreeLeafTypeRange::get(op->get(), getRootAddress());
@@ -1843,7 +1718,7 @@ bool GatherUsesVisitor::visitUse(Operand *op) {
 
   // Now that we have handled or loadTakeOrCopy, we need to now track our
   // additional pure takes.
-  if (::memInstMustConsume(op)) {
+  if (moveonlyutils::memInstMustConsume(op)) {
     // If we don't have a consumeable and assignable check kind, then we can't
     // consume. Emit an error.
     //

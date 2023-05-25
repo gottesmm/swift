@@ -352,7 +352,6 @@ bool Implementation::gatherUses(SILValue value) {
     }
 
     case OperandOwnership::GuaranteedForwarding:
-      // Look through guaranteed forwarding.
       ForwardingOperand(nextUse).visitForwardedValues([&](SILValue value) {
         for (auto *use : value->getUses()) {
           useWorklist.push_back(use);

@@ -174,3 +174,165 @@ bool swift::siloptimizer::cleanupNonCopyableCopiesAfterEmittingDiagnostic(
 
   return changed;
 }
+
+//===----------------------------------------------------------------------===//
+//                          MARK: Memory Operations
+//===----------------------------------------------------------------------===//
+
+bool moveonlyutils::memInstMustConsume(Operand *memOper) {
+  SILValue address = memOper->get();
+
+  SILInstruction *memInst = memOper->getUser();
+
+  switch (memInst->getKind()) {
+  default:
+    return false;
+
+  case SILInstructionKind::CopyAddrInst: {
+    auto *CAI = cast<CopyAddrInst>(memInst);
+    return (CAI->getSrc() == address && CAI->isTakeOfSrc()) ||
+           (CAI->getDest() == address && !CAI->isInitializationOfDest());
+  }
+  case SILInstructionKind::ExplicitCopyAddrInst: {
+    auto *CAI = cast<CopyAddrInst>(memInst);
+    return (CAI->getSrc() == address && CAI->isTakeOfSrc()) ||
+           (CAI->getDest() == address && !CAI->isInitializationOfDest());
+  }
+  case SILInstructionKind::BeginApplyInst:
+  case SILInstructionKind::TryApplyInst:
+  case SILInstructionKind::ApplyInst: {
+    FullApplySite applySite(memInst);
+    return applySite.getArgumentOperandConvention(*memOper).isOwnedConvention();
+  }
+  case SILInstructionKind::PartialApplyInst: {
+    // If we are on the stack or have an inout convention, we do not
+    // consume. Otherwise, we do.
+    auto *pai = cast<PartialApplyInst>(memInst);
+    if (pai->isOnStack())
+      return false;
+    ApplySite applySite(pai);
+    auto convention = applySite.getArgumentConvention(*memOper);
+    return !convention.isInoutConvention();
+  }
+  case SILInstructionKind::DestroyAddrInst:
+    return true;
+  case SILInstructionKind::LoadInst:
+    return cast<LoadInst>(memInst)->getOwnershipQualifier() ==
+           LoadOwnershipQualifier::Take;
+  }
+}
+
+bool moveonlyutils::memInstMustReinitialize(Operand *memOper) {
+  SILValue address = memOper->get();
+
+  SILInstruction *memInst = memOper->getUser();
+
+  switch (memInst->getKind()) {
+  default:
+    return false;
+
+  case SILInstructionKind::CopyAddrInst: {
+    auto *CAI = cast<CopyAddrInst>(memInst);
+    return CAI->getDest() == address && !CAI->isInitializationOfDest();
+  }
+  case SILInstructionKind::ExplicitCopyAddrInst: {
+    auto *CAI = cast<ExplicitCopyAddrInst>(memInst);
+    return CAI->getDest() == address && !CAI->isInitializationOfDest();
+  }
+  case SILInstructionKind::YieldInst: {
+    auto *yield = cast<YieldInst>(memInst);
+    return yield->getYieldInfoForOperand(*memOper).isIndirectInOut();
+  }
+  case SILInstructionKind::BeginApplyInst:
+  case SILInstructionKind::TryApplyInst:
+  case SILInstructionKind::ApplyInst: {
+    FullApplySite applySite(memInst);
+    return applySite.getArgumentOperandConvention(*memOper).isInoutConvention();
+  }
+  case SILInstructionKind::StoreInst:
+    return cast<StoreInst>(memInst)->getOwnershipQualifier() ==
+           StoreOwnershipQualifier::Assign;
+
+#define NEVER_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, ...)             \
+  case SILInstructionKind::Store##Name##Inst:                                  \
+    return !cast<Store##Name##Inst>(memInst)->isInitializationOfDest();
+#include "swift/AST/ReferenceStorage.def"
+  }
+}
+
+bool moveonlyutils::memInstMustInitialize(Operand *memOper) {
+  SILValue address = memOper->get();
+
+  SILInstruction *memInst = memOper->getUser();
+
+  switch (memInst->getKind()) {
+  default:
+    return false;
+
+  case SILInstructionKind::CopyAddrInst: {
+    auto *CAI = cast<CopyAddrInst>(memInst);
+    return CAI->getDest() == address && CAI->isInitializationOfDest();
+  }
+  case SILInstructionKind::ExplicitCopyAddrInst: {
+    auto *CAI = cast<ExplicitCopyAddrInst>(memInst);
+    return CAI->getDest() == address && CAI->isInitializationOfDest();
+  }
+  case SILInstructionKind::MarkUnresolvedMoveAddrInst: {
+    return cast<MarkUnresolvedMoveAddrInst>(memInst)->getDest() == address;
+  }
+  case SILInstructionKind::InitExistentialAddrInst:
+  case SILInstructionKind::InitEnumDataAddrInst:
+  case SILInstructionKind::InjectEnumAddrInst:
+    return true;
+
+  case SILInstructionKind::BeginApplyInst:
+  case SILInstructionKind::TryApplyInst:
+  case SILInstructionKind::ApplyInst: {
+    FullApplySite applySite(memInst);
+    return applySite.isIndirectResultOperand(*memOper);
+  }
+  case SILInstructionKind::StoreInst: {
+    auto qual = cast<StoreInst>(memInst)->getOwnershipQualifier();
+    return qual == StoreOwnershipQualifier::Init ||
+           qual == StoreOwnershipQualifier::Trivial;
+  }
+
+#define NEVER_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, ...)             \
+  case SILInstructionKind::Store##Name##Inst:                                  \
+    return cast<Store##Name##Inst>(memInst)->isInitializationOfDest();
+#include "swift/AST/ReferenceStorage.def"
+  }
+}
+
+bool moveonlyutils::memInstOnlyRequiresLiveness(Operand *op) {
+  auto *user = op->getUser();
+
+  if (isa<LoadBorrowInst>(user))
+    return true;
+
+  if (auto fas = FullApplySite::isa(user)) {
+    switch (fas.getArgumentConvention(*op)) {
+    case SILArgumentConvention::Indirect_In_Guaranteed:
+      return true;
+    case SILArgumentConvention::Indirect_Inout:
+    case SILArgumentConvention::Indirect_InoutAliasable:
+    case SILArgumentConvention::Indirect_In:
+    case SILArgumentConvention::Indirect_Out:
+    case SILArgumentConvention::Direct_Unowned:
+    case SILArgumentConvention::Direct_Owned:
+    case SILArgumentConvention::Direct_Guaranteed:
+    case SILArgumentConvention::Pack_Inout:
+    case SILArgumentConvention::Pack_Owned:
+    case SILArgumentConvention::Pack_Guaranteed:
+    case SILArgumentConvention::Pack_Out:
+      return false;
+    }
+  }
+
+  if (auto *yi = dyn_cast<YieldInst>(user)) {
+    return yi->getYieldInfoForOperand(*op).isGuaranteed();
+  }
+
+  // Otherwise be conservative and delegate to may write to memory.
+  return user->mayWriteToMemory();
+}

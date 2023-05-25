@@ -7,6 +7,7 @@ target_sources(swiftSILOptimizer PRIVATE
   AllocBoxToStack.cpp
   ArrayCountPropagation.cpp
   ArrayElementValuePropagation.cpp
+  AssemblyVisionRemarkGenerator.cpp
   COWOpts.cpp
   CSE.cpp
   ConditionForwarding.cpp
@@ -15,13 +16,14 @@ target_sources(swiftSILOptimizer PRIVATE
   DeadCodeElimination.cpp
   DeadObjectElimination.cpp
   DeadStoreElimination.cpp
+  DestroyAddrHoisting.cpp
   DestroyHoisting.cpp
   Devirtualizer.cpp
   DifferentiabilityWitnessDevirtualizer.cpp
   EagerSpecializer.cpp
   GenericSpecializer.cpp
+  MoveOnlyDeinitInsertion.cpp
   Outliner.cpp
-  AssemblyVisionRemarkGenerator.cpp
   PartialApplySimplification.cpp
   PerformanceInliner.cpp
   PhiArgumentOptimizations.cpp
@@ -32,10 +34,10 @@ target_sources(swiftSILOptimizer PRIVATE
   SILLowerAggregateInstrs.cpp
   SILMem2Reg.cpp
   SILSROA.cpp
-  DestroyAddrHoisting.cpp
   SimplifyCFG.cpp
   Sink.cpp
   SpeculativeDevirtualizer.cpp
   StringOptimization.cpp
   TempLValueOpt.cpp
-  TempRValueElimination.cpp)
+  TempRValueElimination.cpp
+)

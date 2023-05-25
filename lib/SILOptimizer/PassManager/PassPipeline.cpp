@@ -156,11 +156,9 @@ static void addMandatoryDiagnosticOptPipeline(SILPassPipelinePlan &P) {
 
   // A small optimization pass that eliminates temporary allocations inserted by
   // the frontend.
-
+  P.addMoveOnlyCanonicalizer();
   // Check noImplicitCopy and move only types for objects and addresses.
   P.addMoveOnlyChecker();
-  // Convert last destroy_value to deinits.
-  P.addMoveOnlyDeinitInsertion();
   // Lower move only wrapped trivial types.
   P.addTrivialMoveOnlyTypeEliminator();
   // Check no uses after consume operator of a value in an address.
@@ -426,6 +424,10 @@ void addFunctionPasses(SILPassPipelinePlan &P,
 
   // Cleanup, which is important if the inliner has restarted the pass pipeline.
   P.addPerformanceConstantPropagation();
+
+  // Devirtualize last destroy_value to deinits. We run this late as a
+  // performance optimization.
+  P.addMoveOnlyDeinitInsertion();
 
   if (!P.getOptions().EnableOSSAModules && !SILDisableLateOMEByDefault) {
     if (P.getOptions().StopOptimizationBeforeLoweringOwnership)

@@ -321,7 +321,7 @@ class PartitionOpTranslator {
   //       but at what points in function flow they do, this would be more
   //       permissive, but I'm avoiding implementing it in case existing
   //       utilities would make it easier than handrolling
-  llvm::DenseSet<SILValue> capturedUIValues;
+  llvm::DenseSet<SILValue> capturedUniquelyIdentifiedValues;
 
   /// A list of values that can never be transferred.
   ///
@@ -365,7 +365,7 @@ class PartitionOpTranslator {
     if (value->getType().isAddress()) {
       if (auto accessStorage = AccessStorage::compute(value))
         if (accessStorage.isUniquelyIdentified() &&
-            !capturedUIValues.count(value))
+            !capturedUniquelyIdentifiedValues.count(value))
           iter.first->getSecond().removeFlag(TrackableValueFlag::isMayAlias);
     }
 
@@ -402,7 +402,7 @@ class PartitionOpTranslator {
     return {iter.first->first, iter.first->second};
   }
 
-  void initCapturedUIValues() {
+  void initCapturedUniquelyIdentifiedValues() {
     LLVM_DEBUG(llvm::dbgs()
                << ">>> Begin Captured Uniquely Identified addresses for "
                << function->getName() << ":\n");
@@ -416,7 +416,8 @@ class PartitionOpTranslator {
             auto trackVal = getTrackableValue(val);
             if (trackVal.isNonSendable() && trackVal.isNoAlias()) {
               LLVM_DEBUG(trackVal.print(llvm::dbgs()));
-              capturedUIValues.insert(trackVal.getRepresentative());
+              capturedUniquelyIdentifiedValues.insert(
+                  trackVal.getRepresentative());
             }
           }
         }
@@ -436,7 +437,7 @@ public:
                                "in contexts in which the availability of the "
                                "Sendable protocol has already been checked.");
     builder.translater = this;
-    initCapturedUIValues();
+    initCapturedUniquelyIdentifiedValues();
   }
 
 private:

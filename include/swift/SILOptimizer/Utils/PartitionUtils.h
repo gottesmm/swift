@@ -601,11 +601,6 @@ public:
         fstReduced.fresh_label = Region(sndEltNumber + 1);
     }
 
-    LLVM_DEBUG(llvm::dbgs() << "JOIN PEFORMED: \nFST: ";
-               fst.print(llvm::dbgs()); llvm::dbgs() << "SND: ";
-               snd.print(llvm::dbgs()); llvm::dbgs() << "RESULT: ";
-               fstReduced.print(llvm::dbgs()););
-
     assert(fstReduced.is_canonical_correct());
 
     // fst_reduced is now the join

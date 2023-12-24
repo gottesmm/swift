@@ -3870,7 +3870,15 @@ static bool usesFeatureExtractConstantsFromMembers(Decl *decl) {
 
 static bool usesFeatureBitwiseCopyable(Decl *decl) { return false; }
 
-static bool usesFeatureTransferringArgsAndResults(Decl *decl) { return false; }
+static bool usesFeatureTransferringArgsAndResults(Decl *decl) {
+  if (auto *pd = dyn_cast<ParamDecl>(decl))
+    if (pd->getSpecifier() == ParamSpecifier::Transferring)
+      return true;
+
+  // TODO: Results.
+
+  return false;
+}
 
 /// Suppress the printing of a particular feature.
 static void suppressingFeature(PrintOptions &options, Feature feature,
@@ -4526,6 +4534,9 @@ static void printParameterFlags(ASTPrinter &printer,
     break;
   case ParamSpecifier::LegacyOwned:
     printer.printKeyword("__owned", options, " ");
+    break;
+  case ParamSpecifier::Transferring:
+    printer.printKeyword("transferring", options, " ");
     break;
   }
   

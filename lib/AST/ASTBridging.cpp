@@ -1705,6 +1705,10 @@ BridgedSpecifierTypeRepr BridgedSpecifierTypeRepr_createParsed(
     return new (context)
         OwnershipTypeRepr(baseType, ParamSpecifier::LegacyOwned, loc);
   }
+  case BridgedAttributedTypeSpecifierTransferring: {
+    return new (context)
+        OwnershipTypeRepr(baseType, ParamSpecifier::Transferring, loc);
+  }
   case BridgedAttributedTypeSpecifierConst: {
     return new (context) CompileTimeConstTypeRepr(baseType, loc);
   }

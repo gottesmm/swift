@@ -359,6 +359,7 @@ enum class ParamDeclSpecifier : uint8_t {
   Consuming = 3,
   LegacyShared = 4,
   LegacyOwned = 5,
+  Transferring = 6,
 };
 using ParamDeclSpecifierField = BCFixed<3>;
 

@@ -5139,6 +5139,7 @@ ParserStatus Parser::ParsedTypeAttributeList::slowParse(Parser &P) {
            Tok.isContextualKeyword("isolated") ||
            Tok.isContextualKeyword("consuming") ||
            Tok.isContextualKeyword("borrowing") ||
+           Tok.isContextualKeyword("transferring") ||
            Tok.isContextualKeyword("_const") ||
            Tok.isContextualKeyword("_resultDependsOn")))) {
 
@@ -5166,6 +5167,15 @@ ParserStatus Parser::ParsedTypeAttributeList::slowParse(Parser &P) {
       continue;
     }
 
+    // Perform an extra check for transferring. Since it is a specifier, we use
+    // the actual parsing logic below.
+    if (Tok.isContextualKeyword("transferring")) {
+      if (!P.Context.LangOpts.hasFeature(Feature::TransferringArgsAndResults)) {
+        P.diagnose(Tok, diag::requires_experimental_feature, "transferring",
+                   false, getFeatureName(Feature::TransferringArgsAndResults));
+      }
+    }
+
     if (SpecifierLoc.isValid()) {
       P.diagnose(Tok, diag::parameter_specifier_repeated)
           .fixItRemove(SpecifierLoc);
@@ -5179,6 +5189,8 @@ ParserStatus Parser::ParsedTypeAttributeList::slowParse(Parser &P) {
           Specifier = ParamDecl::Specifier::LegacyOwned;
         } else if (Tok.getRawText().equals("borrowing")) {
           Specifier = ParamDecl::Specifier::Borrowing;
+        } else if (Tok.getRawText().equals("transferring")) {
+          Specifier = ParamDecl::Specifier::Transferring;
         } else if (Tok.getRawText().equals("consuming")) {
           Specifier = ParamDecl::Specifier::Consuming;
         }
@@ -7551,6 +7563,8 @@ static ParserStatus parseAccessorIntroducer(Parser &P,
       P.parseNewDeclAttribute(Attributes, /*AtLoc*/ {}, DAK_Consuming);
     } else if (P.Tok.isContextualKeyword("borrowing")) {
       P.parseNewDeclAttribute(Attributes, /*AtLoc*/ {}, DAK_Borrowing);
+    } else if (P.Tok.isContextualKeyword("transferring")) {
+      P.parseNewDeclAttribute(Attributes, /*AtLoc*/ {}, DAK_Transferring);
     }
   }
 

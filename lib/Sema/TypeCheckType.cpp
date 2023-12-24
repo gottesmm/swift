@@ -4460,6 +4460,7 @@ TypeResolver::resolveOwnershipTypeRepr(OwnershipTypeRepr *repr,
   case ParamSpecifier::LegacyOwned:
   case ParamSpecifier::Borrowing:
     break;
+  case ParamSpecifier::Transferring:
   case ParamSpecifier::Consuming:
     if (auto *fnTy = result->getAs<FunctionType>()) {
       if (fnTy->isNoEscape()) {

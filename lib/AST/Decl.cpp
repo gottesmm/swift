@@ -7702,6 +7702,7 @@ void ParamDecl::setSpecifier(Specifier specifier) {
   // `inout` and `consuming` parameters are locally mutable.
   case ParamSpecifier::InOut:
   case ParamSpecifier::Consuming:
+  case ParamSpecifier::Transferring:
     introducer = VarDecl::Introducer::Var;
     break;
   }
@@ -7765,6 +7766,8 @@ StringRef ParamDecl::getSpecifierSpelling(ParamSpecifier specifier) {
     return "__shared";
   case ParamSpecifier::LegacyOwned:
     return "__owned";
+  case ParamSpecifier::Transferring:
+    return "transferring";
   }
   llvm_unreachable("invalid ParamSpecifier");
 }

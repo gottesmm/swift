@@ -2209,7 +2209,11 @@ enum class ParamSpecifier : uint8_t {
   /// `__shared`, a legacy spelling of `borrowing`.
   LegacyShared = 4,
   /// `__owned`, a legacy spelling of `consuming`.
-  LegacyOwned = 5
+  LegacyOwned = 5,
+
+  /// `transferring`. Indicating the transfer of a value from one isolation
+  /// domain to another.
+  Transferring = 6,
 };
 
 /// Provide parameter type relevant flags, i.e. variadic, autoclosure, and

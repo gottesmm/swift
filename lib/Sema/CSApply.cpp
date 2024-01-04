@@ -579,7 +579,8 @@ namespace {
                 if (isMemberOperator)
                   refType = adjustedFullType;
                 else
-                  refType = adjustedFullType->castTo<AnyFunctionType>()->getResult();
+                  refType = adjustedFullType->castTo<AnyFunctionType>()
+                                ->getResultType();
 
                 // Build the AST for the call to the witness.
                 auto subMap = getOperatorSubstitutions(witness, refType);
@@ -602,7 +603,8 @@ namespace {
                     refExpr =
                         DotSyntaxCallExpr::create(ctx, declRefExpr, SourceLoc(),
                                                   Argument::unlabeled(base));
-                    auto refType = adjustedFullType->castTo<FunctionType>()->getResult();
+                    auto refType = adjustedFullType->castTo<FunctionType>()
+                                       ->getResultType();
                     cs.setType(refExpr, refType);
                   } else {
                     refExpr = declRefExpr;
@@ -1059,7 +1061,7 @@ namespace {
 
         // Uncurry the callee type in the presence of a base expression; we
         // want '(args) -> result' vs. '(self) -> (args) -> result'.
-        calleeFnTy = calleeFnTy->getResult()->castTo<FunctionType>();
+        calleeFnTy = calleeFnTy->getResultType()->castTo<FunctionType>();
       }
 
       const auto &appliedPropertyWrappers =
@@ -1149,7 +1151,8 @@ namespace {
       // If given, apply the base expression to the curried 'self'
       // parameter first.
       if (baseExpr) {
-        fnExpr->setType(FunctionType::get(fnTy->getParams(), newCalleeFnTy,
+        fnExpr->setType(FunctionType::get(fnTy->getParams(),
+                                          FunctionType::Result(newCalleeFnTy),
                                           fnTy->getExtInfo()));
         cs.cacheType(fnExpr);
 
@@ -1162,7 +1165,7 @@ namespace {
       // Finally, apply the argument list to the callee.
       ApplyExpr *callExpr = CallExpr::createImplicit(
           ctx, fnExpr, ArgumentList::createImplicit(ctx, args));
-      callExpr->setType(calleeFnTy->getResult());
+      callExpr->setType(calleeFnTy->getResultType());
       cs.cacheType(callExpr);
 
       return callExpr;
@@ -1240,10 +1243,10 @@ namespace {
               // first, because CovariantReturnConversionExpr does not support
               // direct conversions from a class C to an existential C & P.
               convTy = cs.getType(baseExpr)->getMetatypeInstanceType();
-              convTy =
-                  thunkTy->getResult()->replaceCovariantResultType(convTy, 0);
+              convTy = thunkTy->getResultType()->replaceCovariantResultType(
+                  convTy, 0);
             } else {
-              convTy = thunkTy->getResult();
+              convTy = thunkTy->getResultType();
             }
 
             if (!thunkBody->getType()->isEqual(convTy)) {
@@ -1255,7 +1258,7 @@ namespace {
       }
 
       // Now, coerce to the result type of the thunk.
-      thunkBody = coerceToType(thunkBody, thunkTy->getResult(), locator);
+      thunkBody = coerceToType(thunkBody, thunkTy->getResultType(), locator);
 
       // Close up the existential if necessary.
       if (baseOpened) {
@@ -1312,7 +1315,7 @@ namespace {
       assert(baseExpr);
       auto *const thunkTy = cs.getType(fnExpr)
                                 ->castTo<FunctionType>()
-                                ->getResult()
+                                ->getResultType()
                                 ->castTo<FunctionType>();
 
       return buildSingleCurryThunk(baseExpr, fnExpr, declOrClosure, thunkTy,
@@ -1405,11 +1408,11 @@ namespace {
             selfOpenedRef, SourceLoc(),
             resolveConcreteDeclRef(member, memberLocator), memberLoc);
         outerThunkBody->setImplicit(true);
-        outerThunkBody->setType(selfCalleeTy->getResult());
+        outerThunkBody->setType(selfCalleeTy->getResultType());
         cs.cacheType(outerThunkBody);
 
-        outerThunkBody = coerceToType(outerThunkBody, outerThunkTy->getResult(),
-                                      memberLocator);
+        outerThunkBody = coerceToType(
+            outerThunkBody, outerThunkTy->getResultType(), memberLocator);
 
         // Close the existential if warranted.
         if (hasOpenedExistential) {
@@ -1421,7 +1424,8 @@ namespace {
       } else {
         auto *innerThunk = buildSingleCurryThunk(
             selfOpenedRef, memberRef, cast<DeclContext>(member),
-            outerThunkTy->getResult()->castTo<FunctionType>(), memberLocator);
+            outerThunkTy->getResultType()->castTo<FunctionType>(),
+            memberLocator);
 
         // Rewrite the body to close the existential if warranted.
         if (hasOpenedExistential) {
@@ -1700,7 +1704,7 @@ namespace {
       if (auto *varDecl = dyn_cast<VarDecl>(member)) {
         // \returns result of the given function type
         auto resultType = [](Type fnTy) -> Type {
-          return fnTy->castTo<FunctionType>()->getResult();
+          return fnTy->castTo<FunctionType>()->getResultType();
         };
 
         if (isUnboundInstanceMember) {
@@ -1914,7 +1918,7 @@ namespace {
                   adjustedRefTy->replaceCovariantResultType(replacementTy, 2);
               if (isSuperPartialApplication) {
                 conversionTy =
-                    conversionTy->castTo<FunctionType>()->getResult();
+                    conversionTy->castTo<FunctionType>()->getResultType();
               }
 
               ref = cs.cacheType(new (context) CovariantFunctionConversionExpr(
@@ -2216,8 +2220,8 @@ namespace {
       // Coerce the index argument.
       auto openedFullFnType = simplifyType(selected.adjustedOpenedFullType)
                                   ->castTo<FunctionType>();
-      auto fullSubscriptTy = openedFullFnType->getResult()
-                                  ->castTo<FunctionType>();
+      auto fullSubscriptTy =
+          openedFullFnType->getResultType()->castTo<FunctionType>();
       auto &appliedWrappers =
           solution.appliedPropertyWrappers[memberLoc->getAnchor()];
       args = coerceCallArguments(
@@ -2239,7 +2243,7 @@ namespace {
             ctx, base, args, subscriptRef, isImplicit);
         auto resultTy = simplifyType(selected.adjustedOpenedType)
                             ->castTo<FunctionType>()
-                            ->getResult();
+                            ->getResultType();
         assert(!selected.adjustedOpenedFullType->hasOpenedExistential()
                && "open existential archetype in AnyObject subscript type?");
         cs.setType(subscriptExpr, resultTy);
@@ -2277,13 +2281,14 @@ namespace {
       // Form the subscript expression.
       auto subscriptExpr = SubscriptExpr::create(
           ctx, base, args, subscriptRef, isImplicit, semantics);
-      cs.setType(subscriptExpr, fullSubscriptTy->getResult());
+      cs.setType(subscriptExpr, fullSubscriptTy->getResultType());
       subscriptExpr->setIsSuper(isSuper);
-      cs.setType(subscriptExpr,
-                 hasDynamicSelf
-                     ? fullSubscriptTy->getResult()->replaceCovariantResultType(
-                           containerTy, 0)
-                     : fullSubscriptTy->getResult());
+      cs.setType(
+          subscriptExpr,
+          hasDynamicSelf
+              ? fullSubscriptTy->getResultType()->replaceCovariantResultType(
+                    containerTy, 0)
+              : fullSubscriptTy->getResultType());
 
       Expr *result = subscriptExpr;
       closeExistentials(result, locator);
@@ -2293,8 +2298,9 @@ namespace {
       // 'Self' swapped for the appropriate replacement type -- usually the
       // base object type.
       if (hasDynamicSelf) {
-        const auto conversionTy = simplifyType(
-            selected.adjustedOpenedType->castTo<FunctionType>()->getResult());
+        const auto conversionTy =
+            simplifyType(selected.adjustedOpenedType->castTo<FunctionType>()
+                             ->getResultType());
 
         if (!containerTy->isEqual(conversionTy)) {
           result = cs.cacheType(
@@ -3504,7 +3510,7 @@ namespace {
       assert(overload.choice.isAnyDynamicMemberLookup());
 
       auto declTy = solution.simplifyType(overload.adjustedOpenedFullType);
-      auto subscriptTy = declTy->castTo<FunctionType>()->getResult();
+      auto subscriptTy = declTy->castTo<FunctionType>()->getResultType();
       auto refFnType = subscriptTy->castTo<FunctionType>();
       assert(refFnType->getParams().size() == 1 &&
              "subscript always has one arg");
@@ -5014,7 +5020,7 @@ namespace {
       Type exprType = cs.getType(E);
       if (auto fnTy = exprType->getAs<FunctionType>()) {
         baseTy = fnTy->getParams()[0].getParameterType();
-        leafTy = fnTy->getResult();
+        leafTy = fnTy->getResultType();
         isFunctionType = true;
       } else if (auto *existential = exprType->getAs<ExistentialType>()) {
         auto layout = existential->getExistentialLayout();
@@ -5193,7 +5199,8 @@ namespace {
 
       FunctionType::ExtInfo closureInfo;
       auto closureTy =
-          FunctionType::get({FunctionType::Param(baseTy)}, leafTy, closureInfo);
+          FunctionType::get({FunctionType::Param(baseTy)},
+                            FunctionType::Result(leafTy), closureInfo);
       auto closure = new (ctx)
           AutoClosureExpr(/*set body later*/nullptr, leafTy, dc);
 
@@ -5387,7 +5394,7 @@ namespace {
       }
 
       auto comp = KeyPathExpr::Component::forSubscript(
-          ctx, ref, args, resolvedTy, ctx.AllocateCopy(conformances));
+          ctx, ref, args, resolvedTy.getType(), ctx.AllocateCopy(conformances));
       components.push_back(comp);
 
       auto unwrapCount =
@@ -6179,7 +6186,7 @@ ArgumentList *ExprRewriter::coerceCallArguments(
       if (generatorArg->isAutoClosure()) {
         auto *closureType = generatorInputType->castTo<FunctionType>();
         argExpr = coerceToType(
-            argExpr, closureType->getResult(),
+            argExpr, closureType->getResultType(),
             argLoc.withPathElement(ConstraintLocator::AutoclosureResult));
         argExpr = cs.buildAutoClosureExpr(argExpr, closureType, dc);
       }
@@ -6222,7 +6229,7 @@ ArgumentList *ExprRewriter::coerceCallArguments(
       auto *closureType = param.getPlainType()->castTo<FunctionType>();
 
       argExpr = coerceToType(
-          argExpr, closureType->getResult(),
+          argExpr, closureType->getResultType(),
           argLoc.withPathElement(ConstraintLocator::AutoclosureResult));
 
       if (shouldInjectWrappedValuePlaceholder) {
@@ -6237,7 +6244,7 @@ ArgumentList *ExprRewriter::coerceCallArguments(
                                     isDefaultWrappedValue),
             /*isAutoClosure=*/true);
         argExpr = CallExpr::createImplicitEmpty(ctx, placeholder);
-        argExpr->setType(closureType->getResult());
+        argExpr->setType(closureType->getResultType());
         cs.cacheType(argExpr);
       }
 
@@ -7959,8 +7966,8 @@ Expr *ExprRewriter::finishApply(ApplyExpr *apply, Type openedType,
         auto *body = args->getExpr(1);
         auto bodyTy = cs.getType(body)->getWithoutSpecifierType();
         auto bodyFnTy = bodyTy->castTo<FunctionType>();
-        auto resultType = bodyFnTy->getResult();
-        
+        auto resultType = bodyFnTy->getResultType();
+
         // The body is immediately called, so is obviously noescape.
         // Coerce the argument function to be escaping even if it happens to
         // be nonescaping, since we need the dynamic state of the escaping
@@ -8008,7 +8015,7 @@ Expr *ExprRewriter::finishApply(ApplyExpr *apply, Type openedType,
 
         auto bodyFnTy = cs.getType(body)->castTo<FunctionType>();
         auto openedTy = getBaseType(bodyFnTy, /*wantsRValue*/ false);
-        auto resultTy = bodyFnTy->getResult();
+        auto resultTy = bodyFnTy->getResultType();
 
         // The body is immediately called, so is obviously noescape.
         bodyFnTy = cast<FunctionType>(
@@ -8110,9 +8117,9 @@ Expr *ExprRewriter::finishApply(ApplyExpr *apply, Type openedType,
   Type covariantResultType;
   if (auto covariant = dyn_cast<CovariantFunctionConversionExpr>(fn)) {
     // Strip off one layer of application from the covariant result.
-    covariantResultType
-      = cs.getType(covariant)->castTo<AnyFunctionType>()->getResult();
-   
+    covariantResultType =
+        cs.getType(covariant)->castTo<AnyFunctionType>()->getResultType();
+
     // Use the subexpression as the function.
     fn = covariant->getSubExpr();
   }
@@ -8140,7 +8147,7 @@ Expr *ExprRewriter::finishApply(ApplyExpr *apply, Type openedType,
       return nullptr;
 
     apply->setArgs(args);
-    cs.setType(apply, fnType->getResult());
+    cs.setType(apply, fnType->getResultType());
 
     // If this is a call to a distributed method thunk,
     // let's mark the call as implicitly throwing.
@@ -8906,7 +8913,8 @@ static Expr *wrapAsyncLetInitializer(
 
   // Form the autoclosure expression. The actual closure here encapsulates the
   // child task.
-  auto closureType = FunctionType::get({ }, initializerType, extInfo);
+  auto closureType =
+      FunctionType::get({}, AnyFunctionType::Result(initializerType), extInfo);
   ASTContext &ctx = dc->getASTContext();
   Expr *autoclosureExpr = cs.buildAutoClosureExpr(
       initializer, closureType, dc, /*isDefaultWrappedValue=*/false,

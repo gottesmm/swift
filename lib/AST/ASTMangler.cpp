@@ -2813,7 +2813,7 @@ void ASTMangler::appendFunctionSignature(AnyFunctionType *fn,
                                          GenericSignature sig,
                                          const ValueDecl *forDecl,
                                          FunctionManglingKind functionMangling) {
-  appendFunctionResultType(fn->getResult(), sig, forDecl);
+  appendFunctionResultType(fn->getResult().getType(), sig, forDecl);
   appendFunctionInputType(fn->getParams(), sig, forDecl);
   if (fn->isAsync())
     appendOperator("Ya");
@@ -3363,7 +3363,8 @@ CanType ASTMangler::getDeclTypeForMangling(
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       CanFunctionType::ExtInfo info;
       return CanFunctionType::get({AnyFunctionType::Param(C.TheErrorType)},
-                                  C.TheErrorType, info);
+                                  AnyFunctionType::CanResult(C.TheErrorType),
+                                  info);
     }
     return C.TheErrorType;
   }
@@ -3390,7 +3391,7 @@ CanType ASTMangler::getDeclTypeForMangling(
     // Shed the 'self' type and generic requirements from method manglings.
     if (isMethodDecl(decl)) {
       // Drop the Self argument clause from the type.
-      canTy = cast<AnyFunctionType>(canTy).getResult();
+      canTy = cast<AnyFunctionType>(canTy).getResult().getType();
     }
 
     if (isMethodDecl(decl) || isa<SubscriptDecl>(decl))

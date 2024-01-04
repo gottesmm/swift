@@ -1766,8 +1766,8 @@ bool MissingOptionalUnwrapFailure::diagnoseAsError() {
         }
 
         auto fnTy = AFD->getInterfaceType()->castTo<AnyFunctionType>();
-        bool voidReturn =
-            fnTy->getResult()->isEqual(TupleType::getEmpty(getASTContext()));
+        bool voidReturn = fnTy->getResultType()->isEqual(
+            TupleType::getEmpty(getASTContext()));
 
         auto diag =
             emitDiagnosticAt(varDecl->getLoc(), diag::unwrap_with_guard);
@@ -2417,7 +2417,7 @@ AssignmentFailure::getMemberRef(ConstraintLocator *locator) const {
       // Type has a following format:
       // `(Self) -> (dynamicMember: {Writable}KeyPath<T, U>) -> U`
       auto *fullType = member->adjustedOpenedFullType->castTo<FunctionType>();
-      auto *fnType = fullType->getResult()->castTo<FunctionType>();
+      auto *fnType = fullType->getResultType()->castTo<FunctionType>();
 
       auto paramTy = fnType->getParams()[0].getPlainType();
       auto keyPath = paramTy->getAnyNominal();
@@ -2697,10 +2697,10 @@ bool ContextualFailure::diagnoseAsError() {
         if (numMissingArgs == 0)
           diagnostic.fixItInsertAfter(getSourceRange().End, "()");
       };
-      if (fnType->getResult()->isEqual(toType)) {
-        auto diag = emitDiagnostic(
-                      diag::expected_parens_in_contextual_member_type,
-                      choice, fnType->getResult());
+      if (fnType->getResultType()->isEqual(toType)) {
+        auto diag =
+            emitDiagnostic(diag::expected_parens_in_contextual_member_type,
+                           choice, fnType->getResultType());
         applyFixIt(diag);
       } else {
         auto diag = emitDiagnostic(diag::expected_parens_in_contextual_member,
@@ -3771,12 +3771,12 @@ bool MissingCallFailure::diagnoseAsError() {
       auto fnType = type->castTo<FunctionType>();
 
       if (MissingArgumentsFailure::isMisplacedMissingArgument(getSolution(), locator)) {
-        ArgumentMismatchFailure failure(
-            getSolution(), fnType, fnType->getResult(), locator);
+        ArgumentMismatchFailure failure(getSolution(), fnType,
+                                        fnType->getResultType(), locator);
         return failure.diagnoseMisplacedMissingArgument();
       }
 
-      emitDiagnostic(diag::missing_nullary_call, fnType->getResult())
+      emitDiagnostic(diag::missing_nullary_call, fnType->getResultType())
           .highlight(getSourceRange())
           .fixItInsertAfter(insertLoc, "()");
       tryComputedPropertyFixIts();
@@ -3828,7 +3828,7 @@ bool MissingCallFailure::diagnoseAsError() {
     auto *srcExpr = AE->getSrc();
     if (auto *fnType = getType(srcExpr)->getAs<FunctionType>()) {
       emitDiagnosticAt(srcExpr->getLoc(), diag::missing_nullary_call,
-                       fnType->getResult())
+                       fnType->getResultType())
           .highlight(srcExpr->getSourceRange())
           .fixItInsertAfter(srcExpr->getEndLoc(), "()");
       return true;
@@ -5390,7 +5390,7 @@ bool MissingArgumentsFailure::diagnoseClosure(const ClosureExpr *closure) {
     // `let _: () -> ((Int) -> Void) = { return {} }`.
     funcType = getType(getRawAnchor())
                    ->castTo<FunctionType>()
-                   ->getResult()
+                   ->getResultType()
                    ->castTo<FunctionType>();
   }
 
@@ -5610,7 +5610,7 @@ void MissingArgumentsFailure::forFixIt(
   auto resolvedType = resolveType(argument.getPlainType());
   // @autoclosure; the type should be the result type.
   if (argument.isAutoClosure())
-    resolvedType = resolvedType->castTo<FunctionType>()->getResult();
+    resolvedType = resolvedType->castTo<FunctionType>()->getResultType();
 
   out << "<#" << resolvedType << "#>";
 }
@@ -5722,7 +5722,7 @@ bool ClosureParamDestructuringFailure::diagnoseAsError() {
     //  - if the there is a result type associated with the closure;
     //  - and it's not a void type;
     //  - and it hasn't been explicitly written.
-    auto resultType = resolveType(ContextualType->getResult());
+    auto resultType = resolveType(ContextualType->getResultType());
     auto hasResult = [](Type resultType) -> bool {
       return resultType && !resultType->isVoid();
     };
@@ -7674,7 +7674,7 @@ bool ArgumentMismatchFailure::diagnoseKeyPathAsFunctionResultMismatch() const {
     return false;
 
   emitDiagnostic(diag::expr_keypath_value_covert_to_contextual_type,
-                 kpValueType, paramFnType->getResult());
+                 kpValueType, paramFnType->getResultType());
   return true;
 }
 
@@ -7870,7 +7870,7 @@ bool NonEphemeralConversionFailure::diagnosePointerInit() const {
   if (!constructor)
     return false;
 
-  auto constructedTy = getFnType()->getResult();
+  auto constructedTy = getFnType()->getResultType();
 
   // Strip off a level of optionality if we have a failable initializer.
   if (constructor->isFailable())

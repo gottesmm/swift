@@ -1268,9 +1268,7 @@ public:
   /// \param uncurryLevel The number of uncurry levels to apply before
   /// replacing the type. With uncurry level == 0, this simply
   /// replaces the current type with the new result type.
-  Type replaceCovariantResultType(Type newResultType,
-                                  unsigned uncurryLevel);
-
+  Type replaceCovariantResultType(Type newResultType, unsigned uncurryLevel);
   /// Returns a new function type exactly like this one but with the self
   /// parameter replaced. Only makes sense for function members of types.
   Type replaceSelfParameterType(Type newSelf);
@@ -2026,9 +2024,8 @@ DEFINE_EMPTY_CAN_TYPE_WRAPPER(BuiltinIntegerLiteralType, AnyBuiltinIntegerType)
 inline BuiltinIntegerWidth AnyBuiltinIntegerType::getWidth() const {
   if (auto intTy = dyn_cast<BuiltinIntegerType>(this)) {
     return intTy->getWidth();
-  } else {
-    return BuiltinIntegerWidth::arbitrary();
   }
+  return BuiltinIntegerWidth::arbitrary();
 }
 
 class BuiltinFloatType : public BuiltinType {
@@ -2438,6 +2435,43 @@ public:
   }
 
   uint8_t toRaw() const { return value.toRaw(); }
+};
+
+class ResultTypeFlags {
+  enum ResultFlags : uint8_t {
+    None = 0x0,
+
+    NumBits = 0,
+  };
+
+  OptionSet<ResultFlags> value;
+
+  static_assert(NumBits < 8 * sizeof(OptionSet<ResultFlags>), "overflowed");
+
+  ResultTypeFlags(OptionSet<ResultFlags, uint8_t> val) : value(val) {}
+
+public:
+  ResultTypeFlags() = default;
+  static ResultTypeFlags fromRaw(uint8_t raw) {
+    return ResultTypeFlags(OptionSet<ResultFlags>(raw));
+  }
+
+  /// Returns true if both \p self and \p other have the exact same flags set.
+  ///
+  /// Please use instead of ==. We want people to not confuse == with contains
+  /// like OptionSet does.
+  bool containsOnly(const ResultTypeFlags &other) const {
+    return value.containsOnly(other.value);
+  }
+
+  /// Returns true if every flag in \p other is set in \p self.
+  bool contains(const ResultTypeFlags &other) const {
+    return value.contains(other.value);
+  }
+
+  uint8_t toRaw() const { return value.toRaw(); }
+
+  operator bool() const { return bool(value); }
 };
 
 /// ParenType - A paren type is a type that's been written in parentheses.
@@ -3125,8 +3159,87 @@ END_CAN_TYPE_WRAPPER(DynamicSelfType, Type)
 /// be 'thin', indicating that a function value has no capture context and can be
 /// represented at the binary level as a single function pointer.
 class AnyFunctionType : public TypeBase {
-  const Type Output;
-  
+public:
+  class CanResult;
+  class Result {
+    Type Ty;
+    ResultTypeFlags Flags;
+
+  public:
+    explicit Result(Type ty, ResultTypeFlags flags = {})
+        : Ty(ty), Flags(flags) {}
+
+    Type getType() const { return Ty; }
+    ResultTypeFlags getFlags() const { return Flags; }
+
+    CanResult getCanonical() const;
+
+    Result subst(SubstitutionMap subs,
+                 SubstOptions options = llvm::None) const {
+      return Result(getType().subst(subs, options), getFlags());
+    }
+
+    bool operator==(const Result &other) const {
+      return other.getType()->isEqual(getType()) &&
+             other.Flags.containsOnly(Flags);
+    }
+
+    bool operator!=(const Result &other) const { return !(*this == other); }
+
+    Result withType(Type newType) const { return Result(newType, getFlags()); }
+
+    Result withoutConcurrency(bool recurse, bool dropGlobalActor) const {
+      return Result(Ty->stripConcurrency(recurse, dropGlobalActor), getFlags());
+    }
+
+    Result removeArgumentLabels(unsigned numArgumentLabels) const {
+      return Result(Ty->removeArgumentLabels(numArgumentLabels), getFlags());
+    }
+
+    Result replaceCovariantResultType(Type newResultType,
+                                      unsigned uncurryLevel) const {
+      return Result(Ty->replaceCovariantResultType(newResultType, uncurryLevel),
+                    getFlags());
+    }
+
+    Result lookThroughAllOptionalTypes() const {
+      return Result(Ty->lookThroughAllOptionalTypes(), getFlags());
+    }
+
+    ASTContext &getASTContext() const { return Ty->getASTContext(); }
+
+    Result getReducedType(CanGenericSignature genericSig) const {
+      return Result(Ty->getReducedType(genericSig), getFlags());
+    }
+
+    CanType getCanonicalType() const { return Ty->getCanonicalType(); }
+
+    bool isVoid() const { return getType()->isVoid(); }
+  };
+
+  class CanResult : public Result {
+    explicit CanResult(const Result &result) : Result(result) {}
+
+  public:
+    explicit CanResult(CanType type, ResultTypeFlags flags = {})
+        : Result(type, flags) {}
+
+    static CanResult getFromResult(const Result &result) {
+      return CanResult(result);
+    }
+
+    CanType getType() const { return Result::getType()->getCanonicalType(); }
+
+    CanResult subst(SubstitutionMap subs,
+                    SubstOptions options = llvm::None) const {
+      return CanResult(getType().subst(subs, options)->getCanonicalType(),
+                       getFlags());
+    }
+  };
+
+private:
+  const Result Output;
+
 public:
   using Representation = FunctionTypeRepresentation;
 
@@ -3351,9 +3464,9 @@ protected:
   ///
   /// Subclasses are responsible for storing and retrieving the
   /// ClangTypeInfo value if one is present.
-  AnyFunctionType(TypeKind Kind, const ASTContext *CanTypeContext, Type Output,
-                  RecursiveTypeProperties properties, unsigned NumParams,
-                  llvm::Optional<ExtInfo> Info)
+  AnyFunctionType(TypeKind Kind, const ASTContext *CanTypeContext,
+                  Result Output, RecursiveTypeProperties properties,
+                  unsigned NumParams, llvm::Optional<ExtInfo> Info)
       : TypeBase(Kind, CanTypeContext, properties), Output(Output) {
     if (Info.has_value()) {
       Bits.AnyFunctionType.HasExtInfo = true;
@@ -3404,7 +3517,8 @@ public:
   static void relabelParams(MutableArrayRef<Param> params,
                             ArgumentList *argList);
 
-  Type getResult() const { return Output; }
+  Result getResult() const { return Output; }
+  Type getResultType() const { return Output.getType(); }
   ArrayRef<Param> getParams() const;
   unsigned getNumParams() const { return Bits.AnyFunctionType.NumParams; }
 
@@ -3656,9 +3770,10 @@ BEGIN_CAN_TYPE_WRAPPER(AnyFunctionType, Type)
   using ExtInfo = AnyFunctionType::ExtInfo;
   using ExtInfoBuilder = AnyFunctionType::ExtInfoBuilder;
   using CanParamArrayRef = AnyFunctionType::CanParamArrayRef;
+  using CanResult = AnyFunctionType::CanResult;
 
   static CanAnyFunctionType get(CanGenericSignature signature,
-                                CanParamArrayRef params, CanType result,
+                                CanParamArrayRef params, CanResult result,
                                 llvm::Optional<ExtInfo> info = llvm::None);
 
   CanGenericSignature getOptGenericSignature() const;
@@ -3667,7 +3782,14 @@ BEGIN_CAN_TYPE_WRAPPER(AnyFunctionType, Type)
     return CanParamArrayRef(getPointer()->getParams());
   }
 
-  PROXY_CAN_TYPE_SIMPLE_GETTER(getResult)
+  CanResult getResult() const {
+    return getPointer()->getResult().getCanonical();
+  }
+
+  CanType getResultType() const {
+    return getPointer()->getResult().getCanonicalType();
+  }
+
   PROXY_CAN_TYPE_SIMPLE_GETTER(getThrownError)
 
   CanAnyFunctionType withExtInfo(ExtInfo info) const {
@@ -3678,6 +3800,12 @@ END_CAN_TYPE_WRAPPER(AnyFunctionType, Type)
 inline AnyFunctionType::CanYield AnyFunctionType::Yield::getCanonical() const {
   return CanYield(getType()->getCanonicalType(), getFlags());
 }
+
+inline AnyFunctionType::CanResult
+AnyFunctionType::Result::getCanonical() const {
+  return CanResult(getType()->getCanonicalType(), getFlags());
+}
+
 /// FunctionType - A monomorphic function type, specified with an arrow.
 ///
 /// For example:
@@ -3704,7 +3832,7 @@ class FunctionType final
 
 public:
   /// 'Constructor' Factory Function
-  static FunctionType *get(ArrayRef<Param> params, Type result,
+  static FunctionType *get(ArrayRef<Param> params, Result result,
                            llvm::Optional<ExtInfo> info = llvm::None);
 
   // Retrieve the input parameters of this function type.
@@ -3740,7 +3868,7 @@ public:
     Profile(ID, getParams(), getResult(), info);
   }
   static void Profile(llvm::FoldingSetNodeID &ID, ArrayRef<Param> params,
-                      Type result, llvm::Optional<ExtInfo> info);
+                      Result result, llvm::Optional<ExtInfo> info);
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const TypeBase *T) {
@@ -3748,12 +3876,12 @@ public:
   }
       
 private:
-  FunctionType(ArrayRef<Param> params, Type result,
+  FunctionType(ArrayRef<Param> params, Result result,
                llvm::Optional<ExtInfo> info, const ASTContext *ctx,
                RecursiveTypeProperties properties);
 };
 BEGIN_CAN_TYPE_WRAPPER(FunctionType, AnyFunctionType)
-static CanFunctionType get(CanParamArrayRef params, CanType result,
+static CanFunctionType get(CanParamArrayRef params, CanResult result,
                            llvm::Optional<ExtInfo> info = llvm::None) {
   auto fnType = FunctionType::get(params.getOriginalArray(), result, info);
   return cast<FunctionType>(fnType->getCanonicalType());
@@ -3841,14 +3969,15 @@ class GenericFunctionType final : public AnyFunctionType,
   }
 
   /// Construct a new generic function type.
-  GenericFunctionType(GenericSignature sig, ArrayRef<Param> params, Type result,
-                      llvm::Optional<ExtInfo> info, const ASTContext *ctx,
+  GenericFunctionType(GenericSignature sig, ArrayRef<Param> params,
+                      Result result, llvm::Optional<ExtInfo> info,
+                      const ASTContext *ctx,
                       RecursiveTypeProperties properties);
 
 public:
   /// Create a new generic function type.
   static GenericFunctionType *get(GenericSignature sig, ArrayRef<Param> params,
-                                  Type result,
+                                  Result result,
                                   llvm::Optional<ExtInfo> info = llvm::None);
 
   // Retrieve the input parameters of this function type.
@@ -3892,7 +4021,7 @@ public:
     Profile(ID, getGenericSignature(), getParams(), getResult(), info);
   }
   static void Profile(llvm::FoldingSetNodeID &ID, GenericSignature sig,
-                      ArrayRef<Param> params, Type result,
+                      ArrayRef<Param> params, Result result,
                       llvm::Optional<ExtInfo> info);
 
   // Implement isa/cast/dyncast/etc.
@@ -3904,7 +4033,7 @@ public:
 BEGIN_CAN_TYPE_WRAPPER(GenericFunctionType, AnyFunctionType)
   /// Create a new generic function type.
 static CanGenericFunctionType get(CanGenericSignature sig,
-                                  CanParamArrayRef params, CanType result,
+                                  CanParamArrayRef params, CanResult result,
                                   llvm::Optional<ExtInfo> info = llvm::None) {
   // Knowing that the argument types are independently canonical is
   // not sufficient to guarantee that the function type will be canonical.
@@ -3931,28 +4060,24 @@ END_CAN_TYPE_WRAPPER(GenericFunctionType, AnyFunctionType)
 
 inline CanAnyFunctionType
 CanAnyFunctionType::get(CanGenericSignature signature, CanParamArrayRef params,
-                        CanType result, llvm::Optional<ExtInfo> extInfo) {
+                        CanResult result, llvm::Optional<ExtInfo> extInfo) {
   if (signature) {
     return CanGenericFunctionType::get(signature, params, result, extInfo);
-  } else {
-    return CanFunctionType::get(params, result, extInfo);
   }
+
+  return CanFunctionType::get(params, result, extInfo);
 }
 
 inline GenericSignature AnyFunctionType::getOptGenericSignature() const {
-  if (auto genericFn = dyn_cast<GenericFunctionType>(this)) {
+  if (auto genericFn = dyn_cast<GenericFunctionType>(this))
     return genericFn->getGenericSignature();
-  } else {
-    return nullptr;
-  }
+  return nullptr;
 }
 
 inline CanGenericSignature CanAnyFunctionType::getOptGenericSignature() const {
-  if (auto genericFn = dyn_cast<GenericFunctionType>(*this)) {
+  if (auto genericFn = dyn_cast<GenericFunctionType>(*this))
     return genericFn.getGenericSignature();
-  } else {
-    return CanGenericSignature();
-  }
+  return CanGenericSignature();
 }
 
 /// Conventions for passing arguments as parameters.
@@ -4963,11 +5088,9 @@ public:
     return const_cast<SILFunctionType*>(this)->getMutableErrorResult();
   }
   llvm::Optional<SILResultInfo> getOptionalErrorResult() const {
-    if (hasErrorResult()) {
+    if (hasErrorResult())
       return getErrorResult();
-    } else {
-      return llvm::None;
-    }
+    return llvm::None;
   }
 
   /// Returns the number of function parameters, not including any formally
@@ -7710,6 +7833,6 @@ struct DenseMapInfo<swift::BuiltinIntegerWidth> {
   }
 };
 
-}
+} // namespace llvm
 
 #endif

@@ -365,7 +365,7 @@ public:
       assert(ty->getOptionalObjectType() || ty->getAs<AnyFunctionType>());
       if (!ty->getOptionalObjectType()) {
         auto fnTy = ty->castTo<AnyFunctionType>();
-        assert(fnTy->getResult()->getOptionalObjectType());
+        assert(fnTy->getResult().getType()->getOptionalObjectType());
       }
     }
 #endif

@@ -480,7 +480,7 @@ DerivedConformance::createBuiltinCall(ASTContext &ctx,
     assert(typeArgs.empty());
   }
 
-  auto resultType = fnType->castTo<FunctionType>()->getResult();
+  auto resultType = fnType->castTo<FunctionType>()->getResultType();
 
   Expr *ref = new (ctx) DeclRefExpr(declRef, DeclNameLoc(),
                                     /*Implicit=*/true,

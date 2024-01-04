@@ -388,12 +388,12 @@ void ASTBuilder::endPackExpansion() {
 }
 
 Type ASTBuilder::createFunctionType(
-    ArrayRef<Demangle::FunctionParam<Type>> params,
-    Type output, FunctionTypeFlags flags,
-    FunctionMetadataDifferentiabilityKind diffKind, Type globalActor,
-    Type thrownError) {
+    ArrayRef<Demangle::FunctionParam<Type>> params, Type resultType,
+    FunctionTypeFlags flags, FunctionMetadataDifferentiabilityKind diffKind,
+    Type globalActor, Type thrownError) {
   // The result type must be materializable.
-  if (!output->isMaterializable()) return Type();
+  if (!resultType->isMaterializable())
+    return Type();
 
   llvm::SmallVector<AnyFunctionType::Param, 8> funcParams;
   for (const auto &param : params) {
@@ -450,10 +450,13 @@ Type ASTBuilder::createFunctionType(
      || representation == FunctionTypeRepresentation::Block)
     && !flags.isEscaping();
 
+  ResultTypeFlags resultFlags;
+  auto result = AnyFunctionType::Result(resultType, resultFlags);
+
   const clang::Type *clangFunctionType = nullptr;
   if (shouldStoreClangType(representation))
-    clangFunctionType = Ctx.getClangFunctionType(funcParams, output,
-                                                 representation);
+    clangFunctionType =
+        Ctx.getClangFunctionType(funcParams, result, representation);
 
   auto einfo =
       FunctionType::ExtInfoBuilder(representation, noescape, flags.isThrowing(),
@@ -463,7 +466,7 @@ Type ASTBuilder::createFunctionType(
           .withConcurrent(flags.isSendable())
           .build();
 
-  return FunctionType::get(funcParams, output, einfo);
+  return FunctionType::get(funcParams, result, einfo);
 }
 
 static ParameterConvention

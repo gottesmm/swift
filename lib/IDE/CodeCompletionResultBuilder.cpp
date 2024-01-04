@@ -304,7 +304,7 @@ void CodeCompletionResultBuilder::addCallArgument(
   if (IsAutoClosure) {
     // 'Ty' may be ErrorType.
     if (auto funcTy = Ty->getAs<FunctionType>())
-      Ty = funcTy->getResult();
+      Ty = funcTy->getResultType();
   }
 
   PrintOptions PO;

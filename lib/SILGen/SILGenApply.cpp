@@ -118,7 +118,7 @@ getPartialApplyOfDynamicMethodFormalType(SILGenModule &SGM, SILDeclRef member,
   auto params = completeMethodTy.getParams().drop_back();
 
   // Adjust the result type to replace dynamic-self with AnyObject.
-  CanType resultType = completeMethodTy.getResult();
+  CanType resultType = completeMethodTy.getResultType();
   if (auto fnDecl = dyn_cast<FuncDecl>(member.getDecl())) {
     if (fnDecl->hasDynamicSelfResult()) {
       auto anyObjectTy = SGM.getASTContext().getAnyObjectType();
@@ -131,7 +131,8 @@ getPartialApplyOfDynamicMethodFormalType(SILGenModule &SGM, SILDeclRef member,
   auto extInfo = completeMethodTy->getExtInfo()
                    .withRepresentation(FunctionTypeRepresentation::Swift);
 
-  auto fnType = CanFunctionType::get(params, resultType, extInfo);
+  auto fnType = CanFunctionType::get(
+      params, AnyFunctionType::CanResult(resultType), extInfo);
   return fnType;
 }
 
@@ -1754,7 +1755,8 @@ public:
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       CanFunctionType::ExtInfo info;
       substFormalType = CanFunctionType::get(
-          {AnyFunctionType::Param(substSelfType)}, substFormalType, info);
+          {AnyFunctionType::Param(substSelfType)},
+          AnyFunctionType::CanResult(substFormalType), info);
 
       setCallee(Callee::forDynamic(SGF, member,
                                    memberRef.getSubstitutions(),
@@ -4988,7 +4990,7 @@ RValue CallEmission::applyNormalCall(SGFContext C) {
 
   // Initialize the rest of the call info.
   calleeTypeInfo.origResultType = origFormalType.getFunctionResultType();
-  calleeTypeInfo.substResultType = formalType.getResult();
+  calleeTypeInfo.substResultType = formalType.getResultType();
 
   if (selfArg.has_value() && callSite.has_value()) {
     calleeTypeInfo.origFormalType =
@@ -4996,7 +4998,7 @@ RValue CallEmission::applyNormalCall(SGFContext C) {
     calleeTypeInfo.origResultType =
       calleeTypeInfo.origResultType->getFunctionResultType();
     calleeTypeInfo.substResultType =
-      cast<FunctionType>(calleeTypeInfo.substResultType).getResult();
+        cast<FunctionType>(calleeTypeInfo.substResultType).getResultType();
   }
 
   ResultPlanPtr resultPlan = ResultPlanBuilder::computeResultPlan(
@@ -5058,7 +5060,7 @@ RValue CallEmission::applyEnumElementConstructor(SGFContext C) {
   SILLocation uncurriedLoc = selfArg->Loc;
 
   origFormalType = origFormalType.getFunctionResultType();
-  CanType formalResultType = formalType.getResult();
+  CanType formalResultType = formalType.getResultType();
 
   // Ignore metatype argument
   SmallVector<ManagedValue, 0> metatypeVal;
@@ -5089,7 +5091,7 @@ RValue CallEmission::applyEnumElementConstructor(SGFContext C) {
 
     auto arg = RValue(SGF, argVals, payloadTy->getCanonicalType());
     payload = ArgumentSource(uncurriedLoc, std::move(arg));
-    formalResultType = cast<FunctionType>(formalResultType).getResult();
+    formalResultType = cast<FunctionType>(formalResultType).getResultType();
     origFormalType = origFormalType.getFunctionResultType();
   } else {
     assert(!callSite.has_value());
@@ -5120,7 +5122,7 @@ CallEmission::applySpecializedEmitter(SpecializedEmitter &specializedEmitter,
   auto substFnType = SGF.getSILFunctionType(
       SGF.getTypeExpansionContext(), origFormalType, formalType);
 
-  CanType formalResultType = formalType.getResult();
+  CanType formalResultType = formalType.getResultType();
 
   // If we have an early emitter, just let it take over for the
   // uncurried call site.
@@ -5153,7 +5155,8 @@ CallEmission::applySpecializedEmitter(SpecializedEmitter &specializedEmitter,
     calleeTypeInfo.emplace(callee.getTypeInfo(SGF));
 
     calleeTypeInfo->origResultType = origFormalType.getFunctionResultType();
-    calleeTypeInfo->substResultType = callee.getSubstFormalType().getResult();
+    calleeTypeInfo->substResultType =
+        callee.getSubstFormalType().getResultType();
 
     resultPlan.emplace(ResultPlanBuilder::computeResultPlan(
         SGF, *calleeTypeInfo, loc, uncurriedContext));
@@ -6091,7 +6094,7 @@ RValue SILGenFunction::emitApplyOfLibraryIntrinsic(SILLocation loc,
          SILFunctionLanguage::Swift);
 
   calleeTypeInfo.origResultType = origFormalType.getFunctionResultType();
-  calleeTypeInfo.substResultType = substFormalType.getResult();
+  calleeTypeInfo.substResultType = substFormalType.getResultType();
 
   SILFunctionConventions silConv(calleeTypeInfo.substFnType, getModule());
   llvm::SmallVector<ManagedValue, 8> finalArgs;
@@ -6227,7 +6230,8 @@ RValue SILGenFunction::emitApplyAllocatingInitializer(SILLocation loc,
   }
 
   auto substFormalType = callee->getSubstFormalType();
-  auto resultType = cast<FunctionType>(substFormalType.getResult()).getResult();
+  auto resultType =
+      cast<FunctionType>(substFormalType.getResultType()).getResult();
 
   // Form the call emission.
   CallEmission emission(*this, std::move(*callee), std::move(writebackScope));
@@ -6248,7 +6252,7 @@ RValue SILGenFunction::emitApplyAllocatingInitializer(SILLocation loc,
   // result type.
   bool requiresDowncast = false;
   if (ctor->isRequired() && overriddenSelfType) {
-    if (!resultType->isEqual(overriddenSelfType))
+    if (!resultType.getType()->isEqual(overriddenSelfType))
       requiresDowncast = true;
   }
 
@@ -6873,7 +6877,7 @@ RValue SILGenFunction::emitGetAccessor(
   if (hasSelf) {
     emission.addSelfParam(loc, std::move(selfValue),
                          accessType.getParams()[0]);
-    accessType = cast<AnyFunctionType>(accessType.getResult());
+    accessType = cast<AnyFunctionType>(accessType.getResultType());
   }
   // Index or () if none.
   if (subscriptIndices.isNull())
@@ -6906,7 +6910,7 @@ void SILGenFunction::emitSetAccessor(SILLocation loc, SILDeclRef set,
   if (hasSelf) {
     emission.addSelfParam(loc, std::move(selfValue),
                           accessType.getParams()[0]);
-    accessType = cast<AnyFunctionType>(accessType.getResult());
+    accessType = cast<AnyFunctionType>(accessType.getResultType());
   }
 
   // (value)  or (value, indices...)
@@ -6948,7 +6952,7 @@ ManagedValue SILGenFunction::emitAddressorAccessor(
   if (hasSelf) {
     emission.addSelfParam(loc, std::move(selfValue),
                           accessType.getParams()[0]);
-    accessType = cast<AnyFunctionType>(accessType.getResult());
+    accessType = cast<AnyFunctionType>(accessType.getResultType());
   }
   // Index or () if none.
   if (subscriptIndices.isNull())
@@ -7010,7 +7014,7 @@ SILGenFunction::emitCoroutineAccessor(SILLocation loc, SILDeclRef accessor,
   if (hasSelf) {
     emission.addSelfParam(loc, std::move(selfValue),
                           accessType.getParams()[0]);
-    accessType = cast<AnyFunctionType>(accessType.getResult());
+    accessType = cast<AnyFunctionType>(accessType.getResultType());
   }
   // Index or () if none.
   if (subscriptIndices.isNull())
@@ -7029,8 +7033,8 @@ ManagedValue SILGenFunction::emitAsyncLetStart(
     AbstractClosureExpr *asyncLetEntryPoint,
     SILValue resultBuf) {
   ASTContext &ctx = getASTContext();
-  Type resultType = asyncLetEntryPoint->getType()
-    ->castTo<FunctionType>()->getResult();
+  Type resultType =
+      asyncLetEntryPoint->getType()->castTo<FunctionType>()->getResultType();
   Type replacementTypes[] = {resultType};
   auto startBuiltin = cast<FuncDecl>(
       getBuiltinValueDecl(ctx, ctx.getIdentifier("startAsyncLet")));
@@ -7277,7 +7281,8 @@ RValue SILGenFunction::emitDynamicMemberRef(SILLocation loc, SILValue operand,
     if (isa<VarDecl>(memberRef.getDecl())) {
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       CanFunctionType::ExtInfo info;
-      methodTy = CanFunctionType::get({}, valueTy, info);
+      methodTy =
+          CanFunctionType::get({}, AnyFunctionType::CanResult(valueTy), info);
     } else {
       methodTy = cast<FunctionType>(valueTy);
     }
@@ -7291,7 +7296,8 @@ RValue SILGenFunction::emitDynamicMemberRef(SILLocation loc, SILValue operand,
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     CanFunctionType::ExtInfo info;
     FunctionType::Param arg(operand->getType().getASTType());
-    auto memberFnTy = CanFunctionType::get({arg}, methodTy, info);
+    FunctionType::CanResult memberFnResult(methodTy);
+    auto memberFnTy = CanFunctionType::get({arg}, memberFnResult, info);
 
     auto loweredMethodTy = getDynamicMethodLoweredType(SGM.M, member,
                                                        memberFnTy);
@@ -7306,7 +7312,7 @@ RValue SILGenFunction::emitDynamicMemberRef(SILLocation loc, SILValue operand,
     RValue resultRV;
     if (isa<VarDecl>(memberRef.getDecl())) {
       resultRV =
-          emitMonomorphicApply(loc, result, {}, foreignMethodTy.getResult(),
+          emitMonomorphicApply(loc, result, {}, foreignMethodTy.getResultType(),
                                valueTy, ApplyOptions(), llvm::None, llvm::None);
     } else {
       resultRV = RValue(*this, loc, valueTy, result);
@@ -7382,15 +7388,17 @@ SILGenFunction::emitDynamicSubscriptGetterApply(SILLocation loc,
 
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     CanFunctionType::ExtInfo methodInfo;
-    const auto methodTy =
-        CanFunctionType::get(indexArgs.getParams(), valueTy, methodInfo);
+    const auto methodTy = CanFunctionType::get(
+        indexArgs.getParams(), AnyFunctionType::CanResult(valueTy), methodInfo);
     auto foreignMethodTy =
         getPartialApplyOfDynamicMethodFormalType(SGM, member, subscriptRef);
 
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     CanFunctionType::ExtInfo functionInfo;
     FunctionType::Param baseArg(operand->getType().getASTType());
-    auto functionTy = CanFunctionType::get({baseArg}, methodTy, functionInfo);
+    FunctionType::CanResult methodTyResult(methodTy);
+    auto functionTy =
+        CanFunctionType::get({baseArg}, methodTyResult, functionInfo);
     auto loweredMethodTy = getDynamicMethodLoweredType(SGM.M, member,
                                                        functionTy);
     SILValue memberArg =
@@ -7411,7 +7419,7 @@ SILGenFunction::emitDynamicSubscriptGetterApply(SILLocation loc,
     }
 
     auto resultRV = emitMonomorphicApply(
-        loc, result, indexValues, foreignMethodTy.getResult(), valueTy,
+        loc, result, indexValues, foreignMethodTy.getResultType(), valueTy,
         ApplyOptions(), llvm::None, llvm::None);
 
     // Package up the result in an optional.

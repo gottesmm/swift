@@ -3379,12 +3379,10 @@ namespace {
 
       // Check for sendability of the result type.
       if (diagnoseNonSendableTypes(
-             fnType->getResult(), getDeclContext(),
-             /*inDerivedConformance*/Type(),
-             apply->getLoc(),
-             diag::non_sendable_call_result_type,
-             apply->isImplicitlyAsync().has_value(),
-             *unsatisfiedIsolation))
+              fnType->getResultType(), getDeclContext(),
+              /*inDerivedConformance*/ Type(), apply->getLoc(),
+              diag::non_sendable_call_result_type,
+              apply->isImplicitlyAsync().has_value(), *unsatisfiedIsolation))
         return true;
 
       return false;
@@ -5678,7 +5676,7 @@ static AnyFunctionType *applyUnsafeConcurrencyToFunctionType(
   AnyFunctionType *outerFnType = nullptr;
   if ((subscript && numApplies > 1) || (func && func->hasImplicitSelfDecl())) {
     outerFnType = fnType;
-    fnType = outerFnType->getResult()->castTo<AnyFunctionType>();
+    fnType = outerFnType->getResultType()->castTo<AnyFunctionType>();
 
     if (numApplies > 0)
       --numApplies;
@@ -5730,24 +5728,27 @@ static AnyFunctionType *applyUnsafeConcurrencyToFunctionType(
   }
 
   // Compute the new result type.
-  Type newResultType = fnType->getResult();
+  Type newResultType = fnType->getResultType();
   if (stripConcurrency) {
     newResultType = newResultType->stripConcurrency(
         /*recurse=*/false, /*dropGlobalActor=*/true);
 
-    if (!newResultType->isEqual(fnType->getResult()) && newTypeParams.empty()) {
+    if (!newResultType->isEqual(fnType->getResultType()) &&
+        newTypeParams.empty()) {
       newTypeParams.append(typeParams.begin(), typeParams.end());
     }
   }
 
   // If we didn't change any parameters, we're done.
-  if (newTypeParams.empty() && newResultType->isEqual(fnType->getResult())) {
+  if (newTypeParams.empty() &&
+      newResultType->isEqual(fnType->getResultType())) {
     return outerFnType ? outerFnType : fnType;
   }
 
+  auto newResult = fnType->getResult().withType(newResultType);
+
   // Rebuild the (inner) function type.
-  fnType = FunctionType::get(
-      newTypeParams, newResultType, fnType->getExtInfo());
+  fnType = FunctionType::get(newTypeParams, newResult, fnType->getExtInfo());
 
   if (!outerFnType)
     return fnType;
@@ -5756,11 +5757,12 @@ static AnyFunctionType *applyUnsafeConcurrencyToFunctionType(
   if (auto genericFnType = dyn_cast<GenericFunctionType>(outerFnType)) {
     return GenericFunctionType::get(
         genericFnType->getGenericSignature(), outerFnType->getParams(),
-        Type(fnType), outerFnType->getExtInfo());
+        AnyFunctionType::Result(Type(fnType)), outerFnType->getExtInfo());
   }
 
-  return FunctionType::get(
-      outerFnType->getParams(), Type(fnType), outerFnType->getExtInfo());
+  return FunctionType::get(outerFnType->getParams(),
+                           AnyFunctionType::Result(Type(fnType)),
+                           outerFnType->getExtInfo());
 }
 
 AnyFunctionType *swift::adjustFunctionTypeForConcurrency(
@@ -5810,23 +5812,24 @@ AnyFunctionType *swift::adjustFunctionTypeForConcurrency(
   }
 
   // Dig out the inner function type.
-  auto innerFnType = fnType->getResult()->getAs<AnyFunctionType>();
+  auto innerFnType = fnType->getResultType()->getAs<AnyFunctionType>();
   if (!innerFnType)
     return fnType;
 
   // Update the inner function type with the global actor.
   innerFnType = innerFnType->withExtInfo(
       innerFnType->getExtInfo().withGlobalActor(globalActorType));
+  auto innerFnTypeResult = innerFnType->getResult().withType(innerFnType);
 
   // Rebuild the outer function type around it.
   if (auto genericFnType = dyn_cast<GenericFunctionType>(fnType)) {
-    return GenericFunctionType::get(
-        genericFnType->getGenericSignature(), fnType->getParams(),
-        Type(innerFnType), fnType->getExtInfo());
+    return GenericFunctionType::get(genericFnType->getGenericSignature(),
+                                    fnType->getParams(), innerFnTypeResult,
+                                    fnType->getExtInfo());
   }
 
-  return FunctionType::get(
-      fnType->getParams(), Type(innerFnType), fnType->getExtInfo());
+  return FunctionType::get(fnType->getParams(), innerFnTypeResult,
+                           fnType->getExtInfo());
 }
 
 bool swift::completionContextUsesConcurrencyFeatures(const DeclContext *dc) {

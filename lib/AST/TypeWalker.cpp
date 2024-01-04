@@ -120,7 +120,7 @@ class Traversal : public TypeVisitor<Traversal, bool>
         return true;
     }
 
-    return doIt(ty->getResult());
+    return doIt(ty->getResult().getType());
   }
 
   bool visitGenericFunctionType(GenericFunctionType *ty) {

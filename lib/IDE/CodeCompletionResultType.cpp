@@ -371,7 +371,7 @@ static TypeRelation calculateTypeRelation(Type Ty, Type ExpectedTy,
       return TypeRelation::Convertible;
   }
   if (auto FT = Ty->getAs<AnyFunctionType>()) {
-    if (FT->getResult()->isVoid())
+    if (FT->getResult().isVoid())
       return TypeRelation::Invalid;
   }
   return TypeRelation::Unrelated;

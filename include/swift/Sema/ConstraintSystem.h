@@ -909,7 +909,7 @@ private:
     auto param = fnTy->getParams()[ParamIdx];
     auto paramTy = param.getPlainType();
     if (lookThroughAutoclosure && param.isAutoClosure())
-      paramTy = paramTy->castTo<FunctionType>()->getResult();
+      paramTy = paramTy->castTo<FunctionType>()->getResultType();
     return paramTy;
   }
 

@@ -2311,7 +2311,7 @@ static CanSILFunctionType getSILFunctionType(
 
   // Lower the result type.
   AbstractionPattern origResultType = origType.getFunctionResultType();
-  CanType substFormalResultType = substFnInterfaceType.getResult();
+  CanType substFormalResultType = substFnInterfaceType.getResultType();
 
   // If we have a foreign error and/or async convention, adjust the
   // lowered result type.
@@ -4331,12 +4331,13 @@ static CanType copyOptionalityFromDerivedToBase(TypeConverter &tc,
           baseParams[i].getParameterFlags());
       }
 
-      auto result = copyOptionalityFromDerivedToBase(tc,
-                                                     derivedFunc.getResult(),
-                                                     baseFunc.getResult());
-      return CanAnyFunctionType::get(baseFunc.getOptGenericSignature(),
-                                     llvm::makeArrayRef(params), result,
-                                     baseFunc->getExtInfo());
+      assert(derivedFunc.getResult().getFlags().containsOnly(
+          baseFunc.getResult().getFlags()));
+      auto result = copyOptionalityFromDerivedToBase(
+          tc, derivedFunc.getResultType(), baseFunc.getResultType());
+      return CanAnyFunctionType::get(
+          baseFunc.getOptGenericSignature(), llvm::makeArrayRef(params),
+          AnyFunctionType::CanResult(result), baseFunc->getExtInfo());
     }
   }
 
@@ -4452,14 +4453,13 @@ CanAnyFunctionType TypeConverter::getBridgedFunctionType(
     getBridgedParams(rep, pattern, t->getParams(), params, bridging);
 
     bool suppressOptional = pattern.hasForeignErrorStrippingResultOptionality();
-    auto result = getBridgedResultType(rep,
-                                       pattern.getFunctionResultType(),
-                                       t.getResult(),
-                                       bridging,
-                                       suppressOptional);
+    auto result =
+        getBridgedResultType(rep, pattern.getFunctionResultType(),
+                             t.getResultType(), bridging, suppressOptional);
 
     return CanAnyFunctionType::get(genericSig, llvm::makeArrayRef(params),
-                                   result, t->getExtInfo());
+                                   FunctionType::CanResult(result),
+                                   t->getExtInfo());
   }
   }
   llvm_unreachable("bad calling convention");
@@ -4570,12 +4570,12 @@ TypeConverter::getLoweredFormalTypes(SILDeclRef constant,
 
   // The formal method parameters.
   // If we actually partially-apply this, assume we'll need a thick function.
-  fnType = cast<FunctionType>(fnType.getResult());
+  fnType = cast<FunctionType>(fnType.getResultType());
   auto innerExtInfo =
     fnType->getExtInfo().withRepresentation(FunctionTypeRepresentation::Swift);
   auto methodParams = fnType->getParams();
 
-  auto resultType = fnType.getResult();
+  auto resultType = fnType.getResultType();
   bool suppressOptionalResult =
     bridgingFnPattern.hasForeignErrorStrippingResultOptionality();
 
@@ -4629,12 +4629,12 @@ TypeConverter::getLoweredFormalTypes(SILDeclRef constant,
   }
 
   // Build the curried function type.
-  auto inner =
-    CanFunctionType::get(llvm::makeArrayRef(bridgedParams),
-                         bridgedResultType, innerExtInfo);
+  auto inner = CanFunctionType::get(
+      llvm::makeArrayRef(bridgedParams),
+      AnyFunctionType::CanResult(bridgedResultType), innerExtInfo);
 
-  auto curried =
-    CanAnyFunctionType::get(genericSig, {selfParam}, inner, extInfo);
+  auto curried = CanAnyFunctionType::get(
+      genericSig, {selfParam}, AnyFunctionType::CanResult(inner), extInfo);
 
   // Replace the type in the abstraction pattern with the curried type.
   bridgingFnPattern.rewriteType(genericSig, curried);
@@ -4662,11 +4662,9 @@ TypeConverter::getLoweredFormalTypes(SILDeclRef constant,
     bridgedParams.push_back(selfParam);
   }
 
-  auto uncurried =
-    CanAnyFunctionType::get(genericSig,
-                            llvm::makeArrayRef(bridgedParams),
-                            bridgedResultType,
-                            extInfo);
+  auto uncurried = CanAnyFunctionType::get(
+      genericSig, llvm::makeArrayRef(bridgedParams),
+      AnyFunctionType::CanResult(bridgedResultType), extInfo);
 
   return { bridgingFnPattern, uncurried };
 }

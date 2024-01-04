@@ -1625,7 +1625,7 @@ SwiftDeclCollector::constructTypeNode(Type T, TypeInitInfo Info) {
     SDKNode* Root = SDKNodeInitInfo(Ctx, T, Info).createSDKNode(SDKNodeKind::TypeFunc);
 
     // Still, return type first
-    Root->addChild(constructTypeNode(Fun->getResult()));
+    Root->addChild(constructTypeNode(Fun->getResult().getType()));
 
     auto Input =
         AnyFunctionType::composeTuple(Fun->getASTContext(), Fun->getParams(),

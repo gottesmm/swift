@@ -645,7 +645,7 @@ struct InferRequirementsWalker : public TypeWalker {
           for (auto &param : fnTy->getParams())
             if (!param.isNoDerivative())
               addRequirements(param.getPlainType(), isLinear);
-          addRequirements(fnTy->getResult(), isLinear);
+          addRequirements(fnTy->getResult().getType(), isLinear);
         };
         // Add requirements.
         constrainParametersAndResult(fnTy->getDifferentiabilityKind() ==

@@ -230,7 +230,7 @@ emitBridgeObjectiveCToNative(SILGenFunction &SGF, SILLocation loc,
 
   auto witnessCI =
       SGF.getConstantInfo(SGF.getTypeExpansionContext(), witnessConstant);
-  CanType formalResultTy = witnessCI.LoweredType.getResult();
+  CanType formalResultTy = witnessCI.LoweredType.getResultType();
 
   auto subs = witness.getSubstitutions();
 
@@ -465,8 +465,8 @@ static void buildFuncToBlockInvokeBody(SILGenFunction &SGF,
                                 SGF.getTypeLowering(indirectResult->getType()))
                 : nullptr;
 
-  CanType formalNativeResultType = formalFuncType.getResult();
-  CanType formalBridgedResultType = formalBlockType.getResult();
+  CanType formalNativeResultType = formalFuncType.getResultType();
+  CanType formalBridgedResultType = formalBlockType.getResultType();
 
   bool canEmitIntoInit =
     (indirectResult &&
@@ -907,7 +907,7 @@ static void buildBlockToFuncThunkBody(SILGenFunction &SGF,
       entry->createFunctionArgument(SILType::getPrimitiveObjectType(blockTy));
   ManagedValue block = ManagedValue::forBorrowedObjectRValue(blockV);
 
-  CanType formalResultType = formalFuncTy.getResult();
+  CanType formalResultType = formalFuncTy.getResultType();
 
   auto init = indirectResult
                 ? SGF.useBufferAsTemporary(indirectResult,
@@ -917,7 +917,7 @@ static void buildBlockToFuncThunkBody(SILGenFunction &SGF,
   // Call the block.
   ManagedValue result =
       SGF.emitMonomorphicApply(
-             loc, block, args, formalBlockTy.getResult(), formalResultType,
+             loc, block, args, formalBlockTy.getResultType(), formalResultType,
              ApplyOptions(),
              /*override CC*/ SILFunctionTypeRepresentation::Block,
              /*foreign error*/ llvm::None, SGFContext(init.get()))
@@ -1367,10 +1367,10 @@ emitObjCThunkArguments(SILGenFunction &SGF, SILLocation loc, SILDeclRef thunk,
          && "Objective-C methods cannot have indirect results");
 
   auto bridgedFormalTypes = getParameterTypes(objcFormalFnTy.getParams());
-  bridgedFormalResultTy = objcFormalFnTy.getResult();
+  bridgedFormalResultTy = objcFormalFnTy.getResultType();
 
   auto nativeFormalTypes = getParameterTypes(swiftFormalFnTy.getParams());
-  nativeFormalResultTy = swiftFormalFnTy.getResult();
+  nativeFormalResultTy = swiftFormalFnTy.getResultType();
 
   // Emit the other arguments, taking ownership of arguments if necessary.
   auto inputs = objcFnTy->getParameters();
@@ -2283,10 +2283,10 @@ void SILGenFunction::emitForeignToNativeThunk(SILDeclRef thunk) {
     fnType = fnType->substGenericArgs(SGM.M, subs, getTypeExpansionContext());
 
     CanType nativeFormalResultType =
-        fd->mapTypeIntoContext(nativeCI.LoweredType.getResult())
+        fd->mapTypeIntoContext(nativeCI.LoweredType.getResultType())
             ->getCanonicalType();
     CanType bridgedFormalResultType =
-        fd->mapTypeIntoContext(foreignCI.LoweredType.getResult())
+        fd->mapTypeIntoContext(foreignCI.LoweredType.getResultType())
             ->getCanonicalType();
     CalleeTypeInfo calleeTypeInfo(
         fnType, AbstractionPattern(nativeFnTy->getInvocationGenericSignature(),

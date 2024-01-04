@@ -1890,11 +1890,11 @@ public:
         abort();
       }
       Type ResultExprTy = E->getType();
-      if (!ResultExprTy->isEqual(FT->getResult())) {
+      if (!ResultExprTy->isEqual(FT->getResult().getType())) {
         Out << "result of ApplyExpr does not match result type of callee:";
         E->getType().print(Out);
         Out << " vs. ";
-        FT->getResult()->print(Out);
+        FT->getResult().getType()->print(Out);
         Out << "\n";
         abort();
       }
@@ -3132,10 +3132,12 @@ public:
         // Also check the interface type.
         if (auto genericFn 
               = CD->getInterfaceType()->getAs<GenericFunctionType>()) {
-          resultIsOptional = (bool) genericFn->getResult()
-              ->castTo<AnyFunctionType>()
-              ->getResult()
-              ->getOptionalObjectType();
+          resultIsOptional = (bool)genericFn->getResult()
+                                 .getType()
+                                 ->castTo<AnyFunctionType>()
+                                 ->getResult()
+                                 .getType()
+                                 ->getOptionalObjectType();
           if (resultIsOptional != declIsOptional) {
             Out << "Initializer has result optionality/failability mismatch\n";
             CD->dump(llvm::errs());
@@ -3212,7 +3214,9 @@ public:
       // (Self) -> (Args...) -> Result.
       if (AFD->hasImplicitSelfDecl()) {
         if (!interfaceTy->castTo<AnyFunctionType>()
-              ->getResult()->is<FunctionType>()) {
+                 ->getResult()
+                 .getType()
+                 ->is<FunctionType>()) {
           Out << "Interface type of method must return a function";
           interfaceTy->dump(Out);
           abort();
@@ -3262,7 +3266,7 @@ public:
       // and vice versa.
       auto fnTy = AFD->getInterfaceType()->castTo<AnyFunctionType>();
       if (AFD->hasImplicitSelfDecl())
-        fnTy = fnTy->getResult()->castTo<FunctionType>();
+        fnTy = fnTy->getResult().getType()->castTo<FunctionType>();
 
       if (AFD->hasThrows() != fnTy->getExtInfo().isThrowing()) {
         Out << "function 'throws' flag does not match function type\n";

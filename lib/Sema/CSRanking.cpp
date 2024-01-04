@@ -408,7 +408,7 @@ static bool isProtocolExtensionAsSpecializedAs(DeclContext *dc1,
 static Type getAdjustedParamType(const AnyFunctionType::Param &param) {
   auto type = param.getOldType();
   if (param.isAutoClosure())
-    return type->castTo<FunctionType>()->getResult();
+    return type->castTo<FunctionType>()->getResultType();
   return type;
 }
 
@@ -582,12 +582,12 @@ bool CompareDeclSpecializationRequest::evaluate(
   if (outerDC1->isTypeContext()) {
     auto funcTy1 = openedType1->castTo<FunctionType>();
     selfTy1 = getSelfType(funcTy1);
-    openedType1 = funcTy1->getResult();
+    openedType1 = funcTy1->getResultType();
   }
   if (outerDC2->isTypeContext()) {
     auto funcTy2 = openedType2->castTo<FunctionType>();
     selfTy2 = getSelfType(funcTy2);
-    openedType2 = funcTy2->getResult();
+    openedType2 = funcTy2->getResultType();
   }
 
   // Determine the relationship between the 'self' types and add the
@@ -1285,7 +1285,7 @@ SolutionCompareResult ConstraintSystem::compareSolutions(
         if (!VD->getModuleContext()->isStdlibModule())
           return false;
         auto fnTy = VD->getInterfaceType()->castTo<AnyFunctionType>();
-        if (!fnTy->getResult()->getOptionalObjectType())
+        if (!fnTy->getResultType()->getOptionalObjectType())
           return false;
 
         // Check that the standard library hasn't added another overload of
@@ -1298,7 +1298,7 @@ SolutionCompareResult ConstraintSystem::compareSolutions(
 
         assert(param1->getOptionalObjectType());
         assert(params[1].isAutoClosure());
-        assert(param2->getResult()->getOptionalObjectType());
+        assert(param2->getResultType()->getOptionalObjectType());
 
         (void) param1;
         (void) param2;

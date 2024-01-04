@@ -204,18 +204,18 @@ Type TypeConverter::getLoweredCBridgedType(AbstractionPattern pattern,
       getBridgedParams(SILFunctionType::Representation::ObjCMethod,
                        pattern, funTy->getParams(), newParams, bridging);
 
-      Type newResult =
-          getBridgedResultType(SILFunctionType::Representation::ObjCMethod,
-                               pattern.getFunctionResultType(),
-                               funTy->getResult()->getCanonicalType(),
-                               bridging,
-                               /*non-optional*/false);
+      Type newResult = getBridgedResultType(
+          SILFunctionType::Representation::ObjCMethod,
+          pattern.getFunctionResultType(),
+          funTy->getResultType()->getCanonicalType(), bridging,
+          /*non-optional*/ false);
 
       auto clangType = Context.getClangFunctionType(
-          newParams, {newResult}, FunctionTypeRepresentation::Block);
+          newParams, AnyFunctionType::Result(newResult),
+          FunctionTypeRepresentation::Block);
 
       return FunctionType::get(
-          newParams, newResult,
+          newParams, AnyFunctionType::Result(newResult),
           funTy->getExtInfo()
               .intoBuilder()
               .withRepresentation(FunctionType::Representation::Block)

@@ -1387,7 +1387,7 @@ static Expr *synthesizeCopyWithZoneCall(Expr *Val, VarDecl *VD,
   DRE->setType(copyMethodType);
 
   // Drop the self type
-  copyMethodType = copyMethodType->getResult()->castTo<FunctionType>();
+  copyMethodType = copyMethodType->getResultType()->castTo<FunctionType>();
 
   auto DSCE = DotSyntaxCallExpr::create(Ctx, DRE, SourceLoc(),
                                         Argument::unlabeled(Val));
@@ -1401,7 +1401,7 @@ static Expr *synthesizeCopyWithZoneCall(Expr *Val, VarDecl *VD,
   auto *argList =
       ArgumentList::forImplicitCallTo(copyMethod->getParameters(), {Nil}, Ctx);
   auto *Call = CallExpr::createImplicit(Ctx, DSCE, argList);
-  Call->setType(copyMethodType->getResult());
+  Call->setType(copyMethodType->getResultType());
   Call->setThrows(nullptr);
 
   // If we're working with non-optional types, we're forcing the cast.
@@ -1893,7 +1893,7 @@ synthesizeObservedSetterBody(AccessorDecl *Set, TargetImpl target,
       auto *DSCE = DotSyntaxCallExpr::create(Ctx, Callee, SourceLoc(), SelfArg);
 
       if (auto funcType = type->getAs<FunctionType>())
-        type = funcType->getResult();
+        type = funcType->getResultType();
       DSCE->setType(type);
       DSCE->setThrows(nullptr);
       Callee = DSCE;
@@ -1908,7 +1908,7 @@ synthesizeObservedSetterBody(AccessorDecl *Set, TargetImpl target,
     }
 
     if (auto funcType = type->getAs<FunctionType>())
-      type = funcType->getResult();
+      type = funcType->getResultType();
     Call->setType(type);
     Call->setThrows(nullptr);
 
@@ -2076,7 +2076,7 @@ synthesizeModifyCoroutineBodyWithSimpleDidSet(AccessorDecl *accessor,
       auto *DSCE = DotSyntaxCallExpr::create(ctx, Callee, SourceLoc(), SelfArg);
 
       if (auto funcType = type->getAs<FunctionType>())
-        type = funcType->getResult();
+        type = funcType->getResultType();
       DSCE->setType(type);
       DSCE->setThrows(nullptr);
       Callee = DSCE;
@@ -2084,7 +2084,7 @@ synthesizeModifyCoroutineBodyWithSimpleDidSet(AccessorDecl *accessor,
 
     auto *Call = CallExpr::createImplicitEmpty(ctx, Callee);
     if (auto funcType = type->getAs<FunctionType>())
-      type = funcType->getResult();
+      type = funcType->getResultType();
     Call->setType(type);
     Call->setThrows(nullptr);
 

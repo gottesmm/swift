@@ -85,14 +85,15 @@ FunctionType *GenericFunctionType::substGenericArgs(
                     return param.withType(substFn(param.getPlainType()));
                   });
 
-  auto resultTy = substFn(getResult());
+  auto result = getResult();
+  auto newResult = result.withType(substFn(result.getType()));
 
   Type thrownError = getThrownError();
   if (thrownError)
     thrownError = substFn(thrownError);
 
   // Build the resulting (non-generic) function type.
-  return FunctionType::get(params, resultTy,
+  return FunctionType::get(params, newResult,
                            getExtInfo().withThrows(isThrowing(), thrownError));
 }
 

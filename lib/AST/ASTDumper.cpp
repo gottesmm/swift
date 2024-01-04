@@ -3868,6 +3868,8 @@ namespace {
       printFlag(getDumpString(paramFlags.getValueOwnership()));
     }
 
+    void dumpResultFlags(ResultTypeFlags resultFlags) {}
+
   public:
     using PrintBase::PrintBase;
 
@@ -4210,6 +4212,26 @@ namespace {
       }, label);
     }
 
+    void printAnyFunctionResultRec(AnyFunctionType::Result result,
+                                   StringRef label) {
+      printRecArbitrary(
+          [&](StringRef label) {
+            printCommon("function_result", label);
+
+            printRecArbitrary([&](StringRef label) {
+              printHead("result", FieldLabelColor, label);
+
+              dumpResultFlags(result.getFlags());
+
+              printRec(result.getType());
+
+              printFoot();
+            });
+            printFoot();
+          },
+          label);
+    }
+
     void printClangTypeRec(const ClangTypeInfo &info, const ASTContext &ctx) {
       // [TODO: Improve-Clang-type-printing]
       if (!info.empty()) {
@@ -4246,7 +4268,7 @@ namespace {
 
       printClangTypeRec(T->getClangTypeInfo(), T->getASTContext());
       printAnyFunctionParamsRec(T->getParams(), "input");
-      printRec(T->getResult(), "output");
+      printAnyFunctionResultRec(T->getResult(), "output");
       if (Type thrownError = T->getThrownError()) {
         printRec(thrownError, "thrown_error");
       }

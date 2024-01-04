@@ -2952,7 +2952,7 @@ bool isSubscriptReturningString(const ValueDecl *D, ASTContext &Context) {
   if (nominalTypeParam->isInt())
     return false;
 
-  auto resultTy = fnTy->getResult()->getAs<NominalType>();
+  auto resultTy = fnTy->getResultType()->getAs<NominalType>();
   if (!resultTy)
     return false;
 

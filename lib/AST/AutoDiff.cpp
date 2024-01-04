@@ -136,7 +136,7 @@ static void unwrapCurryLevels(AnyFunctionType *fnTy,
                               SmallVectorImpl<AnyFunctionType *> &results) {
   while (fnTy != nullptr) {
     results.push_back(fnTy);
-    fnTy = fnTy->getResult()->getAs<AnyFunctionType>();
+    fnTy = fnTy->getResult().getType()->getAs<AnyFunctionType>();
   }
 }
 
@@ -190,19 +190,20 @@ void autodiff::getFunctionSemanticResults(
   // `Void`.
   auto formalResultType = functionType->getResult();
   if (auto *resultFunctionType =
-      functionType->getResult()->getAs<AnyFunctionType>())
+          functionType->getResult().getType()->getAs<AnyFunctionType>())
     formalResultType = resultFunctionType->getResult();
 
   unsigned resultIdx = 0;
-  if (!formalResultType->isEqual(ctx.TheEmptyTupleType)) {
+  if (!formalResultType.getType()->isEqual(ctx.TheEmptyTupleType)) {
     // Separate tuple elements into individual results.
-    if (formalResultType->is<TupleType>()) {
-      for (auto elt : formalResultType->castTo<TupleType>()->getElements()) {
+    if (formalResultType.getType()->is<TupleType>()) {
+      for (auto elt :
+           formalResultType.getType()->castTo<TupleType>()->getElements()) {
         resultTypes.emplace_back(elt.getType(), resultIdx++,
                                  /*isParameter*/ false);
       }
     } else {
-      resultTypes.emplace_back(formalResultType, resultIdx++,
+      resultTypes.emplace_back(formalResultType.getType(), resultIdx++,
                                /*isParameter*/ false);
     }
   }
@@ -226,7 +227,7 @@ void autodiff::getFunctionSemanticResults(
   };
 
   if (auto *resultFnType =
-      functionType->getResult()->getAs<AnyFunctionType>()) {
+          functionType->getResult().getType()->getAs<AnyFunctionType>()) {
     // Here we assume that the input is a function type with curried `Self`
     assert(functionType->getNumParams() == 1 && "unexpected function type");
 

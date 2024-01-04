@@ -814,7 +814,8 @@ public:
   /// \param resultTy The Swift result type.
   /// \param trueRep The actual calling convention, which must be C-compatible.
   const clang::Type *
-  getClangFunctionType(ArrayRef<AnyFunctionType::Param> params, Type resultTy,
+  getClangFunctionType(ArrayRef<AnyFunctionType::Param> params,
+                       AnyFunctionType::Result resultTy,
                        FunctionTypeRepresentation trueRep);
 
   /// Get the canonical Clang type corresponding to a SIL function type.

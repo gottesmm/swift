@@ -4871,10 +4871,9 @@ static void buildThunkBody(SILGenFunction &SGF, SILLocation loc,
   // inner indirect results.
   ResultPlanner resultPlanner(SGF, loc, indirectResultParams, argValues);
   resultPlanner.plan(inputOrigType.getFunctionResultType(),
-                     inputSubstType.getResult(),
+                     inputSubstType.getResultType(),
                      outputOrigType.getFunctionResultType(),
-                     outputSubstType.getResult(),
-                     fnType, thunkType);
+                     outputSubstType.getResultType(), fnType, thunkType);
 
   // If the function we're calling has an indirect error result, create an
   // argument for it.
@@ -5103,7 +5102,7 @@ static ManagedValue createDifferentiableFunctionThunk(
 
   auto numUncurriedParams = inputSubstType->getNumParams();
   if (auto *resultFnType =
-          inputSubstType->getResult()->getAs<AnyFunctionType>()) {
+          inputSubstType->getResultType()->getAs<AnyFunctionType>()) {
     numUncurriedParams += resultFnType->getNumParams();
   }
   llvm::SmallBitVector parameterBits(numUncurriedParams);
@@ -6211,10 +6210,9 @@ SILGenFunction::emitVTableThunk(SILDeclRef base,
     // First, indirect results.
     resultPlanner.emplace(*this, loc, thunkIndirectResults, args);
     resultPlanner->plan(outputOrigType.getFunctionResultType(),
-                        outputSubstType.getResult(),
+                        outputSubstType.getResultType(),
                         inputOrigType.getFunctionResultType(),
-                        inputSubstType.getResult(),
-                        derivedFTy, thunkTy);
+                        inputSubstType.getResultType(), derivedFTy, thunkTy);
 
     // If the function we're calling has an indirect error result, create an
     // argument for it.
@@ -6602,10 +6600,9 @@ void SILGenFunction::emitProtocolWitness(
     //   - indirect results
     resultPlanner.emplace(*this, loc, thunkIndirectResults, args);
     resultPlanner->plan(witnessOrigTy.getFunctionResultType(),
-                        witnessSubstTy.getResult(),
+                        witnessSubstTy.getResultType(),
                         reqtOrigTy.getFunctionResultType(),
-                        reqtSubstTy.getResult(),
-                        witnessFTy, thunkTy);
+                        reqtSubstTy.getResultType(), witnessFTy, thunkTy);
 
     // If the function we're calling has an indirect error result, create an
     // argument for it.

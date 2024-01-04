@@ -287,16 +287,15 @@ Type LinearMapInfo::getLinearMapType(ADContext &context, ApplyInst *ai) {
   }
 
   AnyFunctionType *astFnTy;
+  AnyFunctionType::CanResult result(
+      silFnTy->getAllResultsInterfaceType().getASTType());
   if (auto genSig = silFnTy->getSubstGenericSignature()) {
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     GenericFunctionType::ExtInfo info;
-    astFnTy = GenericFunctionType::get(
-        genSig, params, silFnTy->getAllResultsInterfaceType().getASTType(),
-        info);
+    astFnTy = GenericFunctionType::get(genSig, params, result, info);
   } else {
     FunctionType::ExtInfo info;
-    astFnTy = FunctionType::get(
-        params, silFnTy->getAllResultsInterfaceType().getASTType(), info);
+    astFnTy = FunctionType::get(params, result, info);
   }
 
   if (astFnTy->hasArchetype())

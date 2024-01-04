@@ -70,9 +70,9 @@ public:
   /// \returns The appropriate clang type on success, nullptr on failure.
   ///
   /// Precondition: The representation argument must be C-compatible.
-  const clang::Type *getFunctionType(
-    ArrayRef<AnyFunctionType::Param> params, Type resultTy,
-    AnyFunctionType::Representation repr);
+  const clang::Type *getFunctionType(ArrayRef<AnyFunctionType::Param> params,
+                                     AnyFunctionType::Result resultTy,
+                                     AnyFunctionType::Representation repr);
 
   /// Compute the C function type for a SIL function type.
   const clang::Type *getFunctionType(ArrayRef<SILParameterInfo> params,

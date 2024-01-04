@@ -645,7 +645,7 @@ bool TypeChecker::diagnoseInvalidFunctionType(
   // `@differentiable` function types must return a differentiable type and have
   // differentiable (or `@noDerivative`) parameters.
   if (extInfo.isDifferentiable()) {
-    auto result = fnTy->getResult();
+    auto result = fnTy->getResultType();
     auto params = fnTy->getParams();
     auto diffKind = extInfo.getDifferentiabilityKind();
     bool isLinear = diffKind == DifferentiabilityKind::Linear;
@@ -702,7 +702,7 @@ bool TypeChecker::diagnoseInvalidFunctionType(
                                            dc, stage);
     if (!differentiable) {
       auto diagLoc = repr ? (*repr)->getResultTypeRepr()->getLoc() : loc;
-      auto resultStr = fnTy->getResult()->getString();
+      auto resultStr = fnTy->getResultType()->getString();
       auto diag = ctx.Diags.diagnose(
           diagLoc, diag::differentiable_function_type_invalid_result, resultStr,
           isLinear);
@@ -726,7 +726,7 @@ bool TypeChecker::diagnoseInvalidFunctionType(
                                                         dc, stage);
                       }) == params.end()) {
       auto diagLoc = repr ? (*repr)->getResultTypeRepr()->getLoc() : loc;
-      auto resultStr = fnTy->getResult()->getString();
+      auto resultStr = fnTy->getResultType()->getString();
       auto diag = ctx.Diags.diagnose(
         diagLoc, diag::differentiable_function_type_void_result);
       hadAnyError = true;

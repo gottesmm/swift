@@ -93,9 +93,11 @@ Expr *TypeChecker::substituteInputSugarTypeForResult(ApplyExpr *E) {
     // The result of this apply is "(args) -> T" where T is the type being
     // constructed.  Apply the sugar onto it.
     if (auto FT = E->getType()->getAs<FunctionType>())
-      if (FT->getResult()->isEqual(resultSugar) && !resultSugar->isCanonical()){
-        auto NFT = FunctionType::get(FT->getParams(), resultSugar,
-                                     FT->getExtInfo());
+      if (FT->getResultType()->isEqual(resultSugar) &&
+          !resultSugar->isCanonical()) {
+        auto newResult = FT->getResult().withType(resultSugar);
+        auto NFT =
+            FunctionType::get(FT->getParams(), newResult, FT->getExtInfo());
         E->setType(NFT);
         return E;
       }

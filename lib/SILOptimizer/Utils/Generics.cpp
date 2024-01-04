@@ -183,7 +183,8 @@ static std::pair<unsigned, unsigned> getTypeDepthAndWidth(Type t) {
     }
     unsigned TypeWidth;
     unsigned TypeDepth;
-    std::tie(TypeDepth, TypeWidth) = getTypeDepthAndWidth(FnTy->getResult());
+    std::tie(TypeDepth, TypeWidth) =
+        getTypeDepthAndWidth(FnTy->getResultType());
     if (TypeDepth > MaxTypeDepth)
       MaxTypeDepth = TypeDepth;
     Width += TypeWidth;

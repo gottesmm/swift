@@ -1809,8 +1809,8 @@ ConstraintSystem::getTypeOfReference(ValueDecl *value,
     }
 
     // The reference implicitly binds 'self'.
-    return {origOpenedType, openedType,
-            origOpenedType->getResult(), openedType->getResult(), Type()};
+    return {origOpenedType, openedType, origOpenedType->getResultType(),
+            openedType->getResultType(), Type()};
   }
 
   // Unqualified reference to a local or global function.
@@ -2471,17 +2471,18 @@ Type ConstraintSystem::getMemberReferenceTypeFromOpenedType(
         // optionality is applied to the result type and not the type of the
         // reference.
         if (isa<SubscriptDecl>(value)) {
-          auto *innerFn = fnTy->getResult()->castTo<FunctionType>();
-          resultTy = FunctionType::get(
-              innerFn->getParams(),
-              OptionalType::get(innerFn->getResult()->getRValueType()),
-              innerFn->getExtInfo());
+          auto *innerFn = fnTy->getResultType()->castTo<FunctionType>();
+          resultTy =
+              FunctionType::get(innerFn->getParams(),
+                                AnyFunctionType::Result(OptionalType::get(
+                                    innerFn->getResultType()->getRValueType())),
+                                innerFn->getExtInfo());
         } else {
-          resultTy = OptionalType::get(fnTy->getResult()->getRValueType());
+          resultTy = OptionalType::get(fnTy->getResultType()->getRValueType());
         }
+        auto result = fnTy->getResult().withType(resultTy);
 
-        return FunctionType::get(fnTy->getParams(), resultTy,
-                                 fnTy->getExtInfo());
+        return FunctionType::get(fnTy->getParams(), result, fnTy->getExtInfo());
       };
 
       // FIXME: Refactor 'replaceCovariantResultType' not to rely on the passed
@@ -2497,7 +2498,7 @@ Type ConstraintSystem::getMemberReferenceTypeFromOpenedType(
   if (hasAppliedSelf) {
     // For a static member referenced through a metatype or an instance
     // member referenced through an instance, strip off the 'self'.
-    type = type->castTo<FunctionType>()->getResult();
+    type = type->castTo<FunctionType>()->getResultType();
   } else {
     // For an unbound instance method reference, replace the 'Self'
     // parameter with the base type.
@@ -2660,7 +2661,8 @@ ConstraintSystem::getTypeOfMemberReference(
     // Wrap it in a metatype.
     memberTy = MetatypeType::get(memberTy);
 
-    auto openedType = FunctionType::get({baseObjParam}, memberTy);
+    auto openedType =
+        FunctionType::get({baseObjParam}, AnyFunctionType::Result(memberTy));
     return { openedType, openedType, memberTy, memberTy, Type() };
   }
 
@@ -2724,7 +2726,8 @@ ConstraintSystem::getTypeOfMemberReference(
         thrownErrorType = Type();
       }
 
-      refType = FunctionType::get(indices, elementTy, info);
+      refType =
+          FunctionType::get(indices, AnyFunctionType::Result(elementTy), info);
     } else {
       // Delay the adjustment for preconcurrency until after we've formed
       // the function type for this kind of reference. Otherwise we will lose
@@ -2759,7 +2762,8 @@ ConstraintSystem::getTypeOfMemberReference(
     FunctionType::Param selfParam(selfTy, Identifier(), selfFlags);
 
     FunctionType::ExtInfo info;
-    openedType = FunctionType::get({selfParam}, refType, info);
+    openedType =
+        FunctionType::get({selfParam}, AnyFunctionType::Result(refType), info);
   }
   assert(!openedType->hasTypeParameter());
 
@@ -2826,7 +2830,8 @@ ConstraintSystem::getTypeOfMemberReference(
     auto *fullFunctionType = openedType->getAs<AnyFunctionType>();
 
     // Strip off the 'self' parameter
-    auto *functionType = fullFunctionType->getResult()->getAs<FunctionType>();
+    auto *functionType =
+        fullFunctionType->getResultType()->getAs<FunctionType>();
     functionType = unwrapPropertyWrapperParameterTypes(*this, funcDecl, functionRefKind,
                                                        functionType, locator);
     // FIXME: Verify ExtInfo state is correct, not working by accident.
@@ -2845,8 +2850,8 @@ ConstraintSystem::getTypeOfMemberReference(
       info = info.withConcurrent();
     }
 
-    openedType =
-        FunctionType::get(fullFunctionType->getParams(), functionType, info);
+    openedType = FunctionType::get(fullFunctionType->getParams(),
+                                   AnyFunctionType::Result(functionType), info);
   }
 
   // Adjust the opened type for concurrency.
@@ -2867,12 +2872,14 @@ ConstraintSystem::getTypeOfMemberReference(
     // Adjust the function's result type, since that's the Var's actual type.
     auto origFnType = origOpenedType->castTo<AnyFunctionType>();
 
+    auto origResult = origFnType->getResult();
     auto resultTy = adjustVarTypeForConcurrency(
-          origFnType->getResult(), var, useDC, GetClosureType{*this},
-          ClosureIsolatedByPreconcurrency{*this});
+        origResult.getType(), var, useDC, GetClosureType{*this},
+        ClosureIsolatedByPreconcurrency{*this});
 
-    openedType = FunctionType::get(
-                  origFnType->getParams(), resultTy, origFnType->getExtInfo());
+    openedType = FunctionType::get(origFnType->getParams(),
+                                   origResult.withType(resultTy),
+                                   origFnType->getExtInfo());
   }
 
   // Compute the type of the reference.
@@ -2989,7 +2996,8 @@ Type ConstraintSystem::getEffectiveOverloadType(ConstraintLocator *locator,
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       FunctionType::ExtInfo info;
       type = adjustFunctionTypeForConcurrency(
-          FunctionType::get(indices, elementTy, info), subscript, useDC,
+          FunctionType::get(indices, AnyFunctionType::Result(elementTy), info),
+          subscript, useDC,
           /*numApplies=*/1, /*isMainDispatchQueue=*/false, emptyReplacements,
           locator);
     } else if (auto var = dyn_cast<VarDecl>(decl)) {
@@ -3039,7 +3047,7 @@ Type ConstraintSystem::getEffectiveOverloadType(ConstraintLocator *locator,
       type = adjustFunctionTypeForConcurrency(
                  type->castTo<FunctionType>(), decl, useDC, numApplies,
                  /*isMainDispatchQueue=*/false, emptyReplacements, locator)
-                 ->getResult();
+                 ->getResultType();
     }
   }
 
@@ -3117,7 +3125,8 @@ static DeclReferenceType getTypeOfReferenceWithSpecialTypeCheckingSemantics(
         CS.getConstraintLocator(locator, ConstraintLocator::DynamicType));
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     FunctionType::ExtInfo info;
-    auto refType = FunctionType::get({inputArg}, output, info);
+    auto refType =
+        FunctionType::get({inputArg}, AnyFunctionType::Result(output), info);
     return {refType, refType, refType, refType, Type()};
   }
   case DeclTypeCheckingSemantics::WithoutActuallyEscaping: {
@@ -3136,22 +3145,23 @@ static DeclReferenceType getTypeOfReferenceWithSpecialTypeCheckingSemantics(
         CS.getConstraintLocator(locator, ConstraintLocator::FunctionResult),
         TVO_CanBindToNoEscape);
     FunctionType::Param arg(escapeClosure);
-    auto bodyClosure = FunctionType::get(arg, result,
-                                         FunctionType::ExtInfoBuilder()
-                                             .withNoEscape(true)
-                                             .withAsync(true)
-                                             .withThrows(true, /*FIXME:*/Type())
-                                             .build());
+    auto bodyClosure =
+        FunctionType::get(arg, FunctionType::Result(result),
+                          FunctionType::ExtInfoBuilder()
+                              .withNoEscape(true)
+                              .withAsync(true)
+                              .withThrows(true, /*FIXME:*/ Type())
+                              .build());
     FunctionType::Param args[] = {
       FunctionType::Param(noescapeClosure),
       FunctionType::Param(bodyClosure, CS.getASTContext().getIdentifier("do")),
     };
 
-    auto refType = FunctionType::get(args, result,
+    auto refType = FunctionType::get(args, FunctionType::Result(result),
                                      FunctionType::ExtInfoBuilder()
                                          .withNoEscape(false)
                                          .withAsync(true)
-                                         .withThrows(true, /*FIXME:*/Type())
+                                         .withThrows(true, /*FIXME:*/ Type())
                                          .build());
     return {refType, refType, refType, refType, Type()};
   }
@@ -3170,20 +3180,21 @@ static DeclReferenceType getTypeOfReferenceWithSpecialTypeCheckingSemantics(
         CS.getConstraintLocator(locator, ConstraintLocator::FunctionResult),
         TVO_CanBindToNoEscape);
     FunctionType::Param bodyArgs[] = {FunctionType::Param(openedTy)};
-    auto bodyClosure = FunctionType::get(bodyArgs, result,
-                                         FunctionType::ExtInfoBuilder()
-                                             .withNoEscape(true)
-                                             .withThrows(true, /*FIXME:*/Type())
-                                             .withAsync(true)
-                                             .build());
+    auto bodyClosure =
+        FunctionType::get(bodyArgs, FunctionType::Result(result),
+                          FunctionType::ExtInfoBuilder()
+                              .withNoEscape(true)
+                              .withThrows(true, /*FIXME:*/ Type())
+                              .withAsync(true)
+                              .build());
     FunctionType::Param args[] = {
       FunctionType::Param(existentialTy),
       FunctionType::Param(bodyClosure, CS.getASTContext().getIdentifier("do")),
     };
-    auto refType = FunctionType::get(args, result,
+    auto refType = FunctionType::get(args, FunctionType::Result(result),
                                      FunctionType::ExtInfoBuilder()
                                          .withNoEscape(false)
-                                         .withThrows(true, /*FIXME:*/Type())
+                                         .withThrows(true, /*FIXME:*/ Type())
                                          .withAsync(true)
                                          .build());
     return {refType, refType, refType, refType, Type()};
@@ -3566,8 +3577,9 @@ void ConstraintSystem::bindOverloadType(
           AllocationArena::ConstraintSolver);
     }
 
-    auto *callerTy = FunctionType::get(
-        {FunctionType::Param(argTy, ctx.Id_dynamicMember)}, resultTy);
+    auto *callerTy =
+        FunctionType::get({FunctionType::Param(argTy, ctx.Id_dynamicMember)},
+                          FunctionType::Result(resultTy));
 
     ConstraintLocatorBuilder builder(callLoc);
     addConstraint(ConstraintKind::ApplicableFunction, callerTy, fnTy,
@@ -3718,8 +3730,9 @@ void ConstraintSystem::bindOverloadType(
 
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       FunctionType::ExtInfo info;
-      auto adjustedFnTy = FunctionType::get(originalCallerTy->getParams(),
-                                            subscriptResultTy, info);
+      auto adjustedFnTy =
+          FunctionType::get(originalCallerTy->getParams(),
+                            FunctionType::Result(subscriptResultTy), info);
 
       // Add a constraint for the inner application that uses the args of the
       // original call-site, and a fresh type var result equal to the leaf type.
@@ -3732,7 +3745,7 @@ void ConstraintSystem::bindOverloadType(
                     keyPathLoc);
 
       addDynamicMemberSubscriptConstraints(/*argTy*/ paramTy,
-                                           originalCallerTy->getResult());
+                                           originalCallerTy->getResultType());
 
       // Bind the overload type to the opened type as usual to match the fact
       // that this is a subscript in the source.
@@ -3865,12 +3878,14 @@ void ConstraintSystem::resolveOverload(ConstraintLocator *locator,
     };
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     FunctionType::ExtInfo subscriptInfo;
-    auto subscriptTy = FunctionType::get(indices, elementTy, subscriptInfo);
+    auto subscriptTy = FunctionType::get(
+        indices, FunctionType::Result(elementTy), subscriptInfo);
 
     FunctionType::Param baseParam(choice.getBaseType());
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     FunctionType::ExtInfo fullInfo;
-    auto fullTy = FunctionType::get({baseParam}, subscriptTy, fullInfo);
+    auto fullTy = FunctionType::get(
+        {baseParam}, FunctionType::Result(subscriptTy), fullInfo);
     openedType = fullTy;
     adjustedOpenedType = fullTy;
     // FIXME: @preconcurrency
@@ -3910,7 +3925,7 @@ void ConstraintSystem::resolveOverload(ConstraintLocator *locator,
           locator->isKeyPathSubscriptComponent()) {
         // Subscript type has a format of (Self[.Type) -> (Arg...) -> Result
         auto declTy = adjustedOpenedType->castTo<FunctionType>();
-        auto subscriptTy = declTy->getResult()->castTo<FunctionType>();
+        auto subscriptTy = declTy->getResultType()->castTo<FunctionType>();
         // If we have subscript, each of the arguments has to conform to
         // Hashable, because it would be used as a component inside key path.
         for (auto index : indices(subscriptTy->getParams())) {
@@ -4989,7 +5004,7 @@ static bool diagnoseAmbiguityWithContextualType(
             contextualTy->is<ProtocolType>()
                 ? diag::overload_result_type_does_not_conform
                 : diag::cannot_convert_candidate_result_to_contextual_type,
-            decl, fnType->getResult(), contextualTy);
+            decl, fnType->getResultType(), contextualTy);
       } else {
         DE.diagnose(decl, diag::found_candidate_type, type);
       }
@@ -5291,7 +5306,7 @@ static bool diagnoseContextualFunctionCallGenericAmbiguity(
     return false;
 
   auto applyFnType = overload->adjustedOpenedType->castTo<FunctionType>();
-  auto resultTypeVar = applyFnType->getResult()->getAs<TypeVariableType>();
+  auto resultTypeVar = applyFnType->getResultType()->getAs<TypeVariableType>();
   if (!resultTypeVar)
     return false;
 
@@ -5320,7 +5335,7 @@ static bool diagnoseContextualFunctionCallGenericAmbiguity(
     if (!paramFnType)
       continue;
 
-    if (cs.typeVarOccursInType(resultTypeVar, paramFnType->getResult()))
+    if (cs.typeVarOccursInType(resultTypeVar, paramFnType->getResultType()))
       closureArguments.push_back(closure);
   }
 
@@ -6644,7 +6659,8 @@ Solution::getFunctionArgApplyInfo(ConstraintLocator *locator) const {
     // Strip off the curried self parameter if necessary.
     if (hasAppliedSelf(
             *choice, [this](Type type) -> Type { return simplifyType(type); }))
-      fnInterfaceType = fnInterfaceType->castTo<AnyFunctionType>()->getResult();
+      fnInterfaceType =
+          fnInterfaceType->castTo<AnyFunctionType>()->getResultType();
 
 #ifndef NDEBUG
     // If variadic generics are not involved, interface type should

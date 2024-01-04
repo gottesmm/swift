@@ -474,9 +474,11 @@ static std::pair<Type, ParamDecl *> decomposeSubscriptSetter(FuncDecl *setter) {
   // Setter type is (self) -> (elem_type, key_type) -> ()
   Type elementType = setter->getInterfaceType()
                          ->castTo<AnyFunctionType>()
-                         ->getResult()
+                         ->getResultType()
                          ->castTo<AnyFunctionType>()
-                         ->getParams().front().getParameterType();
+                         ->getParams()
+                         .front()
+                         .getParameterType();
   ParamDecl *keyDecl = PL->get(1);
 
   return {elementType, keyDecl};
@@ -6678,7 +6680,7 @@ ConstructorDecl *SwiftDeclConverter::importConstructor(
     // existing selector with a Swift-only signature.
     auto ctorParams = ctor->getInterfaceType()
                           ->castTo<AnyFunctionType>()
-                          ->getResult()
+                          ->getResultType()
                           ->castTo<AnyFunctionType>()
                           ->getParams();
     if (!AnyFunctionType::equalParams(ctorParams, allocParams)) {

@@ -6705,11 +6705,13 @@ detail::function_deserializer::deserialize(ModuleFile &MF,
 
   if (!isGeneric) {
     assert(genericSig.isNull());
-    return FunctionType::get(params, resultTy.get(), info);
+    return FunctionType::get(params, AnyFunctionType::Result(resultTy.get()),
+                             info);
   }
 
   assert(!genericSig.isNull());
-  return GenericFunctionType::get(genericSig, params, resultTy.get(), info);
+  return GenericFunctionType::get(
+      genericSig, params, AnyFunctionType::Result(resultTy.get()), info);
 }
 
 Expected<Type> DESERIALIZE_TYPE(FUNCTION_TYPE)(

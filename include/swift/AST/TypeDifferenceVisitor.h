@@ -235,7 +235,13 @@ public:
     if (!type1->hasSameExtInfoAs(type2))
       return asImpl().visitDifferentTypeStructure(type1, type2);
 
-    if (asImpl().visit(type1.getResult(), type2.getResult()))
+    // If the result flags differ... we have different structure.
+    if (!type1.getResult().getFlags().containsOnly(
+            type2.getResult().getFlags()))
+      return asImpl().visitDifferentTypeStructure(type1, type2);
+
+    // Then check the types.
+    if (asImpl().visit(type1.getResultType(), type2.getResultType()))
       return true;
 
     return visitComponentArray(type1, type2,

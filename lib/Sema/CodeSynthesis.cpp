@@ -245,7 +245,8 @@ static ParamDecl *createMemberwiseInitParameter(DeclContext *DC,
         varInterfaceType->lookThroughAllOptionalTypes()->is<AnyFunctionType>();
     if (!isStructuralFunctionType) {
       auto extInfo = ASTExtInfoBuilder().withNoEscape().build();
-      varInterfaceType = FunctionType::get({}, varInterfaceType, extInfo);
+      varInterfaceType = FunctionType::get(
+          {}, AnyFunctionType::Result(varInterfaceType), extInfo);
     }
   }
 
@@ -635,7 +636,7 @@ synthesizeDesignatedInitOverride(AbstractFunctionDecl *fn, void *context) {
                                             IsImplicit, type);
 
   if (auto *funcTy = type->getAs<FunctionType>())
-    type = funcTy->getResult();
+    type = funcTy->getResultType();
   auto *superclassCtorRefExpr =
       DotSyntaxCallExpr::create(ctx, ctorRefExpr, SourceLoc(), superArg, type);
   superclassCtorRefExpr->setThrows(nullptr);
@@ -646,7 +647,7 @@ synthesizeDesignatedInitOverride(AbstractFunctionDecl *fn, void *context) {
       CallExpr::createImplicit(ctx, superclassCtorRefExpr, ctorArgs);
 
   if (auto *funcTy = type->getAs<FunctionType>())
-    type = funcTy->getResult();
+    type = funcTy->getResultType();
   superclassCallExpr->setType(type);
   if (auto thrownInterfaceType = ctor->getEffectiveThrownErrorType()) {
     Type superThrownType = ctor->mapTypeIntoContext(*thrownInterfaceType);

@@ -325,7 +325,7 @@ static bool isUnsupportedKeyPathValueType(Type ty) {
         return true;
     }
 
-    if (isUnsupportedKeyPathValueType(funcTy->getResult()))
+    if (isUnsupportedKeyPathValueType(funcTy->getResultType()))
       return true;
   }
 

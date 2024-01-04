@@ -1574,7 +1574,8 @@ ManagedValue emitBuiltinCreateAsyncTask(SILGenFunction &SGF, SILLocation loc,
                                 /*depth*/ 0, /*index*/ 0, SGF.getASTContext());
   // <T> () async throws -> T
   CanType functionTy =
-      GenericFunctionType::get(genericSig, {}, genericResult, extInfo)
+      GenericFunctionType::get(
+          genericSig, {}, GenericFunctionType::Result(genericResult), extInfo)
           ->getCanonicalType();
   AbstractionPattern origParam(genericSig, functionTy);
   CanType substParamType = functionTy.subst(subs)->getCanonicalType();

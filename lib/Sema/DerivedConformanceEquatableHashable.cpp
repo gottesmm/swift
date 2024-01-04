@@ -128,7 +128,7 @@ deriveBodyEquatable_enum_noAssociatedValues_eq(AbstractFunctionDecl *eqDecl,
     Expr *ref = new (C) DeclRefExpr(cmpFunc, DeclNameLoc(), /*Implicit*/ true,
                                     AccessSemantics::Ordinary, fnType);
 
-    fnType = fnType->getResult()->castTo<FunctionType>();
+    fnType = fnType->getResultType()->castTo<FunctionType>();
     auto *callExpr = DotSyntaxCallExpr::create(
         C, ref, SourceLoc(), Argument::unlabeled(base), fnType);
     callExpr->setImplicit();
@@ -143,7 +143,7 @@ deriveBodyEquatable_enum_noAssociatedValues_eq(AbstractFunctionDecl *eqDecl,
 
   auto *cmpExpr =
       BinaryExpr::create(C, aIndex, cmpFuncExpr, bIndex, /*implicit*/ true,
-                         fnType->castTo<FunctionType>()->getResult());
+                         fnType->castTo<FunctionType>()->getResultType());
   cmpExpr->setThrows(nullptr);
   statements.push_back(new (C) ReturnStmt(SourceLoc(), cmpExpr));
 
@@ -856,7 +856,7 @@ deriveBodyHashable_hashValue(AbstractFunctionDecl *hashValueDecl, void *) {
                                       AccessSemantics::Ordinary,
                                       hashFuncType);
   Type hashFuncResultType =
-      hashFuncType->castTo<AnyFunctionType>()->getResult();
+      hashFuncType->castTo<AnyFunctionType>()->getResultType();
   auto *argList = ArgumentList::forImplicitSingle(C, C.Id_for, selfRef);
   auto *callExpr = CallExpr::createImplicit(C, hashExpr, argList);
   callExpr->setType(hashFuncResultType);

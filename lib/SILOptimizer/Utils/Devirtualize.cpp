@@ -1214,7 +1214,7 @@ static bool canDevirtualizeWitnessMethod(ApplySite applySite, bool isMandatory) 
                                ->getInterfaceType()
                                // Skip the 'self' parameter.
                                ->castTo<AnyFunctionType>()
-                               ->getResult();
+                               ->getResultType();
 
   if (!interfaceTy->hasTypeParameter())
     return true;

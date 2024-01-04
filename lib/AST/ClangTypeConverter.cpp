@@ -113,11 +113,12 @@ const clang::ASTContext &clangCtx) {
 
 } // end anonymous namespace
 
-const clang::Type *ClangTypeConverter::getFunctionType(
-    ArrayRef<AnyFunctionType::Param> params, Type resultTy,
-    AnyFunctionType::Representation repr) {
+const clang::Type *
+ClangTypeConverter::getFunctionType(ArrayRef<AnyFunctionType::Param> params,
+                                    AnyFunctionType::Result resultTy,
+                                    AnyFunctionType::Representation repr) {
 
-  auto resultClangTy = convert(resultTy);
+  auto resultClangTy = convert(resultTy.getType());
   if (resultClangTy.isNull())
     return nullptr;
 

@@ -762,9 +762,9 @@ RequirementMatch swift::matchWitness(
   if (decomposeFunctionType) {
     // Decompose function types into parameters and result type.
     auto reqFnType = reqType->castTo<AnyFunctionType>();
-    auto reqResultType = reqFnType->getResult()->getRValueType();
+    auto reqResultType = reqFnType->getResultType()->getRValueType();
     auto witnessFnType = witnessType->castTo<AnyFunctionType>();
-    auto witnessResultType = witnessFnType->getResult()->getRValueType();
+    auto witnessResultType = witnessFnType->getResultType()->getRValueType();
 
     // Result types must match.
     // FIXME: Could allow (trivial?) subtyping here.
@@ -2421,7 +2421,7 @@ static Type getTypeForDisplay(ModuleDecl *module, ValueDecl *decl) {
 
   // For functions, strip off the 'Self' parameter clause.
   if (isa<AbstractFunctionDecl>(decl))
-    type = type->castTo<AnyFunctionType>()->getResult();
+    type = type->castTo<AnyFunctionType>()->getResultType();
 
   if (sigWithoutReqts) {
     auto resultFn = type->castTo<AnyFunctionType>();
@@ -2465,7 +2465,8 @@ static Type getRequirementTypeForDisplay(ModuleDecl *module,
         /*result*/false)));
     }
 
-    auto result = substType(fnTy->getResult(), /*result*/true);
+    auto result = AnyFunctionType::Result(
+        substType(fnTy->getResultType(), /*result*/ true));
 
     auto genericSig = fnTy->getOptGenericSignature();
     if (genericSig) {
@@ -2971,7 +2972,7 @@ ConformanceChecker::getReferencedAssociatedTypes(ValueDecl *req) {
   if (auto *funcTy = reqTy->getAs<GenericFunctionType>()) {
     for (auto param : funcTy->getParams())
       param.getPlainType()->getCanonicalType().walk(walker);
-    funcTy->getResult()->getCanonicalType().walk(walker);
+    funcTy->getResultType()->getCanonicalType().walk(walker);
   } else {
     reqTy->getCanonicalType().walk(walker);
   }
@@ -5218,7 +5219,7 @@ hasInvalidTypeInConformanceContext(const ValueDecl *requirement,
 
   // Skip the curried 'self' parameter.
   if (requirement->hasCurriedSelf())
-    interfaceTy = interfaceTy->castTo<AnyFunctionType>()->getResult();
+    interfaceTy = interfaceTy->castTo<AnyFunctionType>()->getResultType();
 
   // For subscripts, build a regular function type to skip walking generic
   // requirements.

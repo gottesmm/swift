@@ -5431,7 +5431,7 @@ public:
   void visitFunctionType(const FunctionType *fnTy) {
     using namespace decls_block;
 
-    auto resultType = S.addTypeRef(fnTy->getResult());
+    auto resultType = S.addTypeRef(fnTy->getResultType());
     auto clangType =
       S.getASTContext().LangOpts.UseClangFunctionTypes
       ? S.addClangTypeRef(fnTy->getClangTypeInfo().getType())
@@ -5459,8 +5459,8 @@ public:
     assert(!fnTy->isNoEscape());
     auto genericSig = fnTy->getGenericSignature();
     unsigned abbrCode = S.DeclTypeAbbrCodes[GenericFunctionTypeLayout::Code];
-    GenericFunctionTypeLayout::emitRecord(S.Out, S.ScratchRecord, abbrCode,
-        S.addTypeRef(fnTy->getResult()),
+    GenericFunctionTypeLayout::emitRecord(
+        S.Out, S.ScratchRecord, abbrCode, S.addTypeRef(fnTy->getResultType()),
         getRawStableFunctionTypeRepresentation(fnTy->getRepresentation()),
         fnTy->isSendable(), fnTy->isAsync(), fnTy->isThrowing(),
         S.addTypeRef(fnTy->getThrownError()),

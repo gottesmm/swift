@@ -577,7 +577,7 @@ getStructuralTypeContext(const Solution &solution, ConstraintLocator *locator) {
         auto &cs = solution.getConstraintSystem();
         return std::make_tuple(
             cs.getContextualTypePurpose(locator->getAnchor()),
-            fromFnType->getResult(), toFnType->getResult());
+            fromFnType->getResultType(), toFnType->getResultType());
       }
     }
     return std::make_tuple(CTP_CallArgument, fromType, toType);

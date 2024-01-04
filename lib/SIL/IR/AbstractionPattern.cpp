@@ -1075,7 +1075,7 @@ AbstractionPattern::getCXXMethodSelfPattern(CanType selfType) const {
 }
 
 static CanType getResultType(CanType type) {
-  return cast<AnyFunctionType>(type).getResult();
+  return cast<AnyFunctionType>(type).getResultType();
 }
 
 AbstractionPattern AbstractionPattern::getFunctionResultType() const {
@@ -1866,8 +1866,8 @@ bool AbstractionPattern::hasSameBasicTypeStructure(CanType l, CanType r) {
         return false;
     }
 
-    return hasSameBasicTypeStructure(lFunction.getResult(),
-                                     rFunction.getResult());
+    return hasSameBasicTypeStructure(lFunction.getResultType(),
+                                     rFunction.getResultType());
   } else if (lFunction || rFunction) {
     return false;
   }
@@ -2635,8 +2635,8 @@ public:
       newErrorType = visit(errorType, errorPattern);
     }
 
-    auto newResultTy = visit(func.getResult(),
-                             pattern.getFunctionResultType());
+    auto newResultTy =
+        visit(func.getResultType(), pattern.getFunctionResultType());
 
     llvm::Optional<FunctionType::ExtInfo> extInfo;
     if (func->hasExtInfo())
@@ -2649,7 +2649,7 @@ public:
     }
 
     return CanFunctionType::get(FunctionType::CanParamArrayRef(newParams),
-                                newResultTy, extInfo);
+                                FunctionType::CanResult(newResultTy), extInfo);
   }
   
   CanType visitFunctionType(CanFunctionType func,

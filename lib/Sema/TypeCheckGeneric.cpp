@@ -374,7 +374,7 @@ void TypeChecker::checkReferencedGenericParams(GenericContext *dc) {
   auto *funcTy = decl->getInterfaceType()->castTo<GenericFunctionType>();
   for (const auto &param : funcTy->getParams())
     param.getPlainType().walk(paramsAndResultWalker);
-  funcTy->getResult().walk(paramsAndResultWalker);
+  funcTy->getResultType().walk(paramsAndResultWalker);
 
   // Set of generic params referenced in parameter types,
   // return type or requirements.

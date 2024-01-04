@@ -1345,7 +1345,7 @@ bool BindingSet::favoredOverConjunction(Constraint *conjunction) const {
       auto *contextualFnType =
           CS.simplifyType(contextualType)->castTo<FunctionType>();
       {
-        auto resultType = contextualFnType->getResult();
+        auto resultType = contextualFnType->getResultType();
         if (resultType->hasTypeVariable()) {
           auto *typeVar = resultType->getAs<TypeVariableType>();
           // If contextual result type is represented by an opaque type,

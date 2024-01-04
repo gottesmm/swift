@@ -3745,9 +3745,10 @@ NeverNullType TypeResolver::resolveASTFunctionType(
       diffKind, /*clangFunctionType*/ nullptr, Type());
 
   const clang::Type *clangFnType = parsedClangFunctionType;
+  auto outputResultTy = AnyFunctionType::Result(outputTy);
   if (shouldStoreClangType(representation) && !clangFnType)
-    clangFnType =
-        getASTContext().getClangFunctionType(params, outputTy, representation);
+    clangFnType = getASTContext().getClangFunctionType(params, outputResultTy,
+                                                       representation);
 
   auto extInfo = extInfoBuilder.withRepresentation(representation)
                      .withConcurrent(concurrent)
@@ -3758,11 +3759,12 @@ NeverNullType TypeResolver::resolveASTFunctionType(
 
   // SIL uses polymorphic function types to resolve overloaded member functions.
   if (auto genericSig = repr->getGenericSignature()) {
-    return GenericFunctionType::get(genericSig, params, outputTy, extInfo);
+    return GenericFunctionType::get(genericSig, params, outputResultTy,
+                                    extInfo);
   }
 
-  auto fnTy = FunctionType::get(params, outputTy, extInfo);
-  
+  auto fnTy = FunctionType::get(params, outputResultTy, extInfo);
+
   if (fnTy->hasError())
     return fnTy;
 

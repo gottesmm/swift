@@ -171,7 +171,7 @@ public:
       if (auto *closure = getAsExpr<ClosureExpr>(Parent)) {
         // Return is only viable if it belongs to a parent closure.
         if (currentClosureDC() == closure)
-          inferVariables(CS.getClosureType(closure)->getResult());
+          inferVariables(CS.getClosureType(closure)->getResultType());
       }
     }
 
@@ -1154,7 +1154,7 @@ private:
                 : ConstraintKind::Defaultable;
 
         cs.addConstraint(
-            constraintKind, cs.getClosureType(closure)->getResult(),
+            constraintKind, cs.getClosureType(closure)->getResultType(),
             ctx.TheEmptyTupleType,
             cs.getConstraintLocator(closure, ConstraintLocator::ClosureResult));
       }
@@ -1341,7 +1341,7 @@ private:
 
     if (auto *closure =
             getAsExpr<ClosureExpr>(funcRef->getAbstractClosureExpr()))
-      return {cs.getClosureType(closure)->getResult(), CTP_ClosureResult};
+      return {cs.getClosureType(closure)->getResultType(), CTP_ClosureResult};
 
     return {funcRef->getBodyResultType(), CTP_ReturnStmt};
   }
@@ -1544,7 +1544,7 @@ bool ConstraintSystem::generateConstraints(SingleValueStmtExpr *E) {
       // TODO: This won't be necessary once we stop doing the fallback
       // type-check.
       if (auto *closureTy = getClosureTypeIfAvailable(CE)) {
-        auto closureResultTy = closureTy->getResult();
+        auto closureResultTy = closureTy->getResultType();
         auto *bindToClosure = Constraint::create(
             *this, ConstraintKind::Bind, resultTy, closureResultTy, loc);
         bindToClosure->setFavored();
@@ -1709,7 +1709,7 @@ private:
                      getAsExpr<ClosureExpr>(fn->getAbstractClosureExpr())) {
         return solution.getResolvedType(closure)
             ->castTo<FunctionType>()
-            ->getResult();
+            ->getResultType();
       } else {
         return fn->getBodyResultType();
       }
@@ -2575,7 +2575,7 @@ SolutionApplicationToFunctionResult ConstraintSystem::applySolution(
 
     // Coerce the result type, if it was written explicitly.
     if (closure->hasExplicitResultType()) {
-      closure->setExplicitResultType(closureFnType->getResult());
+      closure->setExplicitResultType(closureFnType->getResultType());
     }
   }
 

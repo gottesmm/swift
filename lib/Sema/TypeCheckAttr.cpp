@@ -2763,34 +2763,33 @@ SynthesizeMainFunctionRequest::evaluate(Evaluator &evaluator,
   // `@MainActor () throws -> Void`
   // `@MainActor () async throws -> Void`
   {
+    auto emptyTupleResult = FunctionType::Result(context.TheEmptyTupleType);
     llvm::SmallVector<Type, 8> mainTypes = {
 
-        FunctionType::get(/*params*/ {}, context.TheEmptyTupleType,
-                          ASTExtInfo()),
+        FunctionType::get(/*params*/ {}, emptyTupleResult, ASTExtInfo()),
         FunctionType::get(
-            /*params*/ {}, context.TheEmptyTupleType,
+            /*params*/ {}, emptyTupleResult,
             ASTExtInfoBuilder().withAsync().build()),
 
-        FunctionType::get(/*params*/ {}, context.TheEmptyTupleType,
+        FunctionType::get(/*params*/ {}, emptyTupleResult,
                           ASTExtInfoBuilder().withThrows().build()),
 
         FunctionType::get(
-            /*params*/ {}, context.TheEmptyTupleType,
+            /*params*/ {}, emptyTupleResult,
             ASTExtInfoBuilder().withAsync().withThrows().build())};
 
     Type mainActor = context.getMainActorType();
     if (mainActor) {
       mainTypes.push_back(FunctionType::get(
-          /*params*/ {}, context.TheEmptyTupleType,
+          /*params*/ {}, emptyTupleResult,
           ASTExtInfoBuilder().withGlobalActor(mainActor).build()));
       mainTypes.push_back(FunctionType::get(
-          /*params*/ {}, context.TheEmptyTupleType,
+          /*params*/ {}, emptyTupleResult,
           ASTExtInfoBuilder().withAsync().withGlobalActor(mainActor).build()));
       mainTypes.push_back(FunctionType::get(
-          /*params*/ {}, context.TheEmptyTupleType,
+          /*params*/ {}, emptyTupleResult,
           ASTExtInfoBuilder().withThrows().withGlobalActor(mainActor).build()));
-      mainTypes.push_back(FunctionType::get(/*params*/ {},
-                                            context.TheEmptyTupleType,
+      mainTypes.push_back(FunctionType::get(/*params*/ {}, emptyTupleResult,
                                             ASTExtInfoBuilder()
                                                 .withAsync()
                                                 .withThrows()
@@ -4302,9 +4301,9 @@ AttributeChecker::visitImplementationOnlyAttr(ImplementationOnlyAttr *attr) {
     // making an override, but that isn't actually the case as of this writing,
     // and it's kind of suspect anyway.
     derivedInterfaceTy =
-        derivedInterfaceTy->castTo<AnyFunctionType>()->getResult();
+        derivedInterfaceTy->castTo<AnyFunctionType>()->getResultType();
     overrideInterfaceTy =
-        overrideInterfaceTy->castTo<AnyFunctionType>()->getResult();
+        overrideInterfaceTy->castTo<AnyFunctionType>()->getResultType();
   } else if (isa<SubscriptDecl>(VD)) {
     // For subscripts, we don't have a 'Self' type, but turn it
     // into a monomorphic function type.
@@ -4928,7 +4927,7 @@ IndexSubset *TypeChecker::inferDifferentiabilityParameters(
   auto *functionType = AFD->getInterfaceType()->castTo<AnyFunctionType>();
   auto numUncurriedParams = functionType->getNumParams();
   if (auto *resultFnType =
-          functionType->getResult()->getAs<AnyFunctionType>()) {
+          functionType->getResultType()->getAs<AnyFunctionType>()) {
     numUncurriedParams += resultFnType->getNumParams();
   }
   llvm::SmallBitVector parameterBits(numUncurriedParams);
@@ -4955,7 +4954,8 @@ IndexSubset *TypeChecker::inferDifferentiabilityParameters(
   // `functionType` comes from a static/instance method, and not a free function
   // returning a function type. In practice, this code path should not be
   // reachable for free functions returning a function type.
-  if (auto resultFnType = functionType->getResult()->getAs<AnyFunctionType>())
+  if (auto resultFnType =
+          functionType->getResultType()->getAs<AnyFunctionType>())
     for (auto &param : resultFnType->getParams())
       allParamTypes.push_back(param.getPlainType());
   for (auto &param : functionType->getParams())
@@ -5026,7 +5026,7 @@ static IndexSubset *computeDifferentiabilityParameters(
   // parameters.
   auto numUncurriedParams = functionType->getNumParams();
   if (auto *resultFnType =
-          functionType->getResult()->getAs<AnyFunctionType>()) {
+          functionType->getResultType()->getAs<AnyFunctionType>()) {
     numUncurriedParams += resultFnType->getNumParams();
   }
   llvm::SmallBitVector parameterBits(numUncurriedParams);
@@ -5357,14 +5357,15 @@ static bool checkFunctionSignature(
 
   // If required result type is not a function type, check that result types
   // match exactly.
-  auto requiredResultFnTy = dyn_cast<AnyFunctionType>(required.getResult());
+  auto requiredResultType = required.getResult().getType();
+  auto requiredResultFnTy = dyn_cast<AnyFunctionType>(requiredResultType);
   auto candidateResultTy =
-      requiredGenSig.getReducedType(candidateFnTy.getResult());
+      requiredGenSig.getReducedType(candidateFnTy->getResultType());
   if (!requiredResultFnTy) {
-    auto requiredResultTupleTy = dyn_cast<TupleType>(required.getResult());
+    auto requiredResultTupleTy = dyn_cast<TupleType>(requiredResultType);
     auto candidateResultTupleTy = dyn_cast<TupleType>(candidateResultTy);
     if (!requiredResultTupleTy || !candidateResultTupleTy)
-      return required.getResult()->isEqual(candidateResultTy);
+      return requiredResultType->isEqual(candidateResultTy);
     // If result types are tuple types, check that element types match,
     // ignoring labels.
     if (requiredResultTupleTy->getNumElements() !=
@@ -5383,7 +5384,8 @@ static bool checkFunctionSignature(
 /// Returns an `AnyFunctionType` from the given parameters, result type, and
 /// generic signature.
 static AnyFunctionType *
-makeFunctionType(ArrayRef<AnyFunctionType::Param> parameters, Type resultType,
+makeFunctionType(ArrayRef<AnyFunctionType::Param> parameters,
+                 AnyFunctionType::Result resultType,
                  GenericSignature genericSignature) {
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   if (genericSignature) {
@@ -5408,13 +5410,15 @@ getDerivativeOriginalFunctionType(AnyFunctionType *derivativeFnTy) {
     if (currentLevel == nullptr)
       break;
     curryLevels.push_back(currentLevel);
-    currentLevel = currentLevel->getResult()->getAs<AnyFunctionType>();
+    currentLevel = currentLevel->getResultType()->getAs<AnyFunctionType>();
   }
 
-  auto derivativeResult = curryLevels.back()->getResult()->getAs<TupleType>();
+  auto derivativeResult =
+      curryLevels.back()->getResultType()->getAs<TupleType>();
   assert(derivativeResult && derivativeResult->getNumElements() == 2 &&
          "Expected derivative result to be a two-element tuple");
-  auto originalResult = derivativeResult->getElement(0).getType();
+  auto originalResult =
+      AnyFunctionType::Result(derivativeResult->getElement(0).getType());
   auto *originalType = makeFunctionType(
       curryLevels.back()->getParams(), originalResult,
       curryLevels.size() == 1 ? derivativeFnTy->getOptGenericSignature()
@@ -5426,11 +5430,11 @@ getDerivativeOriginalFunctionType(AnyFunctionType *derivativeFnTy) {
   for (auto pair : enumerate(llvm::reverse(curryLevelsWithoutLast))) {
     unsigned i = pair.index();
     AnyFunctionType *curryLevel = pair.value();
-    originalType =
-        makeFunctionType(curryLevel->getParams(), originalType,
-                         i == curryLevelsWithoutLast.size() - 1
-                             ? derivativeFnTy->getOptGenericSignature()
-                             : nullptr);
+    originalType = makeFunctionType(
+        curryLevel->getParams(), AnyFunctionType::Result(originalType),
+        i == curryLevelsWithoutLast.size() - 1
+            ? derivativeFnTy->getOptGenericSignature()
+            : nullptr);
   }
   return originalType;
 }
@@ -5445,12 +5449,12 @@ getTransposeOriginalFunctionType(AnyFunctionType *transposeFnType,
 
   // Get the transpose function's parameters and result type.
   auto transposeParams = transposeFnType->getParams();
-  auto transposeResult = transposeFnType->getResult();
+  auto transposeResult = transposeFnType->getResultType();
   bool isCurried = transposeResult->is<AnyFunctionType>();
   if (isCurried) {
     auto methodType = transposeResult->castTo<AnyFunctionType>();
     transposeParams = methodType->getParams();
-    transposeResult = methodType->getResult();
+    transposeResult = methodType->getResultType();
   }
 
   // Get the original function's result type.
@@ -5518,15 +5522,17 @@ getTransposeOriginalFunctionType(AnyFunctionType *transposeFnType,
   // `(Self) -> (<original parameters>) -> <original result>`.
   if (isCurried) {
     assert(selfType && "`Self` type should be resolved");
-    originalType = makeFunctionType(originalParams, originalResult, nullptr);
-    originalType =
-        makeFunctionType(AnyFunctionType::Param(selfType), originalType,
-                         transposeFnType->getOptGenericSignature());
+    originalType = makeFunctionType(
+        originalParams, AnyFunctionType::Result(originalResult), nullptr);
+    originalType = makeFunctionType(AnyFunctionType::Param(selfType),
+                                    AnyFunctionType::Result(originalType),
+                                    transposeFnType->getOptGenericSignature());
   }
   // Otherwise, the original function type is simply:
   // `(<original parameters>) -> <original result>`.
   else {
-    originalType = makeFunctionType(originalParams, originalResult,
+    originalType = makeFunctionType(originalParams,
+                                    AnyFunctionType::Result(originalResult),
                                     transposeFnType->getOptGenericSignature());
   }
   return originalType;
@@ -6334,7 +6340,7 @@ static bool typeCheckDerivativeAttr(DerivativeAttr *attr) {
   CanType canActualResultType = derivativeInterfaceType->getCanonicalType();
   while (isa<AnyFunctionType>(canActualResultType)) {
     canActualResultType =
-        cast<AnyFunctionType>(canActualResultType).getResult();
+        cast<AnyFunctionType>(canActualResultType).getResultType();
   }
   CanType actualLinearMapType =
       cast<TupleType>(canActualResultType).getElementType(1);
@@ -6431,15 +6437,16 @@ computeLinearityParameters(ArrayRef<ParsedAutoDiffParameter> parsedLinearParams,
   // Get the transpose function type.
   auto *transposeFunctionType =
       transposeFunction->getInterfaceType()->castTo<AnyFunctionType>();
-  bool isCurried = transposeFunctionType->getResult()->is<AnyFunctionType>();
+  bool isCurried =
+      transposeFunctionType->getResultType()->is<AnyFunctionType>();
 
   // Get transposed result types.
   // The transpose function result type may be a singular type or a tuple type.
   ArrayRef<TupleTypeElt> transposeResultTypes;
-  auto transposeResultType = transposeFunctionType->getResult();
+  auto transposeResultType = transposeFunctionType->getResultType();
   if (isCurried)
     transposeResultType =
-        transposeResultType->castTo<AnyFunctionType>()->getResult();
+        transposeResultType->castTo<AnyFunctionType>()->getResultType();
   if (auto resultTupleType = transposeResultType->getAs<TupleType>()) {
     transposeResultTypes = resultTupleType->getElements();
   } else {
@@ -6461,7 +6468,7 @@ computeLinearityParameters(ArrayRef<ParsedAutoDiffParameter> parsedLinearParams,
   auto numUncurriedParams = transposeFunctionType->getNumParams();
   if (isCurried) {
     auto *resultFnType =
-        transposeFunctionType->getResult()->castTo<AnyFunctionType>();
+        transposeFunctionType->getResultType()->castTo<AnyFunctionType>();
     numUncurriedParams += resultFnType->getNumParams();
   }
   auto numParams =
@@ -6554,8 +6561,8 @@ doTransposeStaticAndInstanceSelfTypesMatch(AnyFunctionType *transposeType,
                                            Type &instanceSelfType) {
   // Transpose type should have the form:
   // `(StaticSelf) -> (...) -> (InstanceSelf, ...)`.
-  auto methodType = transposeType->getResult()->castTo<AnyFunctionType>();
-  auto transposeResult = methodType->getResult();
+  auto methodType = transposeType->getResultType()->castTo<AnyFunctionType>();
+  auto transposeResult = methodType->getResultType();
 
   // Get transposed result types.
   // The transpose function result type may be a singular type or a tuple type.
@@ -6585,7 +6592,8 @@ void AttributeChecker::visitTransposeAttr(TransposeAttr *attr) {
   auto originalName = attr->getOriginalFunctionName();
   auto *transposeInterfaceType =
       transpose->getInterfaceType()->castTo<AnyFunctionType>();
-  bool isCurried = transposeInterfaceType->getResult()->is<AnyFunctionType>();
+  bool isCurried =
+      transposeInterfaceType->getResultType()->is<AnyFunctionType>();
 
   // Get the linearity parameter indices.
   auto *linearParamIndices = attr->getParameterIndices();
@@ -6640,10 +6648,10 @@ void AttributeChecker::visitTransposeAttr(TransposeAttr *attr) {
 
   // `R` result type must conform to `Differentiable` and satisfy
   // `Self == Self.TangentVector`.
-  auto expectedOriginalResultType = expectedOriginalFnType->getResult();
+  auto expectedOriginalResultType = expectedOriginalFnType->getResultType();
   if (isCurried)
     expectedOriginalResultType =
-        expectedOriginalResultType->castTo<AnyFunctionType>()->getResult();
+        expectedOriginalResultType->castTo<AnyFunctionType>()->getResultType();
   if (expectedOriginalResultType->hasTypeParameter())
     expectedOriginalResultType = transpose->mapTypeIntoContext(
         expectedOriginalResultType);

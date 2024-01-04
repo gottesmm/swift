@@ -220,7 +220,7 @@ static bool areConservativelyCompatibleArgumentLabels(
   if (decl->hasParameterList()) {
     fnType = decl->getInterfaceType()->castTo<AnyFunctionType>();
     if (hasAppliedSelf) {
-      fnType = fnType->getResult()->getAs<AnyFunctionType>();
+      fnType = fnType->getResultType()->getAs<AnyFunctionType>();
       assert(fnType && "Parameter list curry level does not match type");
     }
   } else if (auto *VD = dyn_cast<VarDecl>(decl)) {
@@ -1896,7 +1896,7 @@ static ConstraintSystem::TypeMatchResult matchCallArguments(
           // In Swift >= 5 mode there is no @autoclosure forwarding,
           // so let's match result types.
           if (auto *fnType = paramTy->getAs<FunctionType>()) {
-            paramTy = fnType->getResult();
+            paramTy = fnType->getResultType();
           }
         } else {
           // Matching @autoclosure argument to @autoclosure parameter
@@ -3570,8 +3570,15 @@ ConstraintSystem::matchFunctionTypes(FunctionType *func1, FunctionType *func2,
     }
   }
 
+  // Make sure that the result flags match up.
+  if (!func1->getResult().getFlags().containsOnly(
+          func2->getResult().getFlags())) {
+    return getTypeMatchFailure(
+        locator.withPathElement(ConstraintLocator::FunctionResult));
+  }
+
   // Result type can be covariant (or equal).
-  return matchTypes(func1->getResult(), func2->getResult(), subKind,
+  return matchTypes(func1->getResultType(), func2->getResultType(), subKind,
                     subflags,
                     locator.withPathElement(ConstraintLocator::FunctionResult));
 }
@@ -5050,7 +5057,7 @@ bool ConstraintSystem::repairFailures(
         return false;
     }
 
-    auto resultType = fnType->getResult();
+    auto resultType = fnType->getResultType();
     // If this is situation like `x = { ... }` where closure results in
     // `Void`, let's not suggest to call the closure, because it's most
     // likely not intended.
@@ -8093,10 +8100,13 @@ ConstraintSystem::simplifyConstructionConstraint(
     // they should also be verified above.
     Type argType = AnyFunctionType::composeTuple(
         getASTContext(), args, ParameterFlagHandling::AssertEmpty);
-    Type resultType = fnType->getResult();
+
+    // Handle any result flags here.
+    auto result = fnType->getResult();
 
     ConstraintLocatorBuilder builder(locator);
-    if (matchTypes(resultType, desugarValueType, ConstraintKind::Bind, flags,
+    if (matchTypes(result.getType(), desugarValueType, ConstraintKind::Bind,
+                   flags,
                    builder.withPathElement(ConstraintLocator::ApplyFunction))
             .isFailure())
       return SolutionKind::Error;
@@ -9197,7 +9207,8 @@ ConstraintSystem::simplifyOptionalObjectConstraint(
     if (fnType && fnType->getNumParams() == 0) {
       // For function types with no parameters, let's try to
       // offer a "make it a call" fix if possible.
-      auto optionalResultType = fnType->getResult()->getOptionalObjectType();
+      auto optionalResultType =
+          fnType->getResultType()->getOptionalObjectType();
       if (optionalResultType) {
         if (matchTypes(optionalResultType, second, ConstraintKind::Bind,
                        flags | TMF_ApplyingFix, locator)
@@ -11085,7 +11096,7 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyMemberConstraint(
       // function takes no arguments, otherwise it
       // would make sense to report this a missing member.
       if (funcType->getNumParams() == 0) {
-        auto result = solveWithNewBaseOrName(funcType->getResult(), member);
+        auto result = solveWithNewBaseOrName(funcType->getResultType(), member);
         // If there is indeed a member with given name in result type
         // let's return, otherwise let's fall-through and report
         // this problem as a missing member.
@@ -11710,7 +11721,7 @@ bool ConstraintSystem::resolveClosure(TypeVariableType *typeVar,
   // If there is a result builder to apply, do so now.
   if (resultBuilderType) {
     if (auto result = matchResultBuilder(
-            closure, resultBuilderType, closureType->getResult(),
+            closure, resultBuilderType, closureType->getResultType(),
             ConstraintKind::Conversion, contextualType, locator)) {
       return result->isSuccess();
     }
@@ -12223,7 +12234,7 @@ ConstraintSystem::simplifyKeyPathConstraint(
       // from inside the function body as we'll be transforming the code into:
       // { root in root[keyPath: kp] }.
       contextualRootTy = fnTy->getParams()[0].getParameterType();
-      contextualValueTy = fnTy->getResult();
+      contextualValueTy = fnTy->getResultType();
     }
 
     assert(contextualRootTy && contextualValueTy);
@@ -12489,7 +12500,7 @@ bool ConstraintSystem::simplifyAppliedOverloadsImpl(
 
     // For now, don't attempt to establish a common result type when there
     // are type parameters.
-    Type choiceResultType = choiceFnType->getResult();
+    Type choiceResultType = choiceFnType->getResultType();
     if (choiceResultType->hasTypeParameter())
       return markFailure();
 
@@ -12616,7 +12627,7 @@ retry_after_fail:
         if (auto *choiceFnType = choiceType->getAs<FunctionType>()) {
           if (FunctionType::equalParams(argFnType->getParams(),
                                         choiceFnType->getParams()) &&
-              argFnType->getResult()->isEqual(choiceFnType->getResult()))
+              argFnType->getResult() == choiceFnType->getResult())
             constraint->setFavored();
         }
 
@@ -12664,7 +12675,7 @@ retry_after_fail:
     // in the constraint system with unintended consequences because e.g.
     // in case of key path application it could disconnect one of the
     // components like subscript from the rest of the context.
-    addConstraint(ConstraintKind::Equal, argFnType->getResult(),
+    addConstraint(ConstraintKind::Equal, argFnType->getResultType(),
                   commonResultType, locator);
   }
   return false;
@@ -12727,10 +12738,9 @@ bool ConstraintSystem::simplifyAppliedOverloads(
 
 /// Create an implicit dot-member reference expression to be used
 /// as a root for injected `.callAsFunction` call.
-static UnresolvedDotExpr *
-createImplicitRootForCallAsFunction(ConstraintSystem &cs, Type refType,
-                                    ArgumentList *arguments,
-                                    ConstraintLocator *calleeLocator) {
+static UnresolvedDotExpr *createImplicitRootForCallAsFunction(
+    ConstraintSystem &cs, AnyFunctionType::Result refType,
+    ArgumentList *arguments, ConstraintLocator *calleeLocator) {
   auto &ctx = cs.getASTContext();
   auto *baseExpr = castToExpr(calleeLocator->getAnchor());
 
@@ -12743,7 +12753,7 @@ createImplicitRootForCallAsFunction(ConstraintSystem &cs, Type refType,
 
   {
     // Record a type of the new reference in the constraint system.
-    cs.setType(implicitRef, refType);
+    cs.setType(implicitRef, refType.getType());
     // Record new `.callAsFunction` in the constraint system.
     cs.recordCallAsFunction(implicitRef, arguments, calleeLocator);
   }
@@ -12923,7 +12933,7 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyApplicableFnConstraint(
 
     switch (matchCallResult) {
     case SolutionKind::Error: {
-      auto resultTy = func2->getResult();
+      auto resultTy = func2->getResultType();
 
       // If this is a call that constructs a callable type with
       // trailing closure(s), closure(s) might not belong to
@@ -12970,7 +12980,8 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyApplicableFnConstraint(
         // The original application type with all the trailing closures
         // dropped from it and result replaced to the implicit variable.
         func1 = FunctionType::get(func1->getParams().drop_back(numTrailing),
-                                  callableType, func1->getExtInfo());
+                                  AnyFunctionType::Result(callableType),
+                                  func1->getExtInfo());
 
         auto matchCallResult = ::matchCallArguments(
             *this, func2, newArgumentList, func1->getParams(),
@@ -13029,7 +13040,7 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyApplicableFnConstraint(
     }
 
     // Erase all of the opened existentials.
-    Type result2 = func2->getResult();
+    Type result2 = func2->getResultType();
     if (result2->hasTypeVariable() && !openedExistentials.empty()) {
       for (const auto &opened : openedExistentials) {
         result2 = typeEraseOpenedExistentialReference(
@@ -13040,7 +13051,7 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyApplicableFnConstraint(
 
     // The result types are equivalent.
     if (matchFunctionResultTypes(
-            func1->getResult(), result2, subflags,
+            func1->getResultType(), result2, subflags,
             locator.withPathElement(ConstraintLocator::FunctionResult))
             .isFailure())
       return SolutionKind::Error;
@@ -13280,7 +13291,7 @@ ConstraintSystem::simplifyDynamicCallableApplicableFnConstraint(
 
     // The result types are equivalent.
     if (matchFunctionResultTypes(
-            func1->getResult(), func2->getResult(), subflags,
+            func1->getResultType(), func2->getResultType(), subflags,
             locator.withPathElement(ConstraintLocator::FunctionResult))
             .isFailure())
       return SolutionKind::Error;
@@ -14410,7 +14421,8 @@ ConstraintSystem::simplifyRestrictedConstraintImpl(
                              /*outerAlternatives=*/{}, memberLoc);
 
     addConstraint(ConstraintKind::ApplicableFunction,
-                  FunctionType::get({FunctionType::Param(type1)}, type2),
+                  FunctionType::get({FunctionType::Param(type1)},
+                                    FunctionType::Result(type2)),
                   memberTy, applicationLoc);
 
     ImplicitValueConversions.insert(
@@ -15109,7 +15121,7 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyFixConstraint(
         // with result type matching contextual, it should have
         // been diagnosed as "missing explicit call", let's
         // increase the score to make sure that we don't impede that.
-        auto result = matchTypes(fnType1->getResult(), type2, matchKind,
+        auto result = matchTypes(fnType1->getResultType(), type2, matchKind,
                                  TMF_ApplyingFix, locator);
         if (result == SolutionKind::Solved)
           increaseScore(SK_Fix, locator);

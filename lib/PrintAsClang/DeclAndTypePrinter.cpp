@@ -990,7 +990,7 @@ private:
 
       case ForeignErrorConvention::NilResult:
         // Errors are propagated via 'nil' returns.
-        return OptionalType::get(methodTy->getResult());
+        return OptionalType::get(methodTy->getResultType());
 
       case ForeignErrorConvention::NonNilError:
       case ForeignErrorConvention::ZeroPreservedResult:
@@ -1003,7 +1003,7 @@ private:
       return getASTContext().TheEmptyTupleType;
     }
 
-    auto result = methodTy->getResult();
+    auto result = methodTy->getResultType();
     if (result->isUninhabited())
       return getASTContext().TheEmptyTupleType;
     return result;
@@ -1316,9 +1316,9 @@ private:
       }
       if (asyncConvention) {
         // Async methods don't have result types to annotate.
-      } else if (methodTy->getResult()->isUninhabited()) {
+      } else if (methodTy->getResultType()->isUninhabited()) {
         os << " SWIFT_NORETURN";
-      } else if (!methodTy->getResult()->isVoid() &&
+      } else if (!methodTy->getResultType()->isVoid() &&
                  !AFD->getAttrs().hasAttribute<DiscardableResultAttr>()) {
         os << " SWIFT_WARN_UNUSED_RESULT";
       }
@@ -1391,9 +1391,9 @@ private:
 
   /// Print C or C++ trailing attributes for a function declaration.
   void printFunctionClangAttributes(FuncDecl *FD, AnyFunctionType *funcTy) {
-    if (funcTy->getResult()->isUninhabited()) {
+    if (funcTy->getResultType()->isUninhabited()) {
       os << " SWIFT_NORETURN";
-    } else if (!funcTy->getResult()->isVoid() &&
+    } else if (!funcTy->getResultType()->isVoid() &&
                !FD->getAttrs().hasAttribute<DiscardableResultAttr>()) {
       os << " SWIFT_WARN_UNUSED_RESULT";
     }
@@ -2627,7 +2627,7 @@ private:
 
   void printFunctionType(FunctionType *FT, char pointerSigil,
                          llvm::Optional<OptionalTypeKind> optionalKind) {
-    visitPart(FT->getResult(), OTK_None);
+    visitPart(FT->getResultType(), OTK_None);
     os << " (" << pointerSigil;
     printNullability(optionalKind);
     openFunctionTypes.push_back(FT);

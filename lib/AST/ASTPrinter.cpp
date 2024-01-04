@@ -4553,6 +4553,24 @@ static void printParameterFlags(ASTPrinter &printer,
     printer.printKeyword("_const", options, " ");
 }
 
+static void printResultFlags(ASTPrinter &printer, const PrintOptions &options,
+                             const AnyFunctionType::Result param) {
+  auto flags = param.getFlags();
+
+  // When adding a new flag, remove the tested flag after printing from the
+  // variable flags so that the assert at the end stays true.
+  //
+  // Example:
+  //
+  // if (flags.contains(MyNewFlag)) {
+  //   flags -= MyNewFlag;
+  //   printSomething();
+  // }
+
+  // Make sure we handled all flags earlier.
+  assert(bool(flags) && "A flag was added");
+}
+
 void PrintAST::visitVarDecl(VarDecl *decl) {
   printDocumentationComment(decl);
   // Print @_hasStorage when the attribute is not already
@@ -4754,7 +4772,7 @@ void PrintAST::printFunctionParameters(AbstractFunctionDecl *AFD) {
   // Skip over the implicit 'self'.
   if (AFD->hasImplicitSelfDecl())
     if (auto funTy = curTy->getAs<AnyFunctionType>())
-      curTy = funTy->getResult();
+      curTy = funTy->getResult().getType();
 
   ArrayRef<AnyFunctionType::Param> parameterListTypes;
   if (auto funTy = curTy->getAs<AnyFunctionType>())
@@ -4988,6 +5006,7 @@ void PrintAST::printEnumElement(EnumElementDecl *elt) {
       auto type = elt->getInterfaceType();
       params = type->castTo<AnyFunctionType>()
                    ->getResult()
+                   .getType()
                    ->castTo<AnyFunctionType>()
                    ->getParams();
     }
@@ -5788,7 +5807,7 @@ void PrintAST::visitAnyHashableErasureExpr(AnyHashableErasureExpr *expr) {
 void PrintAST::visitConstructorRefCallExpr(ConstructorRefCallExpr *expr) {
   if (auto type = expr->getType()) {
     if (auto *funcType = type->getAs<FunctionType>()) {
-      printType(funcType->getResult());
+      printType(funcType->getResult().getType());
     }
   }
 }
@@ -7131,7 +7150,8 @@ public:
     Printer << " -> ";
 
     Printer.callPrintStructurePre(PrintStructureKind::FunctionReturnType);
-    T->getResult().print(Printer, Options);
+    printResultFlags(Printer, Options, T->getResult());
+    T->getResult().getType().print(Printer, Options);
     Printer.printStructurePost(PrintStructureKind::FunctionReturnType);
   }
 
@@ -7194,7 +7214,8 @@ public:
 
     Printer << " -> ";
     Printer.callPrintStructurePre(PrintStructureKind::FunctionReturnType);
-    T->getResult().print(Printer, Options);
+    printResultFlags(Printer, Options, T->getResult());
+    T->getResult().getType().print(Printer, Options);
     Printer.printStructurePost(PrintStructureKind::FunctionReturnType);
   }
 

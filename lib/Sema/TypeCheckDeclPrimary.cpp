@@ -690,8 +690,8 @@ CheckRedeclarationRequest::evaluate(Evaluator &eval, ValueDecl *current,
           auto currFnTy = current->getInterfaceType()->getAs<AnyFunctionType>();
           auto otherFnTy = other->getInterfaceType()->getAs<AnyFunctionType>();
           if (currFnTy && otherFnTy && currentDC->isTypeContext()) {
-            currFnTy = currFnTy->getResult()->getAs<AnyFunctionType>();
-            otherFnTy = otherFnTy->getResult()->getAs<AnyFunctionType>();
+            currFnTy = currFnTy->getResultType()->getAs<AnyFunctionType>();
+            otherFnTy = otherFnTy->getResultType()->getAs<AnyFunctionType>();
           }
           
           if (currFnTy && otherFnTy) {

@@ -1560,8 +1560,8 @@ static CanPackType getInducedPackType(AnyFunctionType::CanParamArrayRef params,
 static MetadataResponse emitFunctionTypeMetadataRef(IRGenFunction &IGF,
                                                     CanFunctionType type,
                                                     DynamicMetadataRequest request) {
-  auto result =
-    IGF.emitAbstractTypeMetadataRef(type->getResult()->getCanonicalType());
+  auto result = IGF.emitAbstractTypeMetadataRef(
+      type->getResultType()->getCanonicalType());
 
   auto params = type.getParams();
   bool hasPackExpansion = type->containsPackExpansionParam();
@@ -3502,7 +3502,8 @@ public:
       //
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       CanFunctionType::ExtInfo info;
-      return CanFunctionType::get({}, C.TheEmptyTupleType, info);
+      return CanFunctionType::get(
+          {}, AnyFunctionType::CanResult(C.TheEmptyTupleType), info);
     }
     case SILFunctionType::Representation::Block:
       // All block types look like AnyObject.
@@ -3708,8 +3709,8 @@ namespace {
         // All function types look like () -> ().
         // FIXME: Verify ExtInfo state is correct, not working by accident.
         CanFunctionType::ExtInfo info;
-        return emitFromValueWitnessTable(
-            CanFunctionType::get({}, C.TheEmptyTupleType, info));
+        return emitFromValueWitnessTable(CanFunctionType::get(
+            {}, AnyFunctionType::CanResult(C.TheEmptyTupleType), info));
       }
       case SILFunctionType::Representation::Block:
         // All block types look like AnyObject.

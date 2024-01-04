@@ -999,7 +999,7 @@ AbstractFunctionDecl::getEffectiveThrownErrorType() const {
   Type interfaceType = getInterfaceType();
   if (hasImplicitSelfDecl()) {
     if (auto fnType = interfaceType->getAs<AnyFunctionType>())
-      interfaceType = fnType->getResult();
+      interfaceType = fnType->getResult().getType();
   }
 
   if (auto fnType = interfaceType->getAs<AnyFunctionType>())
@@ -3449,9 +3449,10 @@ static Type mapSignatureFunctionType(ASTContext &ctx, Type type,
   }
 
   // Map the result type.
-  auto resultTy = mapSignatureFunctionType(
-    ctx, funcTy->getResult(), topLevelFunction, false, isInitializer,
-    curryLevels - 1);
+  auto resultTy = mapSignatureFunctionType(ctx, funcTy->getResult().getType(),
+                                           topLevelFunction, false,
+                                           isInitializer, curryLevels - 1);
+  auto result = funcTy->getResult().withType(resultTy);
 
   // Map various attributes differently depending on if we're looking at
   // the declaration, or a function parameter type.
@@ -3461,9 +3462,9 @@ static Type mapSignatureFunctionType(ASTContext &ctx, Type type,
   // Rebuild the resulting function type.
   if (auto genericFuncTy = dyn_cast<GenericFunctionType>(funcTy))
     return GenericFunctionType::get(genericFuncTy->getGenericSignature(),
-                                    newParams, resultTy, info);
+                                    newParams, result, info);
 
-  return FunctionType::get(newParams, resultTy, info);
+  return FunctionType::get(newParams, result, info);
 }
 
 OverloadSignature ValueDecl::getOverloadSignature() const {
@@ -4651,11 +4652,11 @@ static GenericParameterReferenceInfo findGenericParameterReferencesInFunction(
 
   canBeCovariantResult =
       // &= does not short-circuit.
-      canBeCovariantResult &&
-      canResultTypeHaveCovariantGenericParameterResult(fnType->getResult());
+      canBeCovariantResult && canResultTypeHaveCovariantGenericParameterResult(
+                                  fnType->getResult().getType());
 
   const auto resultInfo = ::findGenericParameterReferences(
-      genericSig, genericParam, fnType->getResult(), position,
+      genericSig, genericParam, fnType->getResult().getType(), position,
       treatNonResultCovarianceAsInvariant, canBeCovariantResult);
 
   return inputInfo |= resultInfo;
@@ -4871,7 +4872,7 @@ swift::findGenericParameterReferences(const ValueDecl *value,
   if (isa<AbstractFunctionDecl>(value) || isa<SubscriptDecl>(value)) {
     // For a method, skip the 'self' parameter.
     if (value->hasCurriedSelf())
-      type = type->castTo<AnyFunctionType>()->getResult();
+      type = type->castTo<AnyFunctionType>()->getResult().getType();
 
     return ::findGenericParameterReferencesInFunction(
         sig, genericParam, type->castTo<AnyFunctionType>(),
@@ -8999,7 +9000,7 @@ Type AbstractFunctionDecl::getMethodInterfaceType() const {
   auto Ty = getInterfaceType();
   if (Ty->is<ErrorType>())
     return Ty;
-  return Ty->castTo<AnyFunctionType>()->getResult();
+  return Ty->castTo<AnyFunctionType>()->getResult().getType();
 }
 
 bool AbstractFunctionDecl::hasDynamicSelfResult() const {
@@ -9044,7 +9045,7 @@ static bool isPotentialCompletionHandler(const ParamDecl *param) {
     return false;
 
   auto *paramType = param->getInterfaceType()->getAs<AnyFunctionType>();
-  return paramType && paramType->getResult()->isVoid() &&
+  return paramType && paramType->getResult().getType()->isVoid() &&
          !paramType->isNoEscape() && !param->isAutoClosure();
 }
 
@@ -10472,7 +10473,7 @@ Type EnumElementDecl::getArgumentInterfaceType() const {
   }
 
   auto funcTy = interfaceType->castTo<AnyFunctionType>();
-  funcTy = funcTy->getResult()->castTo<FunctionType>();
+  funcTy = funcTy->getResult().getType()->castTo<FunctionType>();
 
   // The payload type of an enum is an imploded tuple of the internal arguments
   // of the case constructor. As such, compose a tuple type with the parameter
@@ -10569,7 +10570,7 @@ Type ConstructorDecl::getInitializerInterfaceType() {
   }
 
   auto funcTy = allocatorTy->castTo<AnyFunctionType>()->getResult();
-  assert(funcTy->is<FunctionType>());
+  assert(funcTy.getType()->is<FunctionType>());
 
   // Constructors have an initializer type that takes an instance
   // instead of a metatype.

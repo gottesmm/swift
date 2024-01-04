@@ -4103,7 +4103,7 @@ SILGenModule::emitKeyPathComponentForDecl(SILLocation loc,
     auto baseSubscriptInterfaceTy = cast<AnyFunctionType>(
       baseSubscriptTy->mapTypeOutOfContext()->getCanonicalType());
 
-    auto componentTy = baseSubscriptInterfaceTy.getResult();
+    auto componentTy = baseSubscriptInterfaceTy.getResultType();
     if (decl->getAttrs().hasAttribute<OptionalAttr>()) {
       // The component type for an @objc optional requirement needs to be
       // wrapped in an optional

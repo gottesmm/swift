@@ -4799,7 +4799,7 @@ MemberRefExpr *getSelfInteropStaticCast(FuncDecl *funcDecl,
   auto casted = CallExpr::createImplicit(ctx, staticCastRefExpr, argList);
   // This will be "Optional<UnsafeMutablePointer<Base>>"
   casted->setType(cast<FunctionType>(staticCastRefExpr->getType().getPointer())
-                      ->getResult());
+                      ->getResultType());
   casted->setThrows(nullptr);
 
   SubstitutionMap pointeeSubst = SubstitutionMap::get(
@@ -5524,7 +5524,7 @@ makeBaseClassMemberAccessors(DeclContext *declContext,
 
   ParameterList *bodyParams = nullptr;
   if (auto subscript = dyn_cast<SubscriptDecl>(baseClassVar)) {
-    computedType = computedType->getAs<FunctionType>()->getResult();
+    computedType = computedType->getAs<FunctionType>()->getResultType();
 
     auto idxParam = subscript->getIndices()->get(0);
     bodyParams = ParameterList::create(ctx, { idxParam });
@@ -6581,7 +6581,8 @@ static ValueDecl *rewriteIntegerTypes(SubstitutionMap subst, ValueDecl *oldDecl,
   //   (Generic) -> CType
   if (isa<ConstructorDecl>(oldDecl) || oldDecl->isInstanceMember() ||
       oldDecl->isStatic())
-    originalFnSubst = cast<FunctionType>(originalFnSubst->getResult().getPointer());
+    originalFnSubst =
+        cast<FunctionType>(originalFnSubst->getResultType().getPointer());
 
   SmallVector<ParamDecl *, 4> fixedParameters;
   unsigned parameterIndex = 0;
@@ -6606,20 +6607,20 @@ static ValueDecl *rewriteIntegerTypes(SubstitutionMap subst, ValueDecl *oldDecl,
   newDecl->setParameters(fixedParams);
 
   // Now fix the result type:
-  if (originalFnSubst->getResult()->isEqual(
+  if (originalFnSubst->getResultType()->isEqual(
           newDecl->getASTContext().getIntType()) ||
-      originalFnSubst->getResult()->isEqual(
+      originalFnSubst->getResultType()->isEqual(
           newDecl->getASTContext().getUIntType())) {
     // Constructors don't have a result.
     if (auto func = dyn_cast<FuncDecl>(newDecl)) {
       // We have to rebuild the whole function.
       auto newFnDecl = FuncDecl::createImported(
-          func->getASTContext(), func->getNameLoc(),
-          func->getName(), func->getNameLoc(),
-          func->hasAsync(), func->hasThrows(),
-          func->getThrownInterfaceType(),
-          fixedParams, originalFnSubst->getResult(),
-          /*genericParams=*/nullptr, func->getDeclContext(), newDecl->getClangDecl());
+          func->getASTContext(), func->getNameLoc(), func->getName(),
+          func->getNameLoc(), func->hasAsync(), func->hasThrows(),
+          func->getThrownInterfaceType(), fixedParams,
+          originalFnSubst->getResultType(),
+          /*genericParams=*/nullptr, func->getDeclContext(),
+          newDecl->getClangDecl());
       if (func->isStatic()) newFnDecl->setStatic();
       if (func->isImportAsStaticMember()) newFnDecl->setImportAsStaticMember();
       if (func->getImportAsMemberStatus().isInstance()) {
@@ -6704,11 +6705,15 @@ synthesizeDependentTypeThunkParamForwarding(AbstractFunctionDecl *afd, void *con
     auto *memberCall = DotSyntaxCallExpr::create(ctx, specializedFuncDeclRef,
                                                  SourceLoc(), selfArg);
     memberCall->setThrows(nullptr);
-    auto resultType = specializedFuncDecl->getInterfaceType()->getAs<FunctionType>()->getResult();
+    auto resultType = specializedFuncDecl->getInterfaceType()
+                          ->getAs<FunctionType>()
+                          ->getResultType();
     specializedFuncDeclRef = memberCall;
     specializedFuncDeclRef->setType(resultType);
   } else if (specializedFuncDecl->isStatic()) {
-    auto resultType = specializedFuncDecl->getInterfaceType()->getAs<FunctionType>()->getResult();
+    auto resultType = specializedFuncDecl->getInterfaceType()
+                          ->getAs<FunctionType>()
+                          ->getResultType();
     auto selfType = cast<NominalTypeDecl>(thunkDecl->getDeclContext()->getAsDecl())->getDeclaredInterfaceType();
     auto selfTypeExpr = TypeExpr::createImplicit(selfType, ctx);
     auto *memberCall =
@@ -6836,11 +6841,15 @@ synthesizeForwardingThunkBody(AbstractFunctionDecl *afd, void *context) {
     auto *memberCall = DotSyntaxCallExpr::create(ctx, specializedFuncDeclRef,
                                                  SourceLoc(), selfArg);
     memberCall->setThrows(nullptr);
-    auto resultType = specializedFuncDecl->getInterfaceType()->getAs<FunctionType>()->getResult();
+    auto resultType = specializedFuncDecl->getInterfaceType()
+                          ->getAs<FunctionType>()
+                          ->getResultType();
     specializedFuncDeclRef = memberCall;
     specializedFuncDeclRef->setType(resultType);
   } else if (specializedFuncDecl->isStatic()) {
-    auto resultType = specializedFuncDecl->getInterfaceType()->getAs<FunctionType>()->getResult();
+    auto resultType = specializedFuncDecl->getInterfaceType()
+                          ->getAs<FunctionType>()
+                          ->getResultType();
     auto selfType = cast<NominalTypeDecl>(thunkDecl->getDeclContext()->getAsDecl())->getDeclaredInterfaceType();
     auto selfTypeExpr = TypeExpr::createImplicit(selfType, ctx);
     auto *memberCall =
@@ -6891,7 +6900,8 @@ static ValueDecl *generateThunkForExtraMetatypes(SubstitutionMap subst,
   //   (Generic) -> CType
   if (isa<ConstructorDecl>(oldDecl) || oldDecl->isInstanceMember() ||
       oldDecl->isStatic())
-    originalFnSubst = cast<FunctionType>(originalFnSubst->getResult().getPointer());
+    originalFnSubst =
+        cast<FunctionType>(originalFnSubst->getResultType().getPointer());
 
   for (auto paramTy : originalFnSubst->getParams()) {
     if (!paramTy.getPlainType()->is<MetatypeType>())

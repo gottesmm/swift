@@ -1933,7 +1933,7 @@ Type AbstractClosureExpr::getResultType(
   if (!T || T->hasError())
     return T;
 
-  return T->castTo<FunctionType>()->getResult();
+  return T->castTo<FunctionType>()->getResult().getType();
 }
 
 llvm::Optional<Type> AbstractClosureExpr::getEffectiveThrownType() const {

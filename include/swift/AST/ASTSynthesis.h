@@ -372,7 +372,8 @@ Type synthesizeType(SynthesisContext &SC,
   synthesizeParameterTypes(SC, fn.parameters, paramTypes);
   auto extInfo = synthesizeExtInfo(SC, fn.extInfo);
   auto resultType = synthesizeType(SC, fn.result);
-  return FunctionType::get(paramTypes, resultType, extInfo);
+  return FunctionType::get(paramTypes, AnyFunctionType::Result(resultType),
+                           extInfo);
 }
 
 /// Synthesize optionals.

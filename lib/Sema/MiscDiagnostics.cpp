@@ -4660,7 +4660,7 @@ public:
                 bestMethod->getInterfaceType()->getAs<FunctionType>()) {
             // For static/class members, drop the metatype argument.
             if (bestMethod->isStatic())
-              fnType = fnType->getResult()->getAs<FunctionType>();
+              fnType = fnType->getResultType()->getAs<FunctionType>();
 
             // Coerce to this type.
             assert(fnType->hasTypeRepr() &&
@@ -5178,7 +5178,8 @@ static void diagnoseUnintendedOptionalBehavior(const Expr *E,
 
       // If the decl expects an optional, that's fine.
       auto uncurriedType = fnDecl->getInterfaceType()->getAs<AnyFunctionType>();
-      auto curriedType = uncurriedType->getResult()->getAs<AnyFunctionType>();
+      auto curriedType =
+          uncurriedType->getResultType()->getAs<AnyFunctionType>();
 
       // I don't know why you'd use a zero-arg interpolator, but it obviously 
       // doesn't interpolate an optional.

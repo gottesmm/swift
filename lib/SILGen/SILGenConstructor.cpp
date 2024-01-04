@@ -458,7 +458,7 @@ static void emitImplicitValueConstructor(SILGenFunction &SGF,
         if (field->getResultBuilderType()) {
           if (!field->getValueInterfaceType()
                   ->lookThroughAllOptionalTypes()->is<AnyFunctionType>()) {
-            auto resultTy = cast<FunctionType>(arg.getType()).getResult();
+            auto resultTy = cast<FunctionType>(arg.getType()).getResultType();
             arg = SGF.emitMonomorphicApply(
                 Loc, std::move(arg).getAsSingleValue(SGF, Loc), {}, resultTy,
                 resultTy, ApplyOptions(), llvm::None, llvm::None);

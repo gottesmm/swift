@@ -343,13 +343,13 @@ synthesizeConstantGetterBody(AbstractFunctionDecl *afd, void *voidContext) {
                                          AccessSemantics::Ordinary, initTy);
 
     // (Self) -> ...
-    initTy = initTy->castTo<FunctionType>()->getResult();
+    initTy = initTy->castTo<FunctionType>()->getResult().getType();
     auto initRef = DotSyntaxCallExpr::create(
         ctx, declRef, SourceLoc(), Argument::unlabeled(typeRef), initTy);
     initRef->setThrows(nullptr);
 
     // (rawValue: T) -> ...
-    initTy = initTy->castTo<FunctionType>()->getResult();
+    initTy = initTy->castTo<FunctionType>()->getResult().getType();
 
     auto *argList = ArgumentList::forImplicitSingle(ctx, ctx.Id_rawValue, expr);
     auto initCall = CallExpr::createImplicit(ctx, initRef, argList);
@@ -461,7 +461,8 @@ synthesizeStructDefaultConstructorBody(AbstractFunctionDecl *afd,
       new (ctx) DeclRefExpr(concreteDeclRef, DeclNameLoc(), /*implicit*/ true);
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   FunctionType::ExtInfo info;
-  zeroInitializerRef->setType(FunctionType::get({}, selfType, info));
+  zeroInitializerRef->setType(
+      FunctionType::get({}, AnyFunctionType::Result(selfType), info));
 
   auto call = CallExpr::createImplicitEmpty(ctx, zeroInitializerRef);
   call->setType(selfType);
@@ -842,9 +843,9 @@ synthesizeUnionFieldGetterBody(AbstractFunctionDecl *afd, void *context) {
                             /*implicit*/ true);
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   FunctionType::ExtInfo info;
-  reinterpretCastRefExpr->setType(
-      FunctionType::get(AnyFunctionType::Param(selfDecl->getInterfaceType()),
-                        importedFieldDecl->getInterfaceType(), info));
+  reinterpretCastRefExpr->setType(FunctionType::get(
+      AnyFunctionType::Param(selfDecl->getInterfaceType()),
+      AnyFunctionType::Result(importedFieldDecl->getInterfaceType()), info));
 
   auto *argList = ArgumentList::forImplicitUnlabeled(ctx, {selfRef});
   auto reinterpreted =
@@ -888,7 +889,7 @@ synthesizeUnionFieldSetterBody(AbstractFunctionDecl *afd, void *context) {
   addressofFnRefExpr->setType(FunctionType::get(
       AnyFunctionType::Param(inoutSelfDecl->getInterfaceType(), Identifier(),
                              ParameterTypeFlags().withInOut(true)),
-      ctx.TheRawPointerType, addressOfInfo));
+      AnyFunctionType::Result(ctx.TheRawPointerType), addressOfInfo));
 
   auto *selfPtrArgs = ArgumentList::createImplicit(
       ctx, {Argument::implicitInOut(ctx, inoutSelfRef)});
@@ -910,7 +911,7 @@ synthesizeUnionFieldSetterBody(AbstractFunctionDecl *afd, void *context) {
   initializeFnRefExpr->setType(FunctionType::get(
       {AnyFunctionType::Param(newValueDecl->getInterfaceType()),
        AnyFunctionType::Param(ctx.TheRawPointerType)},
-      TupleType::getEmpty(ctx), initializeInfo));
+      AnyFunctionType::Result(TupleType::getEmpty(ctx)), initializeInfo));
 
   auto *initArgs =
       ArgumentList::forImplicitUnlabeled(ctx, {newValueRef, selfPointer});
@@ -1228,8 +1229,8 @@ synthesizeEnumRawValueConstructorBody(AbstractFunctionDecl *afd,
       new (ctx) DeclRefExpr(concreteDeclRef, DeclNameLoc(), /*implicit*/ true);
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   FunctionType::ExtInfo info;
-  reinterpretCastRef->setType(
-      FunctionType::get({FunctionType::Param(rawTy)}, enumTy, info));
+  reinterpretCastRef->setType(FunctionType::get(
+      {FunctionType::Param(rawTy)}, FunctionType::Result(enumTy), info));
 
   auto *argList = ArgumentList::forImplicitUnlabeled(ctx, {paramRef});
   auto reinterpreted =
@@ -1300,8 +1301,8 @@ synthesizeEnumRawValueGetterBody(AbstractFunctionDecl *afd, void *context) {
       new (ctx) DeclRefExpr(concreteDeclRef, DeclNameLoc(), /*implicit*/ true);
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   FunctionType::ExtInfo info;
-  reinterpretCastRef->setType(
-      FunctionType::get({FunctionType::Param(enumTy)}, rawTy, info));
+  reinterpretCastRef->setType(FunctionType::get(
+      {FunctionType::Param(enumTy)}, FunctionType::Result(rawTy), info));
 
   auto *argList = ArgumentList::forImplicitUnlabeled(ctx, {selfRef});
   auto reinterpreted =
@@ -1501,8 +1502,8 @@ Expr *SwiftDeclSynthesizer::synthesizeReturnReinterpretCast(ASTContext &ctx,
   auto reinterpretCastRef =
       new (ctx) DeclRefExpr(concreteDeclRef, DeclNameLoc(), /*implicit*/ true);
   FunctionType::ExtInfo info;
-  reinterpretCastRef->setType(
-      FunctionType::get({FunctionType::Param(givenType)}, exprType, info));
+  reinterpretCastRef->setType(FunctionType::get(
+      {FunctionType::Param(givenType)}, FunctionType::Result(exprType), info));
 
   auto *argList = ArgumentList::forImplicitUnlabeled(ctx, {baseExpr});
   auto reinterpreted =

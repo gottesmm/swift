@@ -854,9 +854,10 @@ bool swift::isRepresentableInObjC(
     }
 
     Type completionHandlerType = FunctionType::get(
-        completionHandlerParams, TupleType::getEmpty(ctx),
+        completionHandlerParams,
+        AnyFunctionType::Result(TupleType::getEmpty(ctx)),
         ASTExtInfoBuilder(FunctionTypeRepresentation::Block, false, Type())
-          .build());
+            .build());
 
     asyncConvention = ForeignAsyncConvention(
         completionHandlerType->getCanonicalType(), completionHandlerParamIndex,
@@ -3381,8 +3382,14 @@ private:
               return false;
           }
 
-          return matchTypes(funcReqTy->getResult(), funcImplTy->getResult(),
-                            implDecl);
+          // First check the result flags.
+          if (!funcReqTy->getResult().getFlags().containsOnly(
+                  funcImplTy->getResult().getFlags()))
+            return false;
+
+          // Then check the result type.
+          return matchTypes(funcReqTy->getResultType(),
+                            funcImplTy->getResultType(), implDecl);
         });
 
     return false;

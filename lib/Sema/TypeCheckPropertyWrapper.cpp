@@ -203,7 +203,7 @@ findSuitableWrapperInit(ASTContext &ctx, NominalTypeDecl *nominal,
 
       if (argumentParam->isAutoClosure()) {
         if (auto *fnType = paramType->getAs<FunctionType>())
-          paramType = fnType->getResult();
+          paramType = fnType->getResultType();
       }
 
       // The parameter type must be the same as the type of `valueVar` or an

@@ -404,8 +404,14 @@ private:
                          thrownError2, thrownError1))
           return false;
 
-        return this->visit(firstFunc.getResult(), secondFunc->getResult(),
-                           sugaredFirstFunc->getResult());
+        // Then check results.
+        auto firstResult = firstFunc.getResult();
+        auto secondResult = secondFunc->getResult();
+        // First check flags and then recurse.
+        if (!firstResult.getFlags().containsOnly(secondResult.getFlags()))
+          return false;
+        return this->visit(firstResult.getType(), secondResult.getType(),
+                           sugaredFirstFunc->getResult().getType());
       }
 
       return mismatch(firstFunc.getPointer(), secondType, sugaredFirstType);

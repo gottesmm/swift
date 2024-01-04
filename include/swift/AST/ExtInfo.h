@@ -1063,7 +1063,8 @@ public:
 ///
 /// Typically, the argument will be a function type which was used to obtain one
 /// of the ExtInfos.
-template <typename HasContext> bool useClangTypes(HasContext hasContext) {
+template <typename HasContext>
+bool useClangTypes(HasContext hasContext) {
   return hasContext->getASTContext().LangOpts.UseClangFunctionTypes;
 }
 

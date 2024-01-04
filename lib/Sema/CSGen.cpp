@@ -512,7 +512,8 @@ namespace {
       auto overloadType = CS.getEffectiveOverloadType(
           firstFavored->getLocator(), overloadChoice, /*allowMembers=*/true,
           CS.DC);
-      auto resultType = overloadType->castTo<AnyFunctionType>()->getResult();
+      auto resultType =
+          overloadType->castTo<AnyFunctionType>()->getResultType();
       if (!resultType->hasTypeParameter())
         CS.setFavoredType(expr, resultType.getPointer());
     }
@@ -545,7 +546,7 @@ namespace {
     if (!contextualTy)
       return true;
 
-    auto resultTy = choice->getResult();
+    auto resultTy = choice->getResultType();
     // Result type of the call matches expected contextual type.
     return contextualTy->isEqual(resultTy);
   }
@@ -924,7 +925,7 @@ TypeVarRefCollector::walkToStmtPre(Stmt *stmt) {
     if (isa<ReturnStmt>(stmt) && DCDepth == 0 &&
         !Locator->directlyAt<ClosureExpr>()) {
       SmallPtrSet<TypeVariableType *, 4> typeVars;
-      CS.getClosureType(CE)->getResult()->getTypeVariables(typeVars);
+      CS.getClosureType(CE)->getResultType()->getTypeVariables(typeVars);
       TypeVars.insert(typeVars.begin(), typeVars.end());
     }
   }
@@ -1158,10 +1159,10 @@ namespace {
 
       // Add the constraint that the index expression's type be convertible
       // to the input type of the subscript operator.
-      CS.addConstraint(ConstraintKind::ApplicableFunction,
-                       FunctionType::get(params, outputTy),
-                       memberTy,
-                       fnLocator);
+      CS.addConstraint(
+          ConstraintKind::ApplicableFunction,
+          FunctionType::get(params, AnyFunctionType::Result(outputTy)),
+          memberTy, fnLocator);
 
       Type fixedOutputType =
           CS.getFixedTypeRecursive(outputTy, /*wantRValue=*/false);
@@ -1471,9 +1472,10 @@ namespace {
           CS.getConstraintLocator(expr, ConstraintLocator::FunctionResult),
           TVO_CanBindToNoEscape);
 
-      CS.addConstraint(ConstraintKind::ApplicableFunction,
-                       FunctionType::get(params, resultType), memberType,
-                       fnLoc);
+      CS.addConstraint(
+          ConstraintKind::ApplicableFunction,
+          FunctionType::get(params, AnyFunctionType::Result(resultType)),
+          memberType, fnLoc);
 
       if (constr->isFailable())
         return OptionalType::get(witnessType);
@@ -2524,7 +2526,7 @@ namespace {
         if (auto contextualType =
                 CS.getContextualType(closure, /*forConstraint=*/false)) {
           if (auto fnType = contextualType->getAs<FunctionType>())
-            return fnType->getResult();
+            return fnType->getResultType();
         }
 
         // If no return type was specified, create a fresh type
@@ -2544,7 +2546,8 @@ namespace {
         extInfo = extInfo.withGlobalActor(getExplicitGlobalActor(closure));
       }
 
-      auto *fnTy = FunctionType::get(closureParams, resultTy, extInfo);
+      auto *fnTy = FunctionType::get(closureParams,
+                                     FunctionType::Result(resultTy), extInfo);
       return CS.replaceInferableTypesWithTypeVars(
           fnTy, CS.getConstraintLocator(closure))->castTo<FunctionType>();
     }
@@ -2977,7 +2980,8 @@ namespace {
           // Equal constraints require ExtInfo comparison.
           // FIXME: Verify ExtInfo state is correct, not working by accident.
           FunctionType::ExtInfo info;
-          Type functionType = FunctionType::get(params, outputType, info);
+          Type functionType =
+              FunctionType::get(params, FunctionType::Result(outputType), info);
 
           // TODO: Convert to own constraint? Note that ApplicableFn isn't quite
           // right, as pattern matching has data flowing *into* the apply result
@@ -3273,10 +3277,11 @@ namespace {
       SmallVector<AnyFunctionType::Param, 8> params;
       getMatchingParams(expr->getArgs(), params);
 
-      CS.addConstraint(ConstraintKind::ApplicableFunction,
-                       FunctionType::get(params, resultType, extInfo),
-                       CS.getType(fnExpr),
-        CS.getConstraintLocator(expr, ConstraintLocator::ApplyFunction));
+      CS.addConstraint(
+          ConstraintKind::ApplicableFunction,
+          FunctionType::get(params, FunctionType::Result(resultType), extInfo),
+          CS.getType(fnExpr),
+          CS.getConstraintLocator(expr, ConstraintLocator::ApplyFunction));
 
       // If we ended up resolving the result type variable to a concrete type,
       // set it as the favored type for this expression.
@@ -4060,10 +4065,9 @@ namespace {
 
       CS.addConstraint(
           ConstraintKind::ApplicableFunction,
-          FunctionType::get(params, resultType),
+          FunctionType::get(params, AnyFunctionType::Result(resultType)),
           macroRefType,
-          CS.getConstraintLocator(
-            expr, ConstraintLocator::ApplyFunction));
+          CS.getConstraintLocator(expr, ConstraintLocator::ApplyFunction));
 
       return resultType;
     }

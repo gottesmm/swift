@@ -389,7 +389,8 @@ public:
     // the result of the function type.
     auto typeLoc = getExprContextualTypeInfo().typeLoc;
     if (FunctionType *autoclosureParamType = getAsAutoclosureParamType())
-      return TypeLoc(typeLoc.getTypeRepr(), autoclosureParamType->getResult());
+      return TypeLoc(typeLoc.getTypeRepr(),
+                     autoclosureParamType->getResultType());
 
     return typeLoc;
   }

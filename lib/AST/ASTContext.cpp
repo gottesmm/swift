@@ -1224,7 +1224,7 @@ getIntrinsicCandidateType(FuncDecl *fn, bool allowTypeMembers) {
     auto fnType = type->getAs<FunctionType>();
     if (!fnType) return nullptr;
 
-    type = fnType->getResult();
+    type = fnType->getResult().getType();
   }
   return type->getAs<FunctionType>();
 }
@@ -1394,7 +1394,7 @@ FuncDecl *getBinaryComparisonOperatorIntDecl(const ASTContext &C, StringRef op,
     if (type->getParams().size() != 2) return false;
     if (!isIntParam(type->getParams()[0]) ||
         !isIntParam(type->getParams()[1])) return false;
-    return type->getResult()->isBool();
+    return type->getResult().getType()->isBool();
   });
   cached = decl;
   return decl;
@@ -1692,7 +1692,7 @@ FuncDecl *ASTContext::getIsOSVersionAtLeastDecl() const {
   }
 
   // Output must be Builtin.Int1
-  if (!isBuiltinInt1Type(fnType->getResult()))
+  if (!isBuiltinInt1Type(fnType->getResult().getType()))
     return nullptr;
 
   getImpl().IsOSVersionAtLeastDecl = decl;
@@ -3919,12 +3919,12 @@ DynamicSelfType *DynamicSelfType::get(Type selfType, const ASTContext &ctx) {
 
 static RecursiveTypeProperties
 getFunctionRecursiveProperties(ArrayRef<AnyFunctionType::Param> params,
-                               Type result, Type globalActor,
+                               AnyFunctionType::Result result, Type globalActor,
                                Type thrownError) {
   RecursiveTypeProperties properties;
   for (auto param : params)
     properties |= param.getPlainType()->getRecursiveProperties();
-  properties |= result->getRecursiveProperties();
+  properties |= result.getType()->getRecursiveProperties();
   if (globalActor)
     properties |= globalActor->getRecursiveProperties();
   if (thrownError)
@@ -3933,9 +3933,8 @@ getFunctionRecursiveProperties(ArrayRef<AnyFunctionType::Param> params,
   return properties;
 }
 
-static bool
-isAnyFunctionTypeCanonical(ArrayRef<AnyFunctionType::Param> params,
-                        Type result) {
+static bool isAnyFunctionTypeCanonical(ArrayRef<AnyFunctionType::Param> params,
+                                       AnyFunctionType::Result result) {
   for (auto param : params) {
     if (!param.getPlainType()->isCanonical())
       return false;
@@ -3945,7 +3944,7 @@ isAnyFunctionTypeCanonical(ArrayRef<AnyFunctionType::Param> params,
     }
   }
 
-  return result->isCanonical();
+  return result.getType()->isCanonical();
 }
 
 // For now, generic function types cannot be dependent (in fact,
@@ -3953,7 +3952,7 @@ isAnyFunctionTypeCanonical(ArrayRef<AnyFunctionType::Param> params,
 // always materializable.
 static RecursiveTypeProperties
 getGenericFunctionRecursiveProperties(ArrayRef<AnyFunctionType::Param> params,
-                                      Type result) {
+                                      AnyFunctionType::Result result) {
   static_assert(RecursiveTypeProperties::BitWidth == 18,
                 "revisit this if you add new recursive type properties");
   RecursiveTypeProperties properties;
@@ -3963,9 +3962,9 @@ getGenericFunctionRecursiveProperties(ArrayRef<AnyFunctionType::Param> params,
       properties |= RecursiveTypeProperties::HasError;
   }
 
-  if (result->getRecursiveProperties().hasDynamicSelf())
+  if (result.getType()->getRecursiveProperties().hasDynamicSelf())
     properties |= RecursiveTypeProperties::HasDynamicSelf;
-  if (result->getRecursiveProperties().hasError())
+  if (result.getType()->getRecursiveProperties().hasError())
     properties |= RecursiveTypeProperties::HasError;
 
   return properties;
@@ -3974,7 +3973,7 @@ getGenericFunctionRecursiveProperties(ArrayRef<AnyFunctionType::Param> params,
 static bool
 isGenericFunctionTypeCanonical(GenericSignature sig,
                                ArrayRef<AnyFunctionType::Param> params,
-                               Type result) {
+                               AnyFunctionType::Result result) {
   if (!sig->isCanonical())
     return false;
 
@@ -3987,7 +3986,7 @@ isGenericFunctionTypeCanonical(GenericSignature sig,
     }
   }
 
-  return sig->isReducedType(result);
+  return sig->isReducedType(result.getType());
 }
 
 AnyFunctionType *AnyFunctionType::withExtInfo(ExtInfo info) const {
@@ -4086,10 +4085,10 @@ static void profileParams(llvm::FoldingSetNodeID &ID,
 }
 
 void FunctionType::Profile(llvm::FoldingSetNodeID &ID,
-                           ArrayRef<AnyFunctionType::Param> params, Type result,
-                           llvm::Optional<ExtInfo> info) {
+                           ArrayRef<AnyFunctionType::Param> params,
+                           Result result, llvm::Optional<ExtInfo> info) {
   profileParams(ID, params);
-  ID.AddPointer(result.getPointer());
+  ID.AddPointer(result.getType().getPointer());
   if (info.has_value()) {
     auto infoKey = info.value().getFuncAttrKey();
     ID.AddInteger(std::get<0>(infoKey));
@@ -4100,7 +4099,7 @@ void FunctionType::Profile(llvm::FoldingSetNodeID &ID,
 }
 
 FunctionType *FunctionType::get(ArrayRef<AnyFunctionType::Param> params,
-                                Type result, llvm::Optional<ExtInfo> info) {
+                                Result result, llvm::Optional<ExtInfo> info) {
   Type thrownError;
   Type globalActor;
   if (info.has_value()) {
@@ -4125,7 +4124,7 @@ FunctionType *FunctionType::get(ArrayRef<AnyFunctionType::Param> params,
   llvm::FoldingSetNodeID id;
   FunctionType::Profile(id, params, result, info);
 
-  const ASTContext &ctx = result->getASTContext();
+  const ASTContext &ctx = result.getType()->getASTContext();
 
   // Do we already have this generic function type?
   void *insertPos;
@@ -4172,8 +4171,9 @@ FunctionType *FunctionType::get(ArrayRef<AnyFunctionType::Param> params,
 }
 
 // If the input and result types are canonical, then so is the result.
-FunctionType::FunctionType(ArrayRef<AnyFunctionType::Param> params, Type output,
-                           llvm::Optional<ExtInfo> info, const ASTContext *ctx,
+FunctionType::FunctionType(ArrayRef<AnyFunctionType::Param> params,
+                           Result output, llvm::Optional<ExtInfo> info,
+                           const ASTContext *ctx,
                            RecursiveTypeProperties properties)
     : AnyFunctionType(TypeKind::Function, ctx, output, properties,
                       params.size(), info) {
@@ -4196,10 +4196,10 @@ FunctionType::FunctionType(ArrayRef<AnyFunctionType::Param> params, Type output,
 void GenericFunctionType::Profile(llvm::FoldingSetNodeID &ID,
                                   GenericSignature sig,
                                   ArrayRef<AnyFunctionType::Param> params,
-                                  Type result, llvm::Optional<ExtInfo> info) {
+                                  Result result, llvm::Optional<ExtInfo> info) {
   ID.AddPointer(sig.getPointer());
   profileParams(ID, params);
-  ID.AddPointer(result.getPointer());
+  ID.AddPointer(result.getType().getPointer());
   if (info.has_value()) {
     auto infoKey = info.value().getFuncAttrKey();
     ID.AddInteger(std::get<0>(infoKey));
@@ -4211,7 +4211,7 @@ void GenericFunctionType::Profile(llvm::FoldingSetNodeID &ID,
 
 GenericFunctionType *GenericFunctionType::get(GenericSignature sig,
                                               ArrayRef<Param> params,
-                                              Type result,
+                                              Result result,
                                               llvm::Optional<ExtInfo> info) {
   assert(sig && "no generic signature for generic function type?!");
 
@@ -4221,12 +4221,12 @@ GenericFunctionType *GenericFunctionType::get(GenericSignature sig,
   assert(llvm::none_of(params, [](Param param) {
     return param.getPlainType()->hasTypeVariable();
   }));
-  assert(!result->hasTypeVariable());
+  assert(!result.getType()->hasTypeVariable());
 
   llvm::FoldingSetNodeID id;
   GenericFunctionType::Profile(id, sig, params, result, info);
 
-  const ASTContext &ctx = result->getASTContext();
+  const ASTContext &ctx = result.getType()->getASTContext();
 
   // Do we already have this generic function type?
   void *insertPos;
@@ -4285,8 +4285,8 @@ GenericFunctionType *GenericFunctionType::get(GenericSignature sig,
 }
 
 GenericFunctionType::GenericFunctionType(
-    GenericSignature sig, ArrayRef<AnyFunctionType::Param> params, Type result,
-    llvm::Optional<ExtInfo> info, const ASTContext *ctx,
+    GenericSignature sig, ArrayRef<AnyFunctionType::Param> params,
+    Result result, llvm::Optional<ExtInfo> info, const ASTContext *ctx,
     RecursiveTypeProperties properties)
     : AnyFunctionType(TypeKind::GenericFunction, ctx, result, properties,
                       params.size(), info),
@@ -5627,7 +5627,7 @@ ClangTypeConverter &ASTContext::getClangTypeConverter() {
 
 const clang::Type *
 ASTContext::getClangFunctionType(ArrayRef<AnyFunctionType::Param> params,
-                                 Type resultTy,
+                                 AnyFunctionType::Result resultTy,
                                  FunctionTypeRepresentation trueRep) {
   return getClangTypeConverter().getFunctionType(params, resultTy, trueRep);
 }

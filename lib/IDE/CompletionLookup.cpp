@@ -107,7 +107,7 @@ static bool hasTrivialTrailingClosure(const FuncDecl *FD,
     auto param = funcType->getParams().back();
     if (!param.isAutoClosure()) {
       if (auto Fn = param.getOldType()->getAs<AnyFunctionType>()) {
-        return Fn->getParams().empty() && Fn->getResult()->isVoid();
+        return Fn->getParams().empty() && Fn->getResult().isVoid();
       }
     }
   }
@@ -565,10 +565,11 @@ Type CompletionLookup::eraseArchetypes(Type type, GenericSignature genericSig) {
       auto erasedTy = eraseArchetypes(param.getPlainType(), genericSig);
       erasedParams.emplace_back(param.withType(erasedTy));
     }
-    return GenericFunctionType::get(
-        genericSig, erasedParams,
-        eraseArchetypes(genericFuncType->getResult(), genericSig),
-        genericFuncType->getExtInfo());
+    auto erasedResultTy =
+        eraseArchetypes(genericFuncType->getResult().getType(), genericSig);
+    auto erasedResult = genericFuncType->getResult().withType(erasedResultTy);
+    return GenericFunctionType::get(genericSig, erasedParams, erasedResult,
+                                    genericFuncType->getExtInfo());
   }
 
   return type.transform([&](Type t) -> Type {
@@ -805,7 +806,7 @@ void CompletionLookup::analyzeActorIsolation(
       assert(isa<FuncDecl>(VD) || isa<SubscriptDecl>(VD));
       // Check if the result and the param types are all 'Sendable'.
       auto *AFT = T->castTo<AnyFunctionType>();
-      if (!isSendableType(M, AFT->getResult())) {
+      if (!isSendableType(M, AFT->getResult().getType())) {
         NotRecommended = ContextualNotRecommendedReason::CrossActorReference;
       } else {
         for (auto &param : AFT->getParams()) {
@@ -901,7 +902,7 @@ void CompletionLookup::addVarDeclRef(const VarDecl *VD,
   if (auto Accessor = VD->getEffectfulGetAccessor()) {
     if (auto AFT = getTypeOfMember(Accessor, dynamicLookupInfo)->getAs<AnyFunctionType>()) {
       if (Accessor->hasImplicitSelfDecl()) {
-        AFT = AFT->getResult()->getAs<AnyFunctionType>();
+        AFT = AFT->getResult().getType()->getAs<AnyFunctionType>();
         assert(AFT);
       }
       addEffectsSpecifiers(Builder, AFT, Accessor);
@@ -1207,10 +1208,10 @@ void CompletionLookup::addSubscriptCallPattern(
   else
     Builder.addAnnotatedRightBracket();
   if (SD && SD->isImplicitlyUnwrappedOptional())
-    addTypeAnnotationForImplicitlyUnwrappedOptional(Builder, AFT->getResult(),
-                                                    genericSig);
+    addTypeAnnotationForImplicitlyUnwrappedOptional(
+        Builder, AFT->getResultType(), genericSig);
   else
-    addTypeAnnotation(Builder, AFT->getResult(), genericSig);
+    addTypeAnnotation(Builder, AFT->getResultType(), genericSig);
 }
 
 void CompletionLookup::addFunctionCallPattern(
@@ -1248,10 +1249,10 @@ void CompletionLookup::addFunctionCallPattern(
     addEffectsSpecifiers(Builder, AFT, AFD);
 
     if (AFD && AFD->isImplicitlyUnwrappedOptional())
-      addTypeAnnotationForImplicitlyUnwrappedOptional(Builder, AFT->getResult(),
-                                                      genericSig);
+      addTypeAnnotationForImplicitlyUnwrappedOptional(
+          Builder, AFT->getResultType(), genericSig);
     else
-      addTypeAnnotation(Builder, AFT->getResult(), genericSig);
+      addTypeAnnotation(Builder, AFT->getResultType(), genericSig);
 
     Builder.setIsAsync(AFT->hasExtInfo() && AFT->isAsync());
     Builder.setCanCurrDeclContextHandleAsync(CanCurrDeclContextHandleAsync);
@@ -1273,7 +1274,7 @@ void CompletionLookup::addFunctionCallPattern(
     // of AFT and the interface type of AFD.
     auto getCurriedLevel = [](const AnyFunctionType *funcTy) -> unsigned {
       unsigned level = 0;
-      while ((funcTy = funcTy->getResult()->getAs<AnyFunctionType>()))
+      while ((funcTy = funcTy->getResultType()->getAs<AnyFunctionType>()))
         ++level;
       return level;
     };
@@ -1353,7 +1354,7 @@ void CompletionLookup::addMethodCall(const FuncDecl *FD,
 
     // Strip off '(_ self: Self)' if needed.
     if (AFT && !IsImplicitlyCurriedInstanceMethod) {
-      AFT = AFT->getResult()->getAs<AnyFunctionType>();
+      AFT = AFT->getResultType()->getAs<AnyFunctionType>();
 
       // Check for duplicates with the adjusted type too.
       if (isDuplicate(FD, AFT))
@@ -1420,7 +1421,7 @@ void CompletionLookup::addMethodCall(const FuncDecl *FD,
     }
 
     // Build type annotation.
-    Type ResultType = AFT->getResult();
+    Type ResultType = AFT->getResultType();
     // As we did with parameters in addParamPatternFromFunction,
     // for regular methods we'll print '!' after implicitly
     // unwrapped optional results.
@@ -1445,7 +1446,7 @@ void CompletionLookup::addMethodCall(const FuncDecl *FD,
               auto *FnType = AnnotationTy->castTo<AnyFunctionType>();
               AnyFunctionType::printParams(FnType->getParams(), printer,
                                            PrintOptions());
-              AnnotationTy = FnType->getResult();
+              AnnotationTy = FnType->getResultType();
               printer.printText(" -> ");
             }
 
@@ -1461,7 +1462,7 @@ void CompletionLookup::addMethodCall(const FuncDecl *FD,
       if (IsImplicitlyCurriedInstanceMethod) {
         auto *FnType = AnnotationTy->castTo<AnyFunctionType>();
         AnyFunctionType::printParams(FnType->getParams(), OS);
-        AnnotationTy = FnType->getResult();
+        AnnotationTy = FnType->getResultType();
         OS << " -> ";
       }
 
@@ -1505,7 +1506,8 @@ void CompletionLookup::addConstructorCall(const ConstructorDecl *CD,
   Type MemberType = getTypeOfMember(CD, BaseType.value_or(ExprType));
   AnyFunctionType *ConstructorType = nullptr;
   if (auto MemberFuncType = MemberType->getAs<AnyFunctionType>())
-    ConstructorType = MemberFuncType->getResult()->castTo<AnyFunctionType>();
+    ConstructorType =
+        MemberFuncType->getResultType()->castTo<AnyFunctionType>();
 
   bool needInit = false;
   if (!IsOnType) {
@@ -1564,7 +1566,7 @@ void CompletionLookup::addConstructorCall(const ConstructorDecl *CD,
     addEffectsSpecifiers(Builder, ConstructorType, CD);
 
     if (!Result.has_value())
-      Result = ConstructorType->getResult();
+      Result = ConstructorType->getResultType();
     if (CD->isImplicitlyUnwrappedOptional()) {
       addTypeAnnotationForImplicitlyUnwrappedOptional(
           Builder, *Result, CD->getGenericSignatureOfContext());
@@ -1658,7 +1660,7 @@ void CompletionLookup::addSubscriptCall(const SubscriptDecl *SD,
   Builder.addRightBracket();
 
   // Add a type annotation.
-  Type resultTy = subscriptType->getResult();
+  Type resultTy = subscriptType->getResultType();
   if (IsDynamicLookup) {
     // Values of properties that were found on a AnyObject have
     // llvm::Optional<T> type.
@@ -1801,7 +1803,7 @@ void CompletionLookup::addEnumElementRef(const EnumElementDecl *EED,
   // (Self.Type) -> (Args...) -> Self.
   Type EnumType = getTypeOfMember(EED, dynamicLookupInfo);
   if (EnumType->is<AnyFunctionType>())
-    EnumType = EnumType->castTo<AnyFunctionType>()->getResult();
+    EnumType = EnumType->castTo<AnyFunctionType>()->getResultType();
 
   if (EnumType->is<FunctionType>()) {
     Builder.addLeftParen();
@@ -1811,7 +1813,7 @@ void CompletionLookup::addEnumElementRef(const EnumElementDecl *EED,
     Builder.addRightParen();
 
     // Extract result as the enum type.
-    EnumType = EnumType->castTo<FunctionType>()->getResult();
+    EnumType = EnumType->castTo<FunctionType>()->getResultType();
   }
 
   addTypeAnnotation(Builder, EnumType, EED->getGenericSignatureOfContext());
@@ -1972,7 +1974,7 @@ bool CompletionLookup::addCompoundFunctionNameIfDesiable(
   bool dropCurryLevel = funcTy && AFD->getDeclContext()->isTypeContext() &&
                         !isImplicitlyCurriedInstanceMethod(AFD);
   if (dropCurryLevel)
-    funcTy = funcTy->getResult()->getAs<AnyFunctionType>();
+    funcTy = funcTy->getResultType()->getAs<AnyFunctionType>();
 
   bool useFunctionReference = PreferFunctionReferencesToCalls;
   if (!useFunctionReference && funcTy) {
@@ -1980,8 +1982,10 @@ bool CompletionLookup::addCompoundFunctionNameIfDesiable(
     // nullptr for USRTypeContext.
     auto maxFuncTyRel = CodeCompletionResultType(funcTy).calculateTypeRelation(
         &expectedTypeContext, CurrDeclContext, /*USRTypeContext=*/nullptr);
-    auto maxResultTyRel = CodeCompletionResultType(funcTy->getResult()).calculateTypeRelation(
-        &expectedTypeContext, CurrDeclContext, /*USRTypeContext=*/nullptr);
+    auto maxResultTyRel =
+        CodeCompletionResultType(funcTy->getResultType())
+            .calculateTypeRelation(&expectedTypeContext, CurrDeclContext,
+                                   /*USRTypeContext=*/nullptr);
     useFunctionReference = maxFuncTyRel > maxResultTyRel;
   }
   if (!useFunctionReference)
@@ -2163,7 +2167,7 @@ void CompletionLookup::foundDecl(ValueDecl *D, DeclVisibilityKind Reason,
           (!ExprType || !ExprType->is<AnyMetatypeType>())) {
         Type funcType = getTypeOfMember(FD, dynamicLookupInfo)
                             ->castTo<AnyFunctionType>()
-                            ->getResult();
+                            ->getResultType();
 
         // Check for duplicates with the adjusted type too.
         if (isDuplicate(FD, funcType))
@@ -2901,7 +2905,7 @@ void CompletionLookup::addCallArgumentCompletionResults(
     } else if (Arg->isAutoClosure()) {
       // 'Ty' may be ErrorType.
       if (auto funcTy = Ty->getAs<FunctionType>())
-        Ty = funcTy->getResult();
+        Ty = funcTy->getResultType();
     }
     // The type annotation is the argument type. But the argument label itself
     // does not produce an expression with a result type so we set the result

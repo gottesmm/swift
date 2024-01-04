@@ -3311,7 +3311,8 @@ static CanAnyFunctionType getGlobalAccessorType(CanType varType) {
   ASTContext &C = varType->getASTContext();
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   CanFunctionType::ExtInfo info;
-  return CanFunctionType::get({}, C.TheRawPointerType, info);
+  return CanFunctionType::get(
+      {}, AnyFunctionType::CanResult(C.TheRawPointerType), info);
 }
 
 /// Removes @noescape from the given type if it's a function type. Otherwise,
@@ -3358,7 +3359,7 @@ static CanAnyFunctionType getDefaultArgGeneratorInterfaceType(
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   CanAnyFunctionType::ExtInfo info;
   return CanAnyFunctionType::get(getCanonicalSignatureOrNull(sig), {},
-                                 canResultTy, info);
+                                 AnyFunctionType::CanResult(canResultTy), info);
 }
 
 /// Get the type of a stored property initializer, () -> T.
@@ -3385,8 +3386,8 @@ static CanAnyFunctionType getStoredPropertyInitializerInterfaceType(
 
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   CanAnyFunctionType::ExtInfo info;
-  return CanAnyFunctionType::get(getCanonicalSignatureOrNull(sig), {}, resultTy,
-                                 info);
+  return CanAnyFunctionType::get(getCanonicalSignatureOrNull(sig), {},
+                                 AnyFunctionType::CanResult(resultTy), info);
 }
 
 /// Get the type of a property wrapper backing initializer,
@@ -3414,7 +3415,7 @@ static CanAnyFunctionType getPropertyWrapperBackingInitializerInterfaceType(
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   CanAnyFunctionType::ExtInfo info;
   return CanAnyFunctionType::get(getCanonicalSignatureOrNull(sig), {param},
-                                 resultType, info);
+                                 AnyFunctionType::CanResult(resultType), info);
 }
 
 /// Get the type of a destructor function.
@@ -3443,13 +3444,14 @@ static CanAnyFunctionType getDestructorInterfaceType(DestructorDecl *dd,
                       : C.TheNativeObjectType);
   // FIXME: Verify ExtInfo state is correct, not working by accident.
   CanFunctionType::ExtInfo info;
-  CanType methodTy = CanFunctionType::get({}, resultTy, info);
+  CanType methodTy =
+      CanFunctionType::get({}, FunctionType::CanResult(resultTy), info);
 
   auto sig = dd->getGenericSignatureOfContext();
   FunctionType::Param args[] = {FunctionType::Param(classType)};
+  FunctionType::CanResult result(methodTy);
   return CanAnyFunctionType::get(getCanonicalSignatureOrNull(sig),
-                                 llvm::makeArrayRef(args),
-                                 methodTy, extInfo);
+                                 llvm::makeArrayRef(args), result, extInfo);
 }
 
 /// Retrieve the type of the ivar initializer or destroyer method for
@@ -3472,12 +3474,13 @@ static CanAnyFunctionType getIVarInitDestroyerInterfaceType(ClassDecl *cd,
                                 : SILFunctionTypeRepresentation::Method)
                      .build();
 
-  resultType = CanFunctionType::get({}, resultType, extInfo);
+  resultType =
+      CanFunctionType::get({}, FunctionType::CanResult(resultType), extInfo);
   auto sig = cd->getGenericSignature();
   FunctionType::Param args[] = {FunctionType::Param(classType)};
   return CanAnyFunctionType::get(getCanonicalSignatureOrNull(sig),
                                  llvm::makeArrayRef(args),
-                                 resultType, extInfo);
+                                 FunctionType::CanResult(resultType), extInfo);
 }
 
 static CanAnyFunctionType
@@ -3525,7 +3528,8 @@ static CanAnyFunctionType getAsyncEntryPoint(ASTContext &C) {
   // This generates the type signature for @async_main
   // TODO: 'Never' return type would be more accurate.
 
-  CanType returnType = C.getVoidType()->getCanonicalType();
+  auto returnType =
+      FunctionType::CanResult(C.getVoidType()->getCanonicalType());
   FunctionType::ExtInfo extInfo =
       FunctionType::ExtInfoBuilder().withAsync(true).build();
   return CanAnyFunctionType::get(/*genericSig*/ nullptr, {}, returnType,
@@ -3559,16 +3563,18 @@ static CanAnyFunctionType getEntryPointInterfaceType(ASTContext &C) {
 
   using Param = FunctionType::Param;
   Param params[] = {Param(Int32Ty), Param(PtrPtrInt8Ty)};
+  auto int32TyResult = AnyFunctionType::CanResult(Int32Ty);
 
   auto rep = FunctionTypeRepresentation::CFunctionPointer;
-  auto *clangTy = C.getClangFunctionType(params, Int32Ty, rep);
+  auto *clangTy = C.getClangFunctionType(params, int32TyResult, rep);
   auto extInfo = FunctionType::ExtInfoBuilder()
                      .withRepresentation(rep)
                      .withClangFunctionType(clangTy)
                      .build();
 
   return CanAnyFunctionType::get(/*genericSig*/ nullptr,
-                                 llvm::makeArrayRef(params), Int32Ty, extInfo);
+                                 llvm::makeArrayRef(params), int32TyResult,
+                                 extInfo);
 }
 
 CanAnyFunctionType TypeConverter::makeConstantInterfaceType(SILDeclRef c) {

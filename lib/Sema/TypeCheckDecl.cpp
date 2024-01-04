@@ -2744,11 +2744,11 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
       if (auto fd = dyn_cast<FuncDecl>(D))
         infoBuilder = infoBuilder.withNoEscape(fd->isDeferBody());
       auto info = infoBuilder.build();
-
+      auto result = AnyFunctionType::Result(resultTy);
       if (sig && !hasSelf) {
-        funcTy = GenericFunctionType::get(sig, argTy, resultTy, info);
+        funcTy = GenericFunctionType::get(sig, argTy, result, info);
       } else {
-        funcTy = FunctionType::get(argTy, resultTy, info);
+        funcTy = FunctionType::get(argTy, result, info);
       }
     }
 
@@ -2756,13 +2756,14 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
     if (hasSelf) {
       // Substitute in our own 'self' parameter.
       auto selfParam = computeSelfParam(AFD);
+      auto result = AnyFunctionType::Result(funcTy);
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       if (sig) {
         GenericFunctionType::ExtInfo info;
-        funcTy = GenericFunctionType::get(sig, {selfParam}, funcTy, info);
+        funcTy = GenericFunctionType::get(sig, {selfParam}, result, info);
       } else {
         FunctionType::ExtInfo info;
-        funcTy = FunctionType::get({selfParam}, funcTy, info);
+        funcTy = FunctionType::get({selfParam}, result, info);
       }
     }
 
@@ -2778,13 +2779,14 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
     SD->getIndices()->getParams(argTy);
 
     Type funcTy;
+    auto elementTyResult = AnyFunctionType::Result(elementTy);
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     if (auto sig = SD->getGenericSignature()) {
       GenericFunctionType::ExtInfo info;
-      funcTy = GenericFunctionType::get(sig, argTy, elementTy, info);
+      funcTy = GenericFunctionType::get(sig, argTy, elementTyResult, info);
     } else {
       FunctionType::ExtInfo info;
-      funcTy = FunctionType::get(argTy, elementTy, info);
+      funcTy = FunctionType::get(argTy, elementTyResult, info);
     }
 
     return funcTy;
@@ -2800,6 +2802,7 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
     auto resultTy = ED->getDeclaredInterfaceType();
 
     AnyFunctionType::Param selfTy(MetatypeType::get(resultTy, Context));
+    auto result = AnyFunctionType::Result(resultTy);
 
     if (auto *PL = EED->getParameterList()) {
       SmallVector<AnyFunctionType::Param, 4> argTy;
@@ -2807,16 +2810,16 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
 
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       FunctionType::ExtInfo info;
-      resultTy = FunctionType::get(argTy, resultTy, info);
+      resultTy = FunctionType::get(argTy, result, info);
     }
 
     // FIXME: Verify ExtInfo state is correct, not working by accident.
     if (auto genericSig = ED->getGenericSignature()) {
       GenericFunctionType::ExtInfo info;
-      resultTy = GenericFunctionType::get(genericSig, {selfTy}, resultTy, info);
+      resultTy = GenericFunctionType::get(genericSig, {selfTy}, result, info);
     } else {
       FunctionType::ExtInfo info;
-      resultTy = FunctionType::get({selfTy}, resultTy, info);
+      resultTy = FunctionType::get({selfTy}, result, info);
     }
 
     return resultTy;
@@ -2830,14 +2833,14 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
 
     SmallVector<AnyFunctionType::Param, 4> paramTypes;
     macro->parameterList->getParams(paramTypes);
+    auto result = AnyFunctionType::Result(resultType);
 
     if (auto genericSig = macro->getGenericSignature()) {
       GenericFunctionType::ExtInfo info;
-      return GenericFunctionType::get(
-          genericSig, paramTypes, resultType, info);
+      return GenericFunctionType::get(genericSig, paramTypes, result, info);
     } else {
       FunctionType::ExtInfo info;
-      return FunctionType::get(paramTypes, resultType, info);
+      return FunctionType::get(paramTypes, result, info);
     }
   }
   }

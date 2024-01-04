@@ -715,7 +715,8 @@ namespace {
       }
 
       // Form the function type.
-      return FunctionType::get(params, resultTy, FunctionType::ExtInfo());
+      return FunctionType::get(params, AnyFunctionType::Result(resultTy),
+                               FunctionType::ExtInfo());
     }
 
     ImportResult
@@ -729,7 +730,7 @@ namespace {
 
       // FIXME: Verify ExtInfo state is correct, not working by accident.
       FunctionType::ExtInfo info;
-      return FunctionType::get({}, resultTy, info);
+      return FunctionType::get({}, AnyFunctionType::Result(resultTy), info);
     }
 
     ImportResult VisitParenType(const clang::ParenType *type) {

@@ -55,16 +55,16 @@ static Type dropResultOptionality(Type type, unsigned uncurryLevel) {
   auto fnType = type->castTo<AnyFunctionType>();
   auto parameters = fnType->getParams();
   Type resultType =
-      dropResultOptionality(fnType->getResult(), uncurryLevel - 1);
+      dropResultOptionality(fnType->getResultType(), uncurryLevel - 1);
+  auto result = fnType->getResult().withType(resultType);
 
   // Produce the resulting function type.
   if (auto genericFn = dyn_cast<GenericFunctionType>(fnType)) {
     return GenericFunctionType::get(genericFn->getGenericSignature(),
-                                    parameters, resultType,
-                                    fnType->getExtInfo());
+                                    parameters, result, fnType->getExtInfo());
   }
 
-  return FunctionType::get(parameters, resultType, fnType->getExtInfo());
+  return FunctionType::get(parameters, result, fnType->getExtInfo());
 }
 
 Type swift::getMemberTypeForComparison(const ValueDecl *member,
@@ -91,7 +91,7 @@ Type swift::getMemberTypeForComparison(const ValueDecl *member,
 
   if (method) {
     // For methods, strip off the 'Self' type.
-    memberType = memberType->castTo<AnyFunctionType>()->getResult();
+    memberType = memberType->castTo<AnyFunctionType>()->getResultType();
     adjustFunctionTypeForOverride(memberType);
   } else if (subscript) {
     // For subscripts, we don't have a 'Self' type, but turn it
@@ -335,7 +335,7 @@ diagnoseMismatchedOptionals(const ValueDecl *member,
       parentMember, member, parentMember->getInterfaceType());
   const auto *parentTy = plainParentTy->castTo<FunctionType>();
   if (isa<AbstractFunctionDecl>(parentMember))
-    parentTy = parentTy->getResult()->castTo<FunctionType>();
+    parentTy = parentTy->getResultType()->castTo<FunctionType>();
 
   // Check the parameter types.
   auto checkParam = [&](const ParamDecl *decl, const ParamDecl *parentDecl) {
@@ -462,7 +462,7 @@ diagnoseMismatchedOptionals(const ValueDecl *member,
       .fixItInsertAfter(resultTL.getSourceRange().End, ")");
   };
 
-  checkResult(resultTL, parentTy->getResult());
+  checkResult(resultTL, parentTy->getResultType());
   return emittedError;
 }
 
@@ -489,7 +489,7 @@ static bool noteFixableMismatchedTypes(ValueDecl *decl, const ValueDecl *base) {
     // Special-case initializers, whose "type" isn't useful besides the
     // input arguments.
     auto *fnType = baseTy->getAs<AnyFunctionType>();
-    baseTy = fnType->getResult();
+    baseTy = fnType->getResultType();
     Type argTy = FunctionType::composeTuple(
         ctx, baseTy->getAs<AnyFunctionType>()->getParams(),
         ParameterFlagHandling::IgnoreNonEmpty);
@@ -504,7 +504,7 @@ static bool noteFixableMismatchedTypes(ValueDecl *decl, const ValueDecl *base) {
         });
   } else {
     if (isa<AbstractFunctionDecl>(base))
-      baseTy = baseTy->getAs<AnyFunctionType>()->getResult();
+      baseTy = baseTy->getAs<AnyFunctionType>()->getResultType();
 
     return computeFixitsForOverriddenDeclaration(
         decl, base, [&](bool HasNotes) -> llvm::Optional<InFlightDiagnostic> {
@@ -1002,8 +1002,8 @@ SmallVector<OverrideMatch, 2> OverrideMatcher::match(
     if (declFnTy && parentDeclFnTy) {
       auto paramsAndResultMatch = [=]() -> bool {
         return parameterTypesMatch(decl, parentDecl, matchMode) &&
-               declFnTy->getResult()->matches(parentDeclFnTy->getResult(),
-                                              matchMode);
+               declFnTy->getResultType()->matches(
+                   parentDeclFnTy->getResultType(), matchMode);
       };
 
       if (declFnTy->matchesFunctionType(parentDeclFnTy, matchMode,

@@ -568,15 +568,7 @@ void SILGenFunction::emitCaptures(SILLocation loc,
       continue;
     }
 
-    if (capture.isOpaqueValue()) {
-      OpaqueValueExpr *opaqueValue = capture.getOpaqueValue();
-      capturedArgs.push_back(
-          emitRValueAsSingleValue(opaqueValue).ensurePlusOne(*this, loc));
-      continue;
-    }
-
     auto *vd = cast<VarDecl>(capture.getDecl());
-
     auto interfaceType = vd->getInterfaceType();
 
     bool isPack = false;

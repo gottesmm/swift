@@ -1235,31 +1235,6 @@ void SILGenFunction::emitProlog(
       continue;
     }
 
-    if (capture.isOpaqueValue()) {
-      OpaqueValueExpr *opaqueValue = capture.getOpaqueValue();
-      Type type = opaqueValue->getType()->mapTypeOutOfContext();
-      type = F.mapTypeIntoContext(type);
-      auto &lowering = getTypeLowering(type);
-      SILType ty = lowering.getLoweredType();
-      SILValue val = F.begin()->createFunctionArgument(ty);
-
-      // Opaque values are always passed 'owned', so add a clean up if needed.
-      //
-      // TODO: Should this be tied to the mv?
-      if (!lowering.isTrivial())
-        enterDestroyCleanup(val);
-
-      ManagedValue mv;
-      if (lowering.isTrivial())
-        mv = ManagedValue::forObjectRValueWithoutOwnership(val);
-      else
-        mv = ManagedValue::forUnmanagedOwnedValue(val);
-
-      OpaqueValues[opaqueValue] = mv;
-
-      continue;
-    }
-
     emitCaptureArguments(*this, DC->getGenericSignatureOfContext(),
                          capture, ++ArgNo);
   }

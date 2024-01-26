@@ -2448,8 +2448,6 @@ namespace {
       for (const auto &capture : captures) {
         if (capture.isDynamicSelfMetadata())
           continue;
-        if (capture.isOpaqueValue())
-          continue;
 
         // If the closure won't execute concurrently with the context in
         // which the declaration occurred, it's okay.

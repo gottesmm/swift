@@ -3995,7 +3995,6 @@ TypeConverter::getLoweredLocalCaptures(SILDeclRef fn) {
 
   bool capturesGenericParams = false;
   DynamicSelfType *capturesDynamicSelf = nullptr;
-  OpaqueValueExpr *capturesOpaqueValue = nullptr;
 
   std::function<void (CaptureInfo captureInfo, DeclContext *dc)> collectCaptures;
   std::function<void (AnyFunctionRef)> collectFunctionCaptures;
@@ -4008,8 +4007,6 @@ TypeConverter::getLoweredLocalCaptures(SILDeclRef fn) {
       capturesGenericParams = true;
     if (captureInfo.hasDynamicSelfCapture())
       capturesDynamicSelf = captureInfo.getDynamicSelfType();
-    if (captureInfo.hasOpaqueValueCapture())
-      capturesOpaqueValue = captureInfo.getOpaqueValue();
 
     SmallVector<CapturedValue, 4> localCaptures;
     captureInfo.getLocalCaptures(localCaptures);
@@ -4212,11 +4209,6 @@ TypeConverter::getLoweredLocalCaptures(SILDeclRef fn) {
     resultingCaptures.push_back(capturePair.second);
   }
 
-  // If we captured an opaque value, add it.
-  if (capturesOpaqueValue) {
-    resultingCaptures.push_back(CapturedValue(capturesOpaqueValue, 0));
-  }
-
   // If we captured the dynamic 'Self' type and we have a 'self' value also,
   // add it as the final capture. Otherwise, add a fake hidden capture for
   // the dynamic 'Self' metatype.
@@ -4229,7 +4221,7 @@ TypeConverter::getLoweredLocalCaptures(SILDeclRef fn) {
 
   // Cache the uniqued set of transitive captures.
   CaptureInfo info{Context, resultingCaptures, capturesDynamicSelf,
-                   capturesOpaqueValue, capturesGenericParams};
+                   capturesGenericParams};
   auto inserted = LoweredCaptures.insert({fn, info});
   assert(inserted.second && "already in map?!");
   (void)inserted;

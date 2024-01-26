@@ -1920,6 +1920,10 @@ struct GatherUsesVisitor : public TransitiveAddressWalker<GatherUsesVisitor> {
   /// must check value.
   SILValue getRootAddress() const { return markedValue; }
 
+  void onError(Operand *use) const {
+    LLVM_DEBUG(llvm::dbgs() << "Unhandled user: " << use->getUser());
+  }
+  
   /// Returns true if we emitted an error.
   bool checkForExclusivityHazards(LoadInst *li) {
     BitfieldRef<SSAPrunedLiveness>::StackState state(liveness,

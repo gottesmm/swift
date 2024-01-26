@@ -1923,27 +1923,6 @@ lowerCaptureContextParameters(TypeConverter &TC, SILDeclRef function,
       continue;
     }
 
-    if (capture.isOpaqueValue()) {
-      OpaqueValueExpr *opaqueValue = capture.getOpaqueValue();
-      auto canType = opaqueValue->getType()->mapTypeOutOfContext()
-          ->getReducedType(origGenericSig);
-      auto &loweredTL =
-          TC.getTypeLowering(AbstractionPattern(genericSig, canType),
-                             canType, expansion);
-      auto loweredTy = loweredTL.getLoweredType();
-
-      ParameterConvention convention;
-      if (loweredTL.isAddressOnly()) {
-        convention = ParameterConvention::Indirect_In;
-      } else {
-        convention = ParameterConvention::Direct_Owned;
-      }
-      SILParameterInfo param(loweredTy.getASTType(), convention);
-      inputs.push_back(param);
-
-      continue;
-    }
-
     auto *VD = capture.getDecl();
     auto type = VD->getInterfaceType();
     auto canType = type->getReducedType(origGenericSig);

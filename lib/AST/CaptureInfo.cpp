@@ -19,7 +19,6 @@ using namespace swift;
 
 CaptureInfo::CaptureInfo(ASTContext &ctx, ArrayRef<CapturedValue> captures,
                          DynamicSelfType *dynamicSelf,
-                         OpaqueValueExpr *opaqueValue,
                          bool genericParamCaptures) {
   static_assert(IsTriviallyDestructible<CapturedValue>::value,
                 "Capture info is alloc'd on the ASTContext and not destroyed");
@@ -30,7 +29,7 @@ CaptureInfo::CaptureInfo(ASTContext &ctx, ArrayRef<CapturedValue> captures,
   if (genericParamCaptures)
     flags |= Flags::HasGenericParamCaptures;
 
-  if (captures.empty() && !dynamicSelf && !opaqueValue) {
+  if (captures.empty() && !dynamicSelf) {
     *this = CaptureInfo::empty();
     StorageAndFlags.setInt(flags);
     return;
@@ -40,16 +39,14 @@ CaptureInfo::CaptureInfo(ASTContext &ctx, ArrayRef<CapturedValue> captures,
       CaptureInfoStorage::totalSizeToAlloc<CapturedValue>(captures.size());
   void *storageBuf = ctx.Allocate(storageToAlloc, alignof(CaptureInfoStorage));
   auto *storage = new (storageBuf) CaptureInfoStorage(captures.size(),
-                                                      dynamicSelf,
-                                                      opaqueValue);
+                                                      dynamicSelf);
   StorageAndFlags.setPointerAndInt(storage, flags);
   std::uninitialized_copy(captures.begin(), captures.end(),
                           storage->getTrailingObjects<CapturedValue>());
 }
 
 CaptureInfo CaptureInfo::empty() {
-  static const CaptureInfoStorage empty{0, /*dynamicSelf*/nullptr,
-                                        /*opaqueValue*/nullptr};
+  static const CaptureInfoStorage empty{0, /*dynamicSelf*/nullptr};
   CaptureInfo result;
   result.StorageAndFlags.setPointer(&empty);
   return result;

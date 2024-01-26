@@ -2942,11 +2942,6 @@ void AbstractClosureExpr::getIsolationCrossing(
 
     auto declIsolation = swift::getActorIsolation(capture.getDecl());
 
-    // Then see if we have an opaque value.
-    if (auto *opaqueValue = capture.getOpaqueValue()) {
-      continue;
-    }
-
     // If our decl is actor isolated...
     if (declIsolation.isActorIsolated()) {
       // And our closure is also actor isolated, then add the apply isolation

@@ -43,7 +43,7 @@ class VarDecl;
 class CapturedValue {
 public:
   using Storage =
-      llvm::PointerIntPair<llvm::PointerUnion<ValueDecl*, OpaqueValueExpr*>, 2,
+      llvm::PointerIntPair<ValueDecl*, 2,
                            unsigned>;
 
 private:
@@ -69,9 +69,6 @@ public:
   CapturedValue(ValueDecl *Val, unsigned Flags, SourceLoc Loc)
       : Value(Val, Flags), Loc(Loc) {}
 
-  CapturedValue(OpaqueValueExpr *Val, unsigned Flags)
-      : Value(Val, Flags), Loc(SourceLoc()) {}
-
   static CapturedValue getDynamicSelfMetadata() {
     return CapturedValue((ValueDecl *)nullptr, 0, SourceLoc());
   }
@@ -80,9 +77,6 @@ public:
   bool isNoEscape() const { return Value.getInt() & IsNoEscape; }
 
   bool isDynamicSelfMetadata() const { return !Value.getPointer(); }
-  bool isOpaqueValue() const {
-    return Value.getPointer().is<OpaqueValueExpr *>();
-  }
 
   CapturedValue mergeFlags(CapturedValue cv) {
     assert(Value.getPointer() == cv.Value.getPointer() &&
@@ -95,13 +89,7 @@ public:
   ValueDecl *getDecl() const {
     assert(Value.getPointer() && "dynamic Self metadata capture does not "
            "have a value");
-    return Value.getPointer().dyn_cast<ValueDecl *>();
-  }
-
-  OpaqueValueExpr *getOpaqueValue() const {
-    assert(Value.getPointer() && "dynamic Self metadata capture does not "
-           "have a value");
-    return Value.getPointer().dyn_cast<OpaqueValueExpr *>();
+    return Value.getPointer();
   }
 
   SourceLoc getLoc() const { return Loc; }
@@ -109,7 +97,7 @@ public:
   unsigned getFlags() const { return Value.getInt(); }
 };
 
-} // end swift namespace
+} // namespace swift
 
 namespace swift {
 
@@ -124,9 +112,8 @@ class CaptureInfo {
     OpaqueValueExpr *OpaqueValue;
     unsigned Count;
   public:
-    explicit CaptureInfoStorage(unsigned count, DynamicSelfType *dynamicSelf,
-                                OpaqueValueExpr *opaqueValue)
-      : DynamicSelf(dynamicSelf), OpaqueValue(opaqueValue), Count(count) { }
+    explicit CaptureInfoStorage(unsigned count, DynamicSelfType *dynamicSelf)
+      : DynamicSelf(dynamicSelf), Count(count) { }
 
     ArrayRef<CapturedValue> getCaptures() const {
       return llvm::makeArrayRef(this->getTrailingObjects<CapturedValue>(),
@@ -153,7 +140,7 @@ public:
   /// The default-constructed CaptureInfo is "not yet computed".
   CaptureInfo() = default;
   CaptureInfo(ASTContext &ctx, ArrayRef<CapturedValue> captures,
-              DynamicSelfType *dynamicSelf, OpaqueValueExpr *opaqueValue,
+              DynamicSelfType *dynamicSelf,
               bool genericParamCaptures);
 
   /// A CaptureInfo representing no captures at all.

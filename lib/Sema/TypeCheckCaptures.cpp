@@ -40,7 +40,6 @@ class FindCapturedVars : public ASTWalker {
   SourceLoc GenericParamCaptureLoc;
   SourceLoc DynamicSelfCaptureLoc;
   DynamicSelfType *DynamicSelf = nullptr;
-  OpaqueValueExpr *OpaqueValue = nullptr;
   SourceLoc CaptureLoc;
   DeclContext *CurDC;
   bool NoEscape, ObjC;
@@ -64,7 +63,7 @@ public:
         dynamicSelfToRecord = DynamicSelf;
     }
 
-    return CaptureInfo(Context, Captures, dynamicSelfToRecord, OpaqueValue,
+    return CaptureInfo(Context, Captures, dynamicSelfToRecord,
                        HasGenericParamCaptures);
   }
 
@@ -385,11 +384,6 @@ public:
         DynamicSelf = captureInfo.getDynamicSelfType();
       }
     }
-
-    if (!OpaqueValue) {
-      if (captureInfo.hasOpaqueValueCapture())
-        OpaqueValue = captureInfo.getOpaqueValue();
-    }
   }
 
   PreWalkAction walkToDeclPre(Decl *D) override {
@@ -598,15 +592,6 @@ public:
       TypeChecker::computeCaptures(SubCE);
       propagateCaptures(SubCE->getCaptureInfo(), SubCE->getLoc());
       return Action::SkipChildren(E);
-    }
-
-    // Capture a placeholder opaque value.
-    if (auto opaqueValue = dyn_cast<OpaqueValueExpr>(E)) {
-      if (opaqueValue->isPlaceholder()) {
-        assert(!OpaqueValue || OpaqueValue == opaqueValue);
-        OpaqueValue = opaqueValue;
-        return Action::Continue(E);
-      }
     }
 
     return Action::Continue(E);

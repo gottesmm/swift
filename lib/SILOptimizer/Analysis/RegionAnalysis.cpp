@@ -126,13 +126,16 @@ struct UseDefChainVisitor
     // do not want to treat this as a merge.
     if (auto p = Projection(inst)) {
       switch (p.getKind()) {
+      case ProjectionKind::Box:
+        return cast<ProjectBoxInst>(inst)->getOperand();
+        // Do not look through ref_element_addr and ref_tail.
+      case ProjectionKind::Class:
+      case ProjectionKind::TailElems:
+        return SILValue();
       case ProjectionKind::Upcast:
       case ProjectionKind::RefCast:
       case ProjectionKind::BlockStorageCast:
       case ProjectionKind::BitwiseCast:
-      case ProjectionKind::TailElems:
-      case ProjectionKind::Box:
-      case ProjectionKind::Class:
         llvm_unreachable("Shouldn't see this here");
       case ProjectionKind::Index:
         // Index is always a merge.

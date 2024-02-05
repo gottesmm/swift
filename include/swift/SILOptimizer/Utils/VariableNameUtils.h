@@ -26,7 +26,15 @@
 namespace swift {
 
 class VariableNameInferrer {
+  /// The stacklist that we use to process from use->
   StackList<PointerUnion<SILInstruction *, SILValue>> variableNamePath;
+
+  /// The root value of our string.
+  ///
+  /// If set, a diagnostic should do a 'root' is defined here error.
+  SILValue rootValue;
+
+  /// The final string we computed.
   SmallString<64> &resultingString;
 
 public:
@@ -57,9 +65,88 @@ public:
   /// rather than emitting unknown (and always succeeding).
   ///
   /// \returns true if we inferred anything. Returns false otherwise.
-  bool inferByWalkingUsesToDefs(SILValue searchValue,
-                                bool failInsteadOfEmittingUnknown = false) {
-    while (searchValue) {
+  bool inferByWalkingUsesToDefs(SILValue searchValue) {
+    // Look up our root value while adding to the variable name path list.
+    auto rootValue = findRootValue(searchValue);
+    if (!rootValue) {
+      // If we do not pattern match successfully, just set resulting string to
+      // unknown and return early.
+      resultingString += "unknown";
+      return true;
+    }
+
+    drainVariableNamePath();
+    return true;
+  }
+
+  SILValue inferByWalkingUsesToDefsReturningRoot(SILValue searchValue) {
+    // Look up our root value while adding to the variable name path list.
+    auto rootValue = findRootValue(searchValue);
+    if (!rootValue) {
+      // If we do not pattern match successfully, return SILValue() early.
+      return SILValue();
+    }
+
+    drainVariableNamePath();
+    return rootValue;
+  }
+
+  StringRef getName() const { return resultingString; }
+
+private:
+  void drainVariableNamePath() {
+    auto nameFromDecl = [&](Decl *d) -> StringRef {
+      if (d) {
+        if (auto accessor = dyn_cast<AccessorDecl>(d)) {
+          return accessor->getStorage()->getBaseName().userFacingName();
+        }
+        if (auto vd = dyn_cast<ValueDecl>(d)) {
+          return vd->getBaseName().userFacingName();
+        }
+      }
+
+      return "<unknown decl>";
+    };
+
+    // Walk backwards, constructing our string.
+    while (true) {
+      auto next = variableNamePath.pop_back_val();
+
+      if (auto *inst = next.dyn_cast<SILInstruction *>()) {
+        if (auto i = DebugVarCarryingInst(inst)) {
+          resultingString += i.getName();
+        } else if (auto i = VarDeclCarryingInst(inst)) {
+          resultingString += i.getName();
+        } else if (auto f = dyn_cast<FunctionRefBaseInst>(inst)) {
+          if (auto dc = f->getInitiallyReferencedFunction()->getDeclContext()) {
+            resultingString += nameFromDecl(dc->getAsDecl());
+          } else {
+            resultingString += "<unknown decl>";
+          }
+        } else if (auto m = dyn_cast<MethodInst>(inst)) {
+          resultingString += nameFromDecl(m->getMember().getDecl());
+        } else {
+          resultingString += "<unknown decl>";
+        }
+      } else {
+        auto value = next.get<SILValue>();
+        if (auto *fArg = dyn_cast<SILFunctionArgument>(value))
+          resultingString += fArg->getDecl()->getBaseName().userFacingName();
+      }
+
+      if (variableNamePath.empty())
+        return;
+
+      resultingString += '.';
+    }
+  }
+
+  SILValue findRootValue(SILValue searchValue) {
+    if (!searchValue)
+      return SILValue();
+
+    while (true) {
+      assert(searchValue);
       if (auto *allocInst = dyn_cast<AllocationInst>(searchValue)) {
         // If the instruction itself doesn't carry any variable info, see
         // whether it's copied from another place that does.
@@ -74,12 +161,12 @@ public:
         }
 
         variableNamePath.push_back(allocInst);
-        break;
+        return allocInst;
       }
 
       if (auto *globalAddrInst = dyn_cast<GlobalAddrInst>(searchValue)) {
         variableNamePath.push_back(globalAddrInst);
-        break;
+        return globalAddrInst;
       }
 
       if (auto *oeInst = dyn_cast<OpenExistentialAddrInst>(searchValue)) {
@@ -95,7 +182,7 @@ public:
 
       if (auto *fArg = dyn_cast<SILFunctionArgument>(searchValue)) {
         variableNamePath.push_back({fArg});
-        break;
+        return fArg;
       }
 
       auto getNamePathComponentFromCallee =
@@ -150,10 +237,13 @@ public:
       // If we do not do an exact match, see if we can find a debug_var inst. If
       // we do, we always break since we have a root value.
       if (auto *use = getAnyDebugUse(searchValue)) {
-        if (auto debugVar = DebugVarCarryingInst(use->getUser())) {
-          assert(debugVar.getKind() == DebugVarCarryingInst::Kind::DebugValue);
-          variableNamePath.push_back(use->getUser());
-          break;
+        if (auto *svi = dyn_cast<SingleValueInstruction>(use->getUser())) {
+          if (auto debugVar = DebugVarCarryingInst(svi)) {
+            assert(debugVar.getKind() ==
+                   DebugVarCarryingInst::Kind::DebugValue);
+            variableNamePath.push_back(use->getUser());
+            return svi;
+          }
         }
       }
 
@@ -168,61 +258,10 @@ public:
         continue;
       }
 
-      // If we do not pattern match successfully, just set resulting string to
-      // unknown and return early.
-      if (failInsteadOfEmittingUnknown)
-        return false;
-
-      resultingString += "unknown";
-      return true;
+      // Return SILValue() if we ever get to the bottom to signal we failed to
+      // find anything.
+      return SILValue();
     }
-
-    auto nameFromDecl = [&](Decl *d) -> StringRef {
-      if (d) {
-        if (auto accessor = dyn_cast<AccessorDecl>(d)) {
-          return accessor->getStorage()->getBaseName().userFacingName();
-        }
-        if (auto vd = dyn_cast<ValueDecl>(d)) {
-          return vd->getBaseName().userFacingName();
-        }
-      }
-
-      return "<unknown decl>";
-    };
-
-    // Walk backwards, constructing our string.
-    while (true) {
-      auto next = variableNamePath.pop_back_val();
-
-      if (auto *inst = next.dyn_cast<SILInstruction *>()) {
-        if (auto i = DebugVarCarryingInst(inst)) {
-          resultingString += i.getName();
-        } else if (auto i = VarDeclCarryingInst(inst)) {
-          resultingString += i.getName();
-        } else if (auto f = dyn_cast<FunctionRefBaseInst>(inst)) {
-          if (auto dc = f->getInitiallyReferencedFunction()->getDeclContext()) {
-            resultingString += nameFromDecl(dc->getAsDecl());
-          } else {
-            resultingString += "<unknown decl>";
-          }
-        } else if (auto m = dyn_cast<MethodInst>(inst)) {
-          resultingString += nameFromDecl(m->getMember().getDecl());
-        } else {
-          resultingString += "<unknown decl>";
-        }
-      } else {
-        auto value = next.get<SILValue>();
-        if (auto *fArg = dyn_cast<SILFunctionArgument>(value))
-          resultingString += fArg->getDecl()->getBaseName().userFacingName();
-      }
-
-      if (variableNamePath.empty())
-        return true;
-
-      resultingString += '.';
-    }
-
-    return true;
   }
 };
 

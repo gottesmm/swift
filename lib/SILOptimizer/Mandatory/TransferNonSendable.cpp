@@ -632,9 +632,11 @@ void UseAfterTransferDiagnosticInferrer::init(const Operand *op) {
 
   // Otherwise, see if our operand's instruction is a transferring parameter.
   if (auto fas = FullApplySite::isa(nonConstOp->getUser())) {
-    if (fas.getArgumentParameterInfo(*nonConstOp)
-            .hasOption(SILParameterInfo::Transferring)) {
-      return initForUseOfStronglyTransferredValue(op);
+    if (!fas.getArgumentConvention(*nonConstOp).isIndirectOutParameter()) {
+      if (fas.getArgumentParameterInfo(*nonConstOp)
+          .hasOption(SILParameterInfo::Transferring)) {
+        return initForUseOfStronglyTransferredValue(op);
+      }
     }
   }
 

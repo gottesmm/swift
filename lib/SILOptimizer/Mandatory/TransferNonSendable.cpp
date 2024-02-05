@@ -509,6 +509,9 @@ void UseAfterTransferDiagnosticInferrer::initForApply(const Operand *op,
   SILInstruction *i = const_cast<SILInstruction *>(op->getUser());
   auto fai = FullApplySite::isa(i);
 
+  assert(!fai.getArgumentConvention(*op).isIndirectOutParameter() &&
+         "An indirect out parameter is never transferred");
+
   Expr *foundExpr = nullptr;
 
   // If we have self, then infer it.
@@ -632,11 +635,11 @@ void UseAfterTransferDiagnosticInferrer::init(const Operand *op) {
 
   // Otherwise, see if our operand's instruction is a transferring parameter.
   if (auto fas = FullApplySite::isa(nonConstOp->getUser())) {
-    if (!fas.getArgumentConvention(*nonConstOp).isIndirectOutParameter()) {
-      if (fas.getArgumentParameterInfo(*nonConstOp)
-          .hasOption(SILParameterInfo::Transferring)) {
-        return initForUseOfStronglyTransferredValue(op);
-      }
+    assert(!fas.getArgumentConvention(*nonConstOp).isIndirectOutParameter() &&
+           "We should never transfer an indirect out parameter");
+    if (fas.getArgumentParameterInfo(*nonConstOp)
+            .hasOption(SILParameterInfo::Transferring)) {
+      return initForUseOfStronglyTransferredValue(op);
     }
   }
 
@@ -896,12 +899,13 @@ struct DiagnosticEvaluator final
     auto rep = info->getValueMap().getRepresentative(transferredVal);
     LLVM_DEBUG(llvm::dbgs()
                << "    Emitting Use After Transfer Error!\n"
-               << "        ID:  %%" << transferredVal << "\n"
-               << "        Rep: " << *rep
+               << "        Transferring Inst: " << *transferringOp.getUser()
+               << "        Transferring Op Value: "
+               << transferringOp.getOperand()->get()
                << "        Require Inst: " << *partitionOp.getSourceInst()
-               << "        Transferring Op Num: "
-               << transferringOp.getOperand()->getOperandNumber() << '\n'
-               << "        Transferring Inst: " << *transferringOp.getUser());
+               << "        ID:  %%" << transferredVal << "\n"
+               << "        Rep: " << *rep << "        Transferring Op Num: "
+               << transferringOp.getOperand()->getOperandNumber() << '\n');
     transferOpToRequireInstMultiMap.insert(transferringOp.getOperand(),
                                            partitionOp.getSourceInst());
   }

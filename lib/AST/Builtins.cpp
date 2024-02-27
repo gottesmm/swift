@@ -1596,8 +1596,18 @@ static ValueDecl *getStartAsyncLet(ASTContext &ctx, Identifier id) {
   // TaskOptionRecord*
   builder.addParameter(makeConcrete(OptionalType::get(ctx.TheRawPointerType)));
 
-  // operation async function pointer: () async throws -> T
-  auto extInfo = ASTExtInfoBuilder().withAsync().withThrows().withNoEscape().build();
+  // If transferring results are enabled, make async let return a transferring
+  // value.
+  bool hasTransferringResult =
+      ctx.LangOpts.hasFeature(Feature::TransferringArgsAndResults);
+
+  // operation async function pointer: () async throws -> transferring T
+  auto extInfo = ASTExtInfoBuilder()
+                     .withAsync()
+                     .withThrows()
+                     .withNoEscape()
+                     .withTransferringResult(hasTransferringResult)
+                     .build();
   builder.addParameter(
       makeConcrete(FunctionType::get({ }, genericParam, extInfo)));
 

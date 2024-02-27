@@ -116,3 +116,9 @@ func useTransferredResultMainActor() async {
 func useTransferredResult() async {
   let _ = await transferAsyncResult()
 }
+
+func useTransferredResultAsyncLet() async {
+  // We do not handle this yet. Will handle in next commit.
+  async let x = await transferAsyncResultMainActor()
+  await x
+}

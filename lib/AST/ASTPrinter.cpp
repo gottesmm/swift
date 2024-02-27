@@ -7398,7 +7398,7 @@ public:
     Printer << " -> ";
 
     if (T->hasExtInfo() && T->hasTransferringResult()) {
-      Printer.printKeyword("transferring", Options);
+      Printer.printKeyword("transferring ", Options);
     }
 
     if (T->hasLifetimeDependenceInfo()) {

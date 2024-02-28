@@ -197,6 +197,8 @@ struct SILDeclRef {
   BackDeploymentKind backDeploymentKind : 2;
   /// The default argument index for a default argument getter.
   unsigned defaultArgIndex : 10;
+  /// Set if this is for an async let closure.
+  unsigned isAsyncLetClosure : 1;
 
   PointerUnion<AutoDiffDerivativeFunctionIdentifier *,
                const GenericSignatureImpl *, CustomAttr *>

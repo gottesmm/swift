@@ -138,6 +138,7 @@ SILDeclRef::SILDeclRef(SILDeclRef::Loc baseLoc, bool asForeign,
     : isRuntimeAccessible(false),
       backDeploymentKind(SILDeclRef::BackDeploymentKind::None),
       defaultArgIndex(0),
+      isAsyncLetClosure(false),
       pointer((AutoDiffDerivativeFunctionIdentifier *)nullptr) {
   if (auto *vd = baseLoc.dyn_cast<ValueDecl*>()) {
     if (auto *fd = dyn_cast<FuncDecl>(vd)) {
@@ -170,6 +171,10 @@ SILDeclRef::SILDeclRef(SILDeclRef::Loc baseLoc, bool asForeign,
   } else if (auto *ACE = baseLoc.dyn_cast<AbstractClosureExpr *>()) {
     loc = ACE;
     kind = Kind::Func;
+    if (auto *autoClosure = dyn_cast<AutoClosureExpr>(ACE)) {
+      isAsyncLetClosure =
+          autoClosure->getThunkKind() == AutoClosureExpr::Kind::AsyncLet;
+    }
   } else {
     llvm_unreachable("impossible SILDeclRef loc");
   }

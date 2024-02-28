@@ -1974,6 +1974,8 @@ lowerCaptureContextParameters(TypeConverter &TC, SILDeclRef function,
         convention = ParameterConvention::Direct_Guaranteed;
       }
       SILParameterInfo param(loweredTy.getASTType(), convention);
+      if (function.isAsyncLetClosure)
+        param = param.addingOption(SILParameterInfo::Transferring);
       inputs.push_back(param);
       break;
     }
@@ -1989,6 +1991,8 @@ lowerCaptureContextParameters(TypeConverter &TC, SILDeclRef function,
           /*mutable*/ true);
       auto convention = ParameterConvention::Direct_Guaranteed;
       auto param = SILParameterInfo(boxTy, convention);
+      if (function.isAsyncLetClosure)
+        param = param.addingOption(SILParameterInfo::Transferring);
       inputs.push_back(param);
       break;
     }
@@ -2004,6 +2008,8 @@ lowerCaptureContextParameters(TypeConverter &TC, SILDeclRef function,
                                            /*mutable*/ false);
       auto convention = ParameterConvention::Direct_Guaranteed;
       auto param = SILParameterInfo(boxTy, convention);
+      if (function.isAsyncLetClosure)
+        param = param.addingOption(SILParameterInfo::Transferring);
       inputs.push_back(param);
       break;
     }
@@ -2013,6 +2019,8 @@ lowerCaptureContextParameters(TypeConverter &TC, SILDeclRef function,
       auto param =
           SILParameterInfo(ty.getASTType(),
                            ParameterConvention::Indirect_InoutAliasable);
+      if (function.isAsyncLetClosure)
+        param = param.addingOption(SILParameterInfo::Transferring);
       inputs.push_back(param);
       break;
     }
@@ -2023,6 +2031,8 @@ lowerCaptureContextParameters(TypeConverter &TC, SILDeclRef function,
       auto param =
           SILParameterInfo(ty.getASTType(),
                            ParameterConvention::Indirect_In_Guaranteed);
+      if (function.isAsyncLetClosure)
+        param = param.addingOption(SILParameterInfo::Transferring);
       inputs.push_back(param);
       break;
     }

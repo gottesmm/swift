@@ -56,6 +56,8 @@
 using namespace swift;
 using namespace constraints;
 
+#pragma clang optimize off
+
 bool Solution::hasFixedType(TypeVariableType *typeVar) const {
   auto knownBinding = typeBindings.find(typeVar);
   return knownBinding != typeBindings.end();

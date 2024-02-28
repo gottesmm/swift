@@ -8969,7 +8969,6 @@ static Expr *wrapAsyncLetInitializer(
   bool hasTransferringResult = isTransferringInitializer(initializer);
   auto extInfo = ASTExtInfoBuilder()
                      .withAsync()
-                     .withConcurrent()
                      .withThrows(throws, /*FIXME:*/ Type())
                      .withTransferringResult(hasTransferringResult)
                      .build();

@@ -284,7 +284,36 @@ public:
   }
 
   void printForDiagnostics(llvm::raw_ostream &os,
-                           StringRef openingQuotationMark = "'") const;
+                           StringRef openingQuotationMark = "'") const {
+    switch (*this) {
+    case ActorIsolation::ActorInstance:
+      os << "actor-isolated";
+      break;
+
+    case ActorIsolation::GlobalActor: {
+      if (isMainActor()) {
+        os << "main actor-isolated";
+      } else {
+        Type globalActor = getGlobalActor();
+        os << "global actor " << openingQuotationMark << globalActor.getString()
+           << openingQuotationMark << "-isolated";
+      }
+      break;
+    }
+    case ActorIsolation::Erased:
+      os << "@isolated(any)";
+      break;
+
+    case ActorIsolation::Nonisolated:
+    case ActorIsolation::NonisolatedUnsafe:
+    case ActorIsolation::Unspecified:
+      os << "nonisolated";
+      if (*this == ActorIsolation::NonisolatedUnsafe) {
+        os << "(unsafe)";
+      }
+      break;
+    }
+  }
 
   SWIFT_DEBUG_DUMP {
     print(llvm::dbgs());

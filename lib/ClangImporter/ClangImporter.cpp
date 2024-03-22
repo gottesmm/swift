@@ -610,7 +610,12 @@ void importer::getNormalInvocationArguments(
     // '@_nonSendable' on Clang declarations is fully supported, including the
     // 'attribute push' pragma.
     if (clangSupportsPragmaAttributeWithSwiftAttr())
-      invocationArgStrs.push_back( "-D__SWIFT_ATTR_SUPPORTS_SENDABLE_DECLS=1");
+      invocationArgStrs.push_back("-D__SWIFT_ATTR_SUPPORTS_SENDABLE_DECLS=1");
+
+    // If we support TransferringArgsAndResults, set the -D flag to signal to
+    // objc macros that we support it.
+    if (LangOpts.hasFeature(Feature::TransferringArgsAndResults))
+      invocationArgStrs.push_back("-D__SWIFT_ATTR_SUPPORTS_TRANSFERRING=1");
 
     // Get the version of this compiler and pass it to C/Objective-C
     // declarations.

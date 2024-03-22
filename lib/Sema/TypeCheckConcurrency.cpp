@@ -2727,6 +2727,7 @@ namespace {
           }
         } else {
           // Check the call itself.
+          apply->setIsolatingDeclContext(const_cast<DeclContext *>(getDeclContext()));
           (void)checkApply(apply);
         }
       }

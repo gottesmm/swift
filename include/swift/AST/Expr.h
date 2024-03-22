@@ -4705,6 +4705,10 @@ class ApplyExpr : public Expr {
   // isolations in this struct.
   std::optional<ApplyIsolationCrossing> IsolationCrossing;
 
+  /// If this apply expr is isolated due to it being in a specific decl context,
+  /// this is that decl context.
+  DeclContext *IsolatingDeclContext;
+
   /// Destination information for a thrown error, which includes any
   /// necessary conversions from the actual type thrown to the type that
   /// is expected by the enclosing context.
@@ -4775,6 +4779,19 @@ public:
     assert(!IsolationCrossing.has_value()
              && "IsolationCrossing should not be set twice");
     IsolationCrossing = {callerIsolation, calleeIsolation};
+  }
+
+  // Return the optionally stored ApplyIsolationCrossing instance - set iff this
+  // ApplyExpr crosses isolation domains
+  DeclContext *getIsolatingDeclContext() const {
+    return IsolatingDeclContext;
+  }
+
+  // Record that this apply crosses isolation domains, noting the isolation of
+  // the caller and callee by storing them into the IsolationCrossing field
+  void setIsolatingDeclContext(
+      DeclContext *ctx) {
+    IsolatingDeclContext = ctx;
   }
 
   /// Is this application _implicitly_ required to be an async call?

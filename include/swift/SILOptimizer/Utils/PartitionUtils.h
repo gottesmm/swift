@@ -285,6 +285,7 @@ private:
   // TODO: This shouldn't need to be a friend.
   friend class Partition;
   friend TransferringOperandToStateMap;
+  friend class PartitionStack;
 
   /// First node in the immutable linked list.
   Node *head = nullptr;
@@ -401,11 +402,6 @@ private:
   /// Number of additional element arguments stored in the tail allocated array.
   unsigned numAdditionalElements;
 
-  /// Access the tail allocated buffer of additional element arguments.
-  MutableArrayRef<Element> getAdditionalElementArgs() {
-    return {getTrailingObjects<Element>(), numAdditionalElements};
-  }
-
   Node(Kind kind, Node *parent)
       : kind(kind), parent(parent), subject(nullptr) {}
   Node(Kind kind, Node *parent, SILLocation loc)
@@ -460,6 +456,12 @@ public:
     return std::get<Node *>(subject);
   }
 
+  /// Access the tail allocated buffer of additional element arguments.
+  MutableArrayRef<Element> getAdditionalElementArgs() {
+    assert(kind == MergeElementRegions || kind == RemoveElementFromRegion);
+    return {getTrailingObjects<Element>(), numAdditionalElements};
+  }
+
   ArrayRef<Element> getAdditionalElementArgs() const {
     assert(kind == MergeElementRegions || kind == RemoveElementFromRegion);
     return const_cast<Node *>(this)->getAdditionalElementArgs();
@@ -481,6 +483,13 @@ public:
     if (kind != SequenceBoundary)
       return {};
     return std::get<SILLocation>(subject);
+  }
+
+  void print(llvm::raw_ostream &os) const;
+
+  SWIFT_DEBUG_DUMP {
+    print(llvm::dbgs());
+    llvm::dbgs() << '\n';
   }
 };
 
@@ -674,12 +683,16 @@ public:
   SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
 };
 
+/// A data structure that enables history manipulation of a Partition.
+class PartitionStack;
+
 /// A map from Element -> Region that represents the current partition set.
 class Partition {
 public:
   /// A class defined in PartitionUtils unittest used to grab state from
   /// Partition without exposing it to other users.
   struct PartitionTester;
+  friend PartitionStack;
 
   using Element = PartitionPrimitives::Element;
   using Region = PartitionPrimitives::Region;
@@ -715,6 +728,16 @@ private:
   /// canonicality so when it's invalidated this boolean tracks that, and it
   /// must be reestablished by a call to canonicalize().
   bool canonical;
+
+  /// Create a new partition from a different partiton, only reusing its
+  /// non-transferring state.
+  ///
+  /// Only used by removingTransferState to eliminate potentially copying the
+  /// SmallDenseMap that contains transferring state.
+  Partition(std::map<Element, Region> elementToRegionMap, Region freshLabel,
+            IsolationHistory history, bool isCanonical)
+      : elementToRegionMap(elementToRegionMap), freshLabel(freshLabel),
+        history(history), canonical(isCanonical) {}
 
 public:
   Partition(IsolationHistory history)
@@ -791,27 +814,8 @@ public:
   void clearTransferState() { regionToTransferredOpMap.clear(); }
 
   Partition removingTransferState() const {
-    Partition p = *this;
-    p.clearTransferState();
-    return p;
+    return {elementToRegionMap, freshLabel, history, canonical};
   }
-
-  /// Rewind one PartitionOp worth of history from the partition.
-  ///
-  /// If we rewind through a join, the joined isolation history before merging
-  /// is inserted into \p foundJoinedHistories which should be processed
-  /// afterwards if the current linear history does not find what one is looking
-  /// for.
-  ///
-  /// NOTE: This can only be used if one has cleared transfer state using
-  /// Partition::clearTransferState or constructed a new Partiton using
-  /// Partition::withoutTransferState(). This is because history rewinding
-  /// doesn't use transfer information so just to be careful around potential
-  /// invariants being broken, we just require the elimination of the transfer
-  /// information.
-  ///
-  /// \returns true if there is more history that can be popped.
-  bool popHistory(SmallVectorImpl<IsolationHistory> &foundJoinedHistories);
 
   /// Returns true if this value has any isolation history stored.
   bool hasHistory() const { return bool(history.getHead()); }
@@ -946,12 +950,6 @@ public:
   Region merge(Element fst, Element snd, bool updateHistory = true);
 
 private:
-  /// Pop one history node. Multiple history nodes can make up one PartitionOp
-  /// worth of history, so this is called by popHistory.
-  ///
-  /// Returns true if we succesfully popped a single history node.
-  bool popHistoryOnce(SmallVectorImpl<IsolationHistory> &foundJoinHistoryNodes);
-
   /// A canonical region is defined to have its region number as equal to the
   /// minimum element number of all of its assigned element numbers. This
   /// routine goes through the element -> region map and transforms the
@@ -1007,6 +1005,122 @@ private:
     canonical = false;
     assert(result && "Failed to erase?!");
   }
+};
+
+/// A data structure that enables history manipulation of a Partition.
+class PartitionStack {
+public:
+  using Element = PartitionPrimitives::Element;
+
+  /// If we need to perform recursion due to the values we are looking at being
+  /// in the region of the affected elements but not the elements themselves, we
+  /// store that information here.
+  class RecursionResult {
+    /// If we need to recurse to emit the entire diagnostic, this is the new
+    /// transferredValueElt to use in the recursion.
+    std::optional<Element> newSourceElt;
+
+    /// If we need to recurse to emit the entire diagnostic, this is the new
+    /// isolatedSourceValueElt to use in the recursion.
+    std::optional<Element> newTargetElt;
+
+  public:
+    RecursionResult() {}
+    RecursionResult(Element newLHS, Element newRHS)
+        : newSourceElt(newLHS), newTargetElt(newRHS) {}
+
+    std::optional<std::pair<Element, Element>> getNewSourceTarget() const {
+      if (!newSourceElt || !newTargetElt)
+        return {};
+      return {{*newSourceElt, *newTargetElt}};
+    }
+
+    std::optional<Element> getNewTarget() const { return newTargetElt; }
+    std::optional<Element> getNewSource() const { return newSourceElt; }
+
+    void setNewSourceElt(Element elt) {
+      assert(!newSourceElt.has_value() && "Cannot set twice");
+      newSourceElt = elt;
+    }
+
+    void setNewTargetElt(Element elt) {
+      assert(!newTargetElt.has_value() && "Cannot set twice");
+      newTargetElt = elt;
+    }
+  };
+
+  class DiagnosticResult {
+    SILLocation loc;
+
+    /// For diagnostic purposes this is the element we should as the lhs hand
+    /// side of our merge.
+    ///
+    /// This is merged into \p mergeTargetElement's region.
+    std::optional<Element> mergeSourceElement;
+
+    /// For diagnostic purposes this is the element we should as the right hand
+    /// side of our merge.
+    ///
+    /// mergeSourceElement is merged into this element's region.
+    std::optional<Element> mergeTargetElement;
+
+  public:
+    DiagnosticResult() : loc(SILLocation::invalid()) {}
+
+    SILLocation getLoc() const { return loc; }
+
+    void setLoc(SILLocation newLoc) { loc = newLoc; }
+
+    Element getMergeSource() const {
+      assert(mergeSourceElement && "Merge source wasn't set?!");
+      return *mergeSourceElement;
+    }
+
+    void setMergeSource(Element element) {
+      assert(!mergeSourceElement && "Can only be set once");
+      mergeSourceElement = element;
+    }
+
+    Element getMergeTarget() const {
+      assert(mergeTargetElement && "Merge target wasn't set?!");
+      return *mergeTargetElement;
+    }
+
+    void setMergeTarget(Element element) {
+      assert(!mergeTargetElement && "Can only be set once");
+      mergeTargetElement = element;
+    }
+
+    operator bool() const {
+      return mergeSourceElement.has_value() && mergeTargetElement.has_value();
+    }
+  };
+
+private:
+  Partition p;
+  SmallVector<IsolationHistory, 8> foundJoinedHistories;
+  SmallVectorImpl<RecursionResult> &recursionResults;
+
+public:
+  PartitionStack(const Partition &partition,
+                 SmallVectorImpl<RecursionResult> &recursionResults)
+      : p(partition), recursionResults(recursionResults) {}
+
+  /// Pop the stack until \p transferredValueElt and \p isolatedSourceValueElt
+  /// are not part of the same region. Place information about that point into
+  /// \p result.
+  DiagnosticResult compute(Element transferredValueElt,
+                           Element isolatedSourceValueElt);
+
+  ArrayRef<IsolationHistory> getFoundJoinedHistories() const {
+    return foundJoinedHistories;
+  }
+
+  Partition &getPartition() { return p; }
+
+protected:
+  bool pop();
+  IsolationHistory::Node *popHistoryOnce();
 };
 
 /// A data structure that applies a series of PartitionOps to a single Partition
@@ -1066,6 +1180,9 @@ public:
     return asImpl().handleTransferNonTransferrable(op, elt, otherElement,
                                                    isolationRegionInfo);
   }
+
+  /// Return a reference to the partition we are tracking.
+  const Partition &getPartition() const { return p; }
 
   /// Call isActorDerived on our CRTP subclass.
   bool isActorDerived(Element elt) const {

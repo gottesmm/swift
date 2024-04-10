@@ -988,6 +988,12 @@ NOTE(regionbasedisolation_named_info_transfer_yields_race, none,
 NOTE(regionbasedisolation_named_transfer_non_transferrable, none,
       "transferring %1 %0 to %2 callee could cause races between %2 and %1 uses",
       (Identifier, StringRef, ActorIsolation))
+NOTE(regionbasedisolation_named_in_same_region, none,
+      "%0 %1 is inferred to be %2 since it is in the same region as %2 %3 due to specified region merge path",
+      (StringRef, Identifier, StringRef, Identifier))
+NOTE(regionbasedisolation_named_region_merge, none,
+      "%0. %1 merged into %2 here",
+      (unsigned, Identifier, Identifier))
 NOTE(regionbasedisolation_named_transfer_into_transferring_param, none,
      "%0 %1 is passed as a transferring parameter; Uses in callee may race with later %0 uses",
      (StringRef, Identifier))

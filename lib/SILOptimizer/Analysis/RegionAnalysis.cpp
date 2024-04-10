@@ -2690,20 +2690,6 @@ LOOKTHROUGH_IF_NONSENDABLE_RESULT_AND_OPERAND(UncheckedTakeEnumDataAddrInst)
 // Custom Handling
 //
 
-TranslationSemantics
-PartitionOpTranslator::visitMoveValueInst(MoveValueInst *mvi) {
-  if (mvi->isFromVarDecl())
-    return TranslationSemantics::Assign;
-  return TranslationSemantics::LookThrough;
-}
-
-TranslationSemantics
-PartitionOpTranslator::visitBeginBorrowInst(BeginBorrowInst *bbi) {
-  if (bbi->isFromVarDecl())
-    return TranslationSemantics::Assign;
-  return TranslationSemantics::LookThrough;
-}
-
 /// LoadInst is technically a statically look through instruction, but we want
 /// to handle it especially in the infrastructure, so we cannot mark it as
 /// such. This makes marking it as a normal lookthrough instruction impossible
@@ -2719,6 +2705,20 @@ TranslationSemantics PartitionOpTranslator::visitLoadInst(LoadInst *limvi) {
 TranslationSemantics
 PartitionOpTranslator::visitLoadBorrowInst(LoadBorrowInst *lbi) {
   return TranslationSemantics::Special;
+}
+
+TranslationSemantics
+PartitionOpTranslator::visitMoveValueInst(MoveValueInst *mvi) {
+  if (mvi->isFromVarDecl())
+    return TranslationSemantics::Assign;
+  return TranslationSemantics::LookThrough;
+}
+
+TranslationSemantics
+PartitionOpTranslator::visitBeginBorrowInst(BeginBorrowInst *bbi) {
+  if (bbi->isFromVarDecl())
+    return TranslationSemantics::Assign;
+  return TranslationSemantics::LookThrough;
 }
 
 TranslationSemantics PartitionOpTranslator::visitReturnInst(ReturnInst *ri) {

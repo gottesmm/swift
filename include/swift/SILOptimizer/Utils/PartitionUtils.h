@@ -95,6 +95,35 @@ struct DenseMapInfo<swift::PartitionPrimitives::Region> {
 
 namespace swift {
 
+/// PartitionOpKind represents the different kinds of PartitionOps that
+/// SILInstructions can be translated to
+enum class PartitionOpKind : uint8_t {
+  /// Assign one value to the region of another, takes two args, second arg
+  /// must already be tracked with a non-transferred region
+  Assign,
+
+  /// Assign one value to a fresh region, takes one arg.
+  AssignFresh,
+
+  /// Merge the regions of two values, takes two args, both must be from
+  /// non-transferred regions.
+  Merge,
+
+  /// Transfer the region of a value if not already transferred, takes one arg.
+  Transfer,
+
+  /// Due to an async let or something like that a value that was transferred is
+  /// no longer transferred.
+  UndoTransfer,
+
+  /// Require the region of a value to be non-transferred, takes one arg.
+  Require,
+};
+
+} // namespace swift
+
+namespace swift {
+
 class SILIsolationInfo {
 public:
   /// The lattice is:
@@ -285,6 +314,7 @@ private:
   // TODO: This shouldn't need to be a friend.
   friend class Partition;
   friend TransferringOperandToStateMap;
+  friend class PartitionStack;
 
   /// First node in the immutable linked list.
   Node *head = nullptr;
@@ -304,13 +334,68 @@ public:
 
   Node *getHead() const { return head; }
 
+  class SequenceBoundarySemantics {
+  public:
+    enum Kind : std::underlying_type<PartitionOpKind>::type {
+      /// Assign one value to the region of another, takes two args, second arg
+      /// must already be tracked with a non-transferred region
+      Assign,
+
+      /// Assign one value to a fresh region, takes one arg.
+      AssignFresh,
+
+      /// Merge the regions of two values, takes two args, both must be from
+      /// non-transferred regions.
+      Merge,
+
+      /// A single region created from scratch with multiple elements.
+      SingleRegion,
+
+      /// Create separate regions for a list of indices.
+      SeperateRegions,
+
+      /// A CFG join operation.
+      CFGJoin,
+    };
+
+  private:
+    Kind kind;
+
+  public:
+    SequenceBoundarySemantics(Kind kind) : kind(kind) {}
+
+    static std::optional<SequenceBoundarySemantics> get(PartitionOpKind kind) {
+      switch (kind) {
+      case PartitionOpKind::Assign:
+        return Kind::Assign;
+      case PartitionOpKind::AssignFresh:
+        return Kind::AssignFresh;
+      case PartitionOpKind::Merge:
+        return Kind::Merge;
+      case PartitionOpKind::Transfer:
+      case PartitionOpKind::UndoTransfer:
+      case PartitionOpKind::Require:
+        return {};
+      }
+    }
+
+    operator Kind() const { return kind; }
+
+    void print(llvm::raw_ostream &os) const;
+    SWIFT_DEBUG_DUMP {
+      print(llvm::dbgs());
+      llvm::dbgs() << '\n';
+    }
+  };
+
   /// Push a node that signals the end of a new sequence of history nodes that
   /// should execute together. Must be explicitly ended by a push sequence
   /// end. Is non-rentrant, so one cannot have multiple sequence starts.
   ///
   /// \p loc the SILLocation that identifies the instruction that the "package"
   /// of history nodes that this sequence boundary ends is associated with.
-  Node *pushHistorySequenceBoundary(SILLocation loc);
+  Node *pushHistorySequenceBoundary(SequenceBoundarySemantics semantics,
+                                    SILInstruction *boundaryInst);
 
   /// Push onto the history list that \p value should be added into its own
   /// independent region.
@@ -336,14 +421,27 @@ public:
                                 Element elementToMerge);
 
   /// Push that \p other should be merged into this region.
-  void pushCFGHistoryJoin(Node *otherNode);
+  ///
+  /// \arg predBlock the block that we are merging state from.
+  /// \arg succBlock the block that we are merging state into.
+  void pushCFGHistoryJoin(Node *otherNode, SILBasicBlock *predBlock,
+                          SILBasicBlock *succBlock);
 
   /// Push the top node of \p history as a CFG history join.
-  void pushCFGHistoryJoin(IsolationHistory history) {
-    return pushCFGHistoryJoin(history.getHead());
+  void pushCFGHistoryJoin(IsolationHistory history, SILBasicBlock *predBlock,
+                          SILBasicBlock *succBlock) {
+    return pushCFGHistoryJoin(history.getHead(), predBlock, succBlock);
   }
 
   Node *pop();
+
+  bool operator==(const IsolationHistory &other) const {
+    return getHead() == other.getHead();
+  }
+
+  bool operator!=(const IsolationHistory &other) const {
+    return !(*this == other);
+  }
 };
 
 class IsolationHistory::Node final
@@ -391,25 +489,46 @@ private:
   /// Child node. Never set on construction.
   Node *child = nullptr;
 
+  struct SequenceBoundaryState {
+    SequenceBoundarySemantics semantics;
+    SILInstruction *boundaryInst;
+
+    SequenceBoundaryState(SequenceBoundarySemantics semantics,
+                          SILInstruction *boundaryInst)
+        : semantics(semantics), boundaryInst(boundaryInst) {}
+
+    SILLocation getLoc() const {
+      if (boundaryInst)
+        return boundaryInst->getLoc();
+      return SILLocation::invalid();
+    }
+  };
+
+  struct CFGJoinState {
+    Node *node;
+    SILBasicBlock *predBlock;
+    SILBasicBlock *succBlock;
+
+    CFGJoinState(Node *node, SILBasicBlock *predBlock, SILBasicBlock *succBlock)
+        : node(node), predBlock(predBlock), succBlock(succBlock) {}
+  };
+
   /// Contains:
   ///
   /// 1. Node * if we have a CFGHistoryJoin.
   /// 2. A SILLocation if we have a SequenceBoundary.
   /// 3. An element otherwise.
-  std::variant<Element, Node *, SILLocation> subject;
+  std::variant<Element, Node *, CFGJoinState, SequenceBoundaryState> subject;
 
   /// Number of additional element arguments stored in the tail allocated array.
   unsigned numAdditionalElements;
 
-  /// Access the tail allocated buffer of additional element arguments.
-  MutableArrayRef<Element> getAdditionalElementArgs() {
-    return {getTrailingObjects<Element>(), numAdditionalElements};
-  }
-
   Node(Kind kind, Node *parent)
       : kind(kind), parent(parent), subject(nullptr) {}
-  Node(Kind kind, Node *parent, SILLocation loc)
-      : kind(kind), parent(parent), subject(loc) {}
+  Node(Kind kind, Node *parent, SequenceBoundarySemantics semantics,
+       SILInstruction *boundaryInst)
+      : kind(kind), parent(parent),
+        subject(SequenceBoundaryState(semantics, boundaryInst)) {}
   Node(Kind kind, Node *parent, Element value)
       : kind(kind), parent(parent), subject(value), numAdditionalElements(0) {}
   Node(Kind kind, Node *parent, Element primaryElement,
@@ -437,8 +556,11 @@ private:
                             getAdditionalElementArgs().data());
   }
 
-  Node(Kind kind, Node *parent, Node *node)
-      : kind(kind), parent(parent), subject(node), numAdditionalElements(0) {}
+  Node(Kind kind, Node *parent, Node *node, SILBasicBlock *predBlock,
+       SILBasicBlock *succBlock)
+      : kind(kind), parent(parent),
+        subject(CFGJoinState(node, predBlock, succBlock)),
+        numAdditionalElements(0) {}
 
 public:
   Kind getKind() const { return kind; }
@@ -456,8 +578,21 @@ public:
 
   Node *getFirstArgAsNode() const {
     assert(kind == CFGHistoryJoin);
-    assert(std::holds_alternative<Node *>(subject));
-    return std::get<Node *>(subject);
+    assert(std::holds_alternative<CFGJoinState>(subject));
+    return std::get<CFGJoinState>(subject).node;
+  }
+
+  std::pair<SILBasicBlock *, SILBasicBlock *> getFirstArgAsBlockPair() const {
+    assert(kind == CFGHistoryJoin);
+    assert(std::holds_alternative<CFGJoinState>(subject));
+    auto &state = std::get<CFGJoinState>(subject);
+    return {state.predBlock, state.succBlock};
+  }
+
+  /// Access the tail allocated buffer of additional element arguments.
+  MutableArrayRef<Element> getAdditionalElementArgs() {
+    assert(kind == MergeElementRegions || kind == RemoveElementFromRegion);
+    return {getTrailingObjects<Element>(), numAdditionalElements};
   }
 
   ArrayRef<Element> getAdditionalElementArgs() const {
@@ -477,10 +612,48 @@ public:
     return getFirstArgAsNode();
   }
 
+  std::optional<std::pair<SILBasicBlock *, SILBasicBlock *>>
+  getHistorySequenceBlockPair() const {
+    if (kind != CFGHistoryJoin)
+      return {};
+    return getFirstArgAsBlockPair();
+  }
+
   std::optional<SILLocation> getHistoryBoundaryLoc() const {
     if (kind != SequenceBoundary)
       return {};
-    return std::get<SILLocation>(subject);
+    return std::get<SequenceBoundaryState>(subject).getLoc();
+  }
+
+  SILInstruction *getHistoryBoundaryInst() const {
+    if (kind != SequenceBoundary)
+      return nullptr;
+    return std::get<SequenceBoundaryState>(subject).boundaryInst;
+  }
+
+  std::optional<SequenceBoundarySemantics>
+  getHistoryBoundaryPartitionOpKind() const {
+    if (kind != SequenceBoundary)
+      return {};
+    return std::get<SequenceBoundaryState>(subject).semantics;
+  }
+
+  void print(llvm::raw_ostream &os) const;
+
+  SWIFT_DEBUG_DUMP {
+    print(llvm::dbgs());
+    llvm::dbgs() << '\n';
+  }
+
+  /// Print the isolation history starting at this node and looking through CFG
+  /// history joins.
+  void printRecursive(llvm::raw_ostream &os,
+                      llvm::SmallPtrSetImpl<const Node *> &visitedNodes) const;
+
+  SWIFT_DEBUG_DUMPER(dumpRecursive()) {
+    llvm::SmallPtrSet<const Node *, 8> visitedNodes;
+    printRecursive(llvm::dbgs(), visitedNodes);
+    llvm::dbgs() << '\n';
   }
 };
 
@@ -540,31 +713,6 @@ public:
 } // namespace swift
 
 namespace swift {
-
-/// PartitionOpKind represents the different kinds of PartitionOps that
-/// SILInstructions can be translated to
-enum class PartitionOpKind : uint8_t {
-  /// Assign one value to the region of another, takes two args, second arg
-  /// must already be tracked with a non-transferred region
-  Assign,
-
-  /// Assign one value to a fresh region, takes one arg.
-  AssignFresh,
-
-  /// Merge the regions of two values, takes two args, both must be from
-  /// non-transferred regions.
-  Merge,
-
-  /// Transfer the region of a value if not already transferred, takes one arg.
-  Transfer,
-
-  /// Due to an async let or something like that a value that was transferred is
-  /// no longer transferred.
-  UndoTransfer,
-
-  /// Require the region of a value to be non-transferred, takes one arg.
-  Require,
-};
 
 /// PartitionOp represents a primitive operation that can be performed on
 /// Partitions. This is part of the TransferNonSendable SIL pass workflow:
@@ -674,12 +822,16 @@ public:
   SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
 };
 
+/// A data structure that enables history manipulation of a Partition.
+class PartitionStack;
+
 /// A map from Element -> Region that represents the current partition set.
 class Partition {
 public:
   /// A class defined in PartitionUtils unittest used to grab state from
   /// Partition without exposing it to other users.
   struct PartitionTester;
+  friend PartitionStack;
 
   using Element = PartitionPrimitives::Element;
   using Region = PartitionPrimitives::Region;
@@ -715,6 +867,16 @@ private:
   /// canonicality so when it's invalidated this boolean tracks that, and it
   /// must be reestablished by a call to canonicalize().
   bool canonical;
+
+  /// Create a new partition from a different partiton, only reusing its
+  /// non-transferring state.
+  ///
+  /// Only used by removingTransferState to eliminate potentially copying the
+  /// SmallDenseMap that contains transferring state.
+  Partition(std::map<Element, Region> elementToRegionMap, Region freshLabel,
+            IsolationHistory history, bool isCanonical)
+      : elementToRegionMap(elementToRegionMap), freshLabel(freshLabel),
+        history(history), canonical(isCanonical) {}
 
 public:
   Partition(IsolationHistory history)
@@ -791,27 +953,8 @@ public:
   void clearTransferState() { regionToTransferredOpMap.clear(); }
 
   Partition removingTransferState() const {
-    Partition p = *this;
-    p.clearTransferState();
-    return p;
+    return {elementToRegionMap, freshLabel, history, canonical};
   }
-
-  /// Rewind one PartitionOp worth of history from the partition.
-  ///
-  /// If we rewind through a join, the joined isolation history before merging
-  /// is inserted into \p foundJoinedHistories which should be processed
-  /// afterwards if the current linear history does not find what one is looking
-  /// for.
-  ///
-  /// NOTE: This can only be used if one has cleared transfer state using
-  /// Partition::clearTransferState or constructed a new Partiton using
-  /// Partition::withoutTransferState(). This is because history rewinding
-  /// doesn't use transfer information so just to be careful around potential
-  /// invariants being broken, we just require the elimination of the transfer
-  /// information.
-  ///
-  /// \returns true if there is more history that can be popped.
-  bool popHistory(SmallVectorImpl<IsolationHistory> &foundJoinedHistories);
 
   /// Returns true if this value has any isolation history stored.
   bool hasHistory() const { return bool(history.getHead()); }
@@ -843,7 +986,11 @@ public:
   /// not perform any further mutations to snd.
   ///
   /// Runs in quadratic time.
-  static Partition join(const Partition &fst, Partition &snd);
+  ///
+  /// \arg predBlock the predecessor block we are merging state out of.
+  /// \arg succBlock the successor block we are merging state into.
+  static Partition join(const Partition &fst, Partition &snd,
+                        SILBasicBlock *predBlock, SILBasicBlock *succBlock);
 
   /// Return a vector of the transferred values in this partition.
   std::vector<Element> getTransferredVals() const {
@@ -894,8 +1041,10 @@ public:
   void printHistory(llvm::raw_ostream &os) const;
 
   /// See docs on \p history.pushHistorySequenceBoundary().
-  IsolationHistoryNode *pushHistorySequenceBoundary(SILLocation loc) {
-    return history.pushHistorySequenceBoundary(loc);
+  IsolationHistoryNode *pushHistorySequenceBoundary(
+      IsolationHistory::SequenceBoundarySemantics semantics,
+      SILInstruction *boundaryInst) {
+    return history.pushHistorySequenceBoundary(semantics, boundaryInst);
   }
 
   bool isTransferred(Element val) const {
@@ -946,12 +1095,6 @@ public:
   Region merge(Element fst, Element snd, bool updateHistory = true);
 
 private:
-  /// Pop one history node. Multiple history nodes can make up one PartitionOp
-  /// worth of history, so this is called by popHistory.
-  ///
-  /// Returns true if we succesfully popped a single history node.
-  bool popHistoryOnce(SmallVectorImpl<IsolationHistory> &foundJoinHistoryNodes);
-
   /// A canonical region is defined to have its region number as equal to the
   /// minimum element number of all of its assigned element numbers. This
   /// routine goes through the element -> region map and transforms the
@@ -985,9 +1128,10 @@ private:
   }
 
   /// Push that \p other should be merged into this region.
-  void pushCFGHistoryJoin(IsolationHistory otherHistory) {
+  void pushCFGHistoryJoin(IsolationHistory otherHistory,
+                          SILBasicBlock *predBlock, SILBasicBlock *succBlock) {
     if (auto *head = otherHistory.head)
-      history.pushCFGHistoryJoin(head);
+      history.pushCFGHistoryJoin(head, predBlock, succBlock);
   }
 
   /// NOTE: Assumes that \p elementToMergeInto and \p otherRegions are disjoint.
@@ -1007,6 +1151,122 @@ private:
     canonical = false;
     assert(result && "Failed to erase?!");
   }
+};
+
+/// A data structure that enables history manipulation of a Partition.
+class PartitionStack {
+public:
+  using Element = PartitionPrimitives::Element;
+
+  /// If we need to perform recursion due to the values we are looking at being
+  /// in the region of the affected elements but not the elements themselves, we
+  /// store that information here.
+  class RecursionResult {
+    /// If we need to recurse to emit the entire diagnostic, this is the new
+    /// transferredValueElt to use in the recursion.
+    std::optional<Element> newSourceElt;
+
+    /// If we need to recurse to emit the entire diagnostic, this is the new
+    /// isolatedSourceValueElt to use in the recursion.
+    std::optional<Element> newTargetElt;
+
+  public:
+    RecursionResult() {}
+    RecursionResult(Element newLHS, Element newRHS)
+        : newSourceElt(newLHS), newTargetElt(newRHS) {}
+
+    std::optional<std::pair<Element, Element>> getNewSourceTarget() const {
+      if (!newSourceElt || !newTargetElt)
+        return {};
+      return {{*newSourceElt, *newTargetElt}};
+    }
+
+    std::optional<Element> getNewTarget() const { return newTargetElt; }
+    std::optional<Element> getNewSource() const { return newSourceElt; }
+
+    void setNewSourceElt(Element elt) {
+      assert(!newSourceElt.has_value() && "Cannot set twice");
+      newSourceElt = elt;
+    }
+
+    void setNewTargetElt(Element elt) {
+      assert(!newTargetElt.has_value() && "Cannot set twice");
+      newTargetElt = elt;
+    }
+  };
+
+  class DiagnosticResult {
+    SILLocation loc;
+
+    /// For diagnostic purposes this is the element we should as the lhs hand
+    /// side of our merge.
+    ///
+    /// This is merged into \p mergeTargetElement's region.
+    std::optional<Element> mergeSourceElement;
+
+    /// For diagnostic purposes this is the element we should as the right hand
+    /// side of our merge.
+    ///
+    /// mergeSourceElement is merged into this element's region.
+    std::optional<Element> mergeTargetElement;
+
+  public:
+    DiagnosticResult() : loc(SILLocation::invalid()) {}
+
+    SILLocation getLoc() const { return loc; }
+
+    void setLoc(SILLocation newLoc) { loc = newLoc; }
+
+    Element getMergeSource() const {
+      assert(mergeSourceElement && "Merge source wasn't set?!");
+      return *mergeSourceElement;
+    }
+
+    void setMergeSource(Element element) {
+      assert(!mergeSourceElement && "Can only be set once");
+      mergeSourceElement = element;
+    }
+
+    Element getMergeTarget() const {
+      assert(mergeTargetElement && "Merge target wasn't set?!");
+      return *mergeTargetElement;
+    }
+
+    void setMergeTarget(Element element) {
+      assert(!mergeTargetElement && "Can only be set once");
+      mergeTargetElement = element;
+    }
+
+    operator bool() const {
+      return mergeSourceElement.has_value() && mergeTargetElement.has_value();
+    }
+  };
+
+private:
+  Partition p;
+  SmallVector<IsolationHistory, 8> foundJoinedHistories;
+  SmallVectorImpl<RecursionResult> &recursionResults;
+
+public:
+  PartitionStack(const Partition &partition,
+                 SmallVectorImpl<RecursionResult> &recursionResults)
+      : p(partition), recursionResults(recursionResults) {}
+
+  /// Pop the stack until \p transferredValueElt and \p isolatedSourceValueElt
+  /// are not part of the same region. Place information about that point into
+  /// \p result.
+  DiagnosticResult compute(Element transferredValueElt,
+                           Element isolatedSourceValueElt);
+
+  ArrayRef<IsolationHistory> getFoundJoinedHistories() const {
+    return foundJoinedHistories;
+  }
+
+  Partition &getPartition() { return p; }
+
+protected:
+  bool pop();
+  IsolationHistory::Node *popHistoryOnce();
 };
 
 /// A data structure that applies a series of PartitionOps to a single Partition
@@ -1066,6 +1326,9 @@ public:
     return asImpl().handleTransferNonTransferrable(op, elt, otherElement,
                                                    isolationRegionInfo);
   }
+
+  /// Return a reference to the partition we are tracking.
+  const Partition &getPartition() const { return p; }
 
   /// Call isActorDerived on our CRTP subclass.
   bool isActorDerived(Element elt) const {
@@ -1144,11 +1407,24 @@ public:
       assert(p.is_canonical_correct());
     };
 
-    // Set the boundary so that as we push, this shows when to stop processing
-    // for this PartitionOp.
-    SILLocation loc = op.hasSourceInst() ? getLoc(op.getSourceInst())
-                                         : getLoc(op.getSourceOp());
-    p.pushHistorySequenceBoundary(loc);
+    // If we have a kind that should result in us pushing new values... push a
+    // history sequence boundary.
+    auto history = p.getIsolationHistory();
+    bool pushedHistorySequenceBoundary = false;
+    if (auto boundary =
+            IsolationHistory::SequenceBoundarySemantics::get(op.getKind())) {
+      SILInstruction *inst = op.hasSourceInst() ? op.getSourceInst() : nullptr;
+      p.pushHistorySequenceBoundary(*boundary, inst);
+      pushedHistorySequenceBoundary = true;
+    }
+    SWIFT_DEFER {
+      // We either pushed a history boundary or if we did not, then our history
+      // should be the same.
+      assert((pushedHistorySequenceBoundary ||
+              p.getIsolationHistory() == history) &&
+             "Should not have pushed any isolation history if we did not push "
+             "a history sequence?!");
+    };
 
     switch (op.getKind()) {
     case PartitionOpKind::Assign:
@@ -1220,7 +1496,6 @@ public:
       state.isolationInfo =
           state.isolationInfo.merge(transferredRegionIsolation);
       assert(state.isolationInfo && "Cannot have unknown");
-      state.isolationHistory.pushCFGHistoryJoin(p.getIsolationHistory());
       auto *ptrSet = ptrSetFactory.get(op.getSourceOp());
       p.markTransferred(op.getOpArgs()[0], ptrSet);
       return;

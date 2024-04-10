@@ -995,6 +995,12 @@ NOTE(regionbasedisolation_named_transfer_non_transferrable, none,
 NOTE(regionbasedisolation_named_transfer_non_transferrable_callee, none,
       "sending %1%0 to %2 %3 %4 risks causing data races between %2 and %5 uses",
       (Identifier, StringRef, ActorIsolation, DescriptiveDeclKind, DeclName, StringRef))
+NOTE(regionbasedisolation_named_in_same_region, none,
+      "%0 is inferred to be %1 since it is in the same region as %1 %2 due to specified region merge path",
+      (Identifier, StringRef, Identifier))
+NOTE(regionbasedisolation_named_region_merge, none,
+      "%0. %1 merged into %2 here",
+      (unsigned, Identifier, Identifier))
 NOTE(regionbasedisolation_named_transfer_into_transferring_param, none,
      "%0%1 is passed as a transferring parameter; Uses in callee may race with later %0uses",
      (StringRef, Identifier))

@@ -107,6 +107,18 @@ struct MockedPartitionOpEvaluatorWithFailureCallback final
 
 } // namespace
 
+namespace {
+
+struct TestingPartitionStack : PartitionStack {
+  TestingPartitionStack(const Partition &partition,
+                        SmallVectorImpl<RecursionResult> &recursionResult)
+      : PartitionStack(partition, recursionResult) {}
+
+  bool popHistory() { return pop(); }
+};
+
+} // namespace
+
 //===----------------------------------------------------------------------===//
 //                                   Tests
 //===----------------------------------------------------------------------===//
@@ -829,10 +841,12 @@ TEST(PartitionUtilsTest, TestHistory_CreateVariable) {
     eval.apply({PartitionOp::AssignFresh(Element(2))});
   }
 
-  p.popHistory(joinedHistories);
+  SmallVector<PartitionStack::RecursionResult> results;
+  TestingPartitionStack stack(p, results);
+  stack.popHistory();
 
-  EXPECT_TRUE(Partition::equals(p, pSnapshot));
-  EXPECT_TRUE(joinedHistories.empty());
+  EXPECT_TRUE(Partition::equals(stack.getPartition(), pSnapshot));
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 }
 
 TEST(PartitionUtilsTest, TestHistory_AssignRegion) {
@@ -864,15 +878,17 @@ TEST(PartitionUtilsTest, TestHistory_AssignRegion) {
     eval.apply({PartitionOp::Assign(Element(0), Element(2))});
   }
 
-  p.popHistory(joinedHistories);
+  SmallVector<PartitionStack::RecursionResult> results;
+  TestingPartitionStack stack(p, results);
+  stack.popHistory();
 
-  EXPECT_TRUE(Partition::equals(p, pSnapshot2));
-  EXPECT_TRUE(joinedHistories.empty());
+  EXPECT_TRUE(Partition::equals(stack.getPartition(), pSnapshot2));
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 
-  p.popHistory(joinedHistories);
+  stack.popHistory();
 
-  EXPECT_TRUE(Partition::equals(p, pSnapshot));
-  EXPECT_TRUE(joinedHistories.empty());
+  EXPECT_TRUE(Partition::equals(stack.getPartition(), pSnapshot));
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 }
 
 TEST(PartitionUtilsTest, TestHistory_BuildNewRegionRepIsMergee) {
@@ -911,16 +927,18 @@ TEST(PartitionUtilsTest, TestHistory_BuildNewRegionRepIsMergee) {
   EXPECT_TRUE(Partition::equals(p, pSnapshot2));
 
   // We pop but nothing changes since we did not need to change anything.
-  p.popHistory(joinedHistories);
+  SmallVector<PartitionStack::RecursionResult, 2> results;
+  TestingPartitionStack stack(p, results);
+  stack.popHistory();
 
-  EXPECT_TRUE(Partition::equals(p, pSnapshot2));
-  EXPECT_TRUE(joinedHistories.empty());
+  EXPECT_TRUE(Partition::equals(stack.getPartition(), pSnapshot2));
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 
   // We pop a last time to return to our original value.
-  p.popHistory(joinedHistories);
+  stack.popHistory();
 
-  EXPECT_TRUE(Partition::equals(p, pSnapshot));
-  EXPECT_TRUE(joinedHistories.empty());
+  EXPECT_TRUE(Partition::equals(stack.getPartition(), pSnapshot));
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 }
 
 TEST(PartitionUtilsTest, TestHistory_ReturnFalseWhenNoneLeft) {
@@ -932,20 +950,23 @@ TEST(PartitionUtilsTest, TestHistory_ReturnFalseWhenNoneLeft) {
 
   Partition p(historyFactory.get());
 
-  EXPECT_FALSE(p.popHistory(joinedHistories));
-  EXPECT_TRUE(joinedHistories.empty());
+  SmallVector<PartitionStack::RecursionResult, 2> results;
+  TestingPartitionStack stack(p, results);
+  EXPECT_FALSE(stack.popHistory());
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 
   {
-    MockedPartitionOpEvaluator eval(p, factory, transferringOpToStateMap);
+    MockedPartitionOpEvaluator eval(stack.getPartition(), factory,
+                                    transferringOpToStateMap);
     eval.apply({PartitionOp::AssignFresh(Element(2)),
                 PartitionOp::AssignFresh(Element(3))});
   }
 
-  EXPECT_TRUE(p.popHistory(joinedHistories));
-  EXPECT_TRUE(joinedHistories.empty());
+  EXPECT_TRUE(stack.popHistory());
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 
-  EXPECT_FALSE(p.popHistory(joinedHistories));
-  EXPECT_TRUE(joinedHistories.empty());
+  EXPECT_FALSE(stack.popHistory());
+  EXPECT_TRUE(stack.getFoundJoinedHistories().empty());
 }
 
 TEST(PartitionUtilsTest, TestHistory_JoiningTwoEmpty) {
@@ -1003,6 +1024,51 @@ TEST(PartitionUtilsTest, TestHistory_JoiningEmptyAndNotEmpty) {
     MockedPartitionOpEvaluator eval(p1, factory, transferringOpToStateMap);
     eval.apply({PartitionOp::AssignFresh(Element(2))});
   }
+
+  EXPECT_TRUE(p1.historySize() == 2);
+  EXPECT_TRUE(p2.historySize() == 0);
+  auto result = Partition::join(p1, p2);
+  EXPECT_TRUE(std::next(result.begin()) == result.end());
+  // Since p2 doesn't have any history, we do not actually perform any join and
+  // thus do not insert a CFGHistory change.
+  EXPECT_TRUE(result.historySize() == 2);
+}
+
+TEST(PartitionUtilsTest, TestHistory_Loop) {
+  // Make sure that we do sane things when we join empty history.
+  llvm::BumpPtrAllocator allocator;
+  Partition::TransferringOperandSetFactory factory(allocator);
+  IsolationHistory::Factory historyFactory(allocator);
+  TransferringOperandToStateMap transferringOpToStateMap(historyFactory);
+  SmallVector<IsolationHistory, 8> joinedHistories;
+
+  /*
+(lldb) expr partition.dump()
+expr source
+expr target
+[(3)(6 9 32 35)]
+(lldb) expr source
+(Element) $0 = (num = 32)
+(lldb) expr target
+(Element) $1 = (num = 35)
+   */
+  Partition p(historyFactory.get());
+
+  // Block 1
+  {
+    MockedPartitionOpEvaluator eval(p, factory, transferringOpToStateMap);
+    eval.apply({// AddNewRegionForElement: 3
+                PartitionOp::AssignFresh(Element(3)),
+                // AddNewRegionForElement: 6
+                PartitionOp::AssignFresh(Element(6)),
+                // AddNewRegionForElement: 9
+                PartitionOp::AssignFresh(Element(9)),
+                // MergeElementRegions: 3
+                PartitionOp::Merge(Element(9), Element(6))});
+  }
+
+  // Block 2
+  {}
 
   EXPECT_TRUE(p1.historySize() == 2);
   EXPECT_TRUE(p2.historySize() == 0);

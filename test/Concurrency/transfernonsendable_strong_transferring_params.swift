@@ -135,6 +135,7 @@ actor MyActor {
     await transferToMain(x)
     await transferToMain(y) // expected-warning {{sending 'y' risks causing data races}}
     // expected-note @-1 {{sending actor-isolated 'y' to main actor-isolated global function 'transferToMain' risks causing data races between main actor-isolated and actor-isolated uses}}
+    // expected-note @-2 {{'y' is inferred to be actor-isolated since it is in the same region as actor-isolated 'y' due to specified region merge path}}
   }
 
   func getNormalErrorIfTransferTwice(_ x: transferring Klass) async {
@@ -380,7 +381,8 @@ func testMergeWithTaskIsolated(_ x: transferring Klass, y: Klass) async {
 }
 
 @MainActor func testMergeWithActorIsolated(_ x: transferring Klass, y: Klass) async {
-  x = y
+  x = y // expected-note {{0. 'y' merged into 'x' here}}
   await transferToCustom(x) // expected-warning {{sending 'x' risks causing data races}}
   // expected-note @-1 {{sending main actor-isolated 'x' to global actor 'CustomActor'-isolated global function 'transferToCustom' risks causing data races between global actor 'CustomActor'-isolated and main actor-isolated uses}}
+  // expected-note @-2 {{'x' is inferred to be main actor-isolated since it is in the same region as main actor-isolated 'y' due to specified region merge path}}
 }

@@ -54,6 +54,8 @@ using Region = PartitionPrimitives::Region;
 
 } // namespace
 
+#pragma clang optimize off
+
 //===----------------------------------------------------------------------===//
 //                              MARK: Utilities
 //===----------------------------------------------------------------------===//
@@ -453,18 +455,26 @@ struct TransferredNonTransferrableInfo {
   /// nonTransferrable's region when the error was diagnosed.
   SILIsolationInfo isolationRegionInfo;
 
+  /// The partition state at the moment when the error was emitted. Can be used
+  /// to rewind history.
+  Partition usePointPartition;
+
   TransferredNonTransferrableInfo(Operand *transferredOperand,
                                   SILValue nonTransferrableValue,
-                                  SILIsolationInfo isolationRegionInfo)
+                                  SILIsolationInfo isolationRegionInfo,
+                                  const Partition &partition)
       : transferredOperand(transferredOperand),
         nonTransferrable(nonTransferrableValue),
-        isolationRegionInfo(isolationRegionInfo) {}
+        isolationRegionInfo(isolationRegionInfo),
+        usePointPartition(partition.removingTransferState()) {}
   TransferredNonTransferrableInfo(Operand *transferredOperand,
                                   SILInstruction *nonTransferrableInst,
-                                  SILIsolationInfo isolationRegionInfo)
+                                  SILIsolationInfo isolationRegionInfo,
+                                  const Partition &partition)
       : transferredOperand(transferredOperand),
         nonTransferrable(nonTransferrableInst),
-        isolationRegionInfo(isolationRegionInfo) {}
+        isolationRegionInfo(isolationRegionInfo),
+        usePointPartition(partition.removingTransferState()) {}
 };
 
 class TransferNonSendableImpl {
@@ -1086,13 +1096,14 @@ void TransferNonSendableImpl::emitUseAfterTransferDiagnostics() {
 namespace {
 
 class TransferNonTransferrableDiagnosticEmitter {
+  RegionAnalysisValueMap &valueMap;
   TransferredNonTransferrableInfo info;
   bool emittedErrorDiagnostic = false;
 
 public:
   TransferNonTransferrableDiagnosticEmitter(
-      TransferredNonTransferrableInfo info)
-      : info(info) {}
+      RegionAnalysisValueMap &valueMap, TransferredNonTransferrableInfo info)
+      : valueMap(valueMap), info(info) {}
 
   ~TransferNonTransferrableDiagnosticEmitter() {
     if (!emittedErrorDiagnostic) {
@@ -1220,6 +1231,148 @@ public:
     }
   }
 
+  /// Attempt to emit a detailed isolation history for the given value. If we
+  /// fail, emit the normal emitNamedIsolation.
+  ///
+  /// NOTE: This means that we must call emitNamedIsolation along all paths!
+  void emitNamedIsolationWithHistory(SILLocation loc, Identifier name,
+                                     ApplyIsolationCrossing isolationCrossing) {
+#ifndef NDEBUG
+    bool calledEmitNamedIsolation = false;
+    SWIFT_DEFER {
+      assert(calledEmitNamedIsolation &&
+             "Failed to call emit named isolation along all paths?!");
+    };
+#endif
+    auto callEmitNamedIsolation =
+        [&](SILLocation loc, Identifier name,
+            ApplyIsolationCrossing isolationCrossing) {
+#ifndef NDEBUG
+          calledEmitNamedIsolation = true;
+#endif
+          emitNamedIsolation(loc, name, isolationCrossing);
+        };
+
+    // For now we just do this with actor isolated for simplicity.
+    if (!info.isolationRegionInfo.isActorIsolated()) {
+      callEmitNamedIsolation(loc, name, isolationCrossing);
+      return;
+    }
+
+    // If our value statically has actor isolation, then we are already done.
+    SILValue transferredValue = info.transferredOperand->get();
+    auto staticIsolation = valueMap.getIsolationRegion(transferredValue);
+    if (staticIsolation.hasActorIsolation()) {
+      callEmitNamedIsolation(loc, name, isolationCrossing);
+      return;
+    }
+
+    // Otherwise, we have a disconnected value that is in the same region as an
+    // actor isolated value. Lets see if we have such a value.
+    auto isolationSource = info.isolationRegionInfo.getIsolatedValue();
+    if (!isolationSource) {
+      callEmitNamedIsolation(loc, name, isolationCrossing);
+      return;
+    }
+
+    // Try to grab the name of the value. If we fail, for now, bail.
+    auto isolationSourceName = VariableNameInferrer::inferName(isolationSource);
+    if (!isolationSourceName) {
+      callEmitNamedIsolation(loc, name, isolationCrossing);
+      return;
+    }
+
+    auto &partition = info.usePointPartition;
+    auto transferredValueTV = valueMap.getTrackableValue(transferredValue);
+    auto isolationSourceTrackedValue =
+        valueMap.getTrackableValue(isolationSource);
+
+    assert(isolationSourceTrackedValue.getIsolationRegionInfo()
+               .hasActorIsolation());
+
+    SmallString<64> transferredValueIsolationDesc;
+    transferredValueTV.printIsolationInfo(transferredValueIsolationDesc);
+    SmallString<64> isolationSourceIsolationDesc;
+    isolationSourceTrackedValue.printIsolationInfo(
+        isolationSourceIsolationDesc);
+
+    Element source = transferredValueTV.getID();
+    Element target = isolationSourceTrackedValue.getID();
+
+    // If source and target are the same, then we can just emit the named error.
+    if (source == target) {
+      callEmitNamedIsolation(loc, name, isolationCrossing);
+      return;
+    }
+
+    SmallVector<PartitionStack::RecursionResult, 2> recursion;
+    recursion.emplace_back(source, target);
+
+    PartitionStack stack(partition, recursion);
+
+    // stack can append values to recursion while we process recursion, so we
+    // need to reload recursion.size() for every iteration.
+    struct PrintingInfo {
+      SILLocation loc;
+      Identifier sourceName;
+      Identifier targetName;
+
+      PrintingInfo(SILLocation loc, Identifier sourceName,
+                   Identifier targetName)
+          : loc(loc), sourceName(sourceName), targetName(targetName) {}
+    };
+    SmallVector<PrintingInfo, 8> printResults;
+    for (unsigned i = 0; i < recursion.size(); ++i) {
+      auto next = recursion[i];
+      assert(next.getNewSourceTarget() && "Should have value?!");
+      auto r = stack.compute(*next.getNewSource(), *next.getNewTarget());
+      if (!r)
+        continue;
+
+      auto diagSource = r.getMergeSource();
+      auto diagTarget = r.getMergeTarget();
+
+      SILValue sourceValue = valueMap.getRepresentative(diagSource);
+      SILValue targetValue = valueMap.getRepresentative(diagTarget);
+      auto sourceName = VariableNameInferrer::inferName(sourceValue);
+      if (!sourceName) {
+        callEmitNamedIsolation(loc, name, isolationCrossing);
+        return;
+      }
+      auto targetName = VariableNameInferrer::inferName(targetValue);
+      if (!targetName) {
+        callEmitNamedIsolation(loc, name, isolationCrossing);
+        return;
+      }
+
+      // If the names are the same, skip it. This comes up from values that are
+      // materialized into temporaries... if we find two values with the same
+      // id, then there must be an error earlier in the compiler.
+      //
+      // TODO: Change this to an explicit temporary check. Maybe fail?
+      if (*targetName == *sourceName)
+        continue;
+
+      printResults.emplace_back(r.getLoc(), *sourceName, *targetName);
+    }
+
+    // Now that we know that we have all of the necessary pieces to emit our
+    // better diagnostic... Begin by emitting the normal named isolation error.
+    callEmitNamedIsolation(loc, name, isolationCrossing);
+
+    // Then emit a special error that states that we are going to emit the merge
+    // sequence.
+    diagnoseNote(loc, diag::regionbasedisolation_named_in_same_region, name,
+                 isolationSourceIsolationDesc, *isolationSourceName);
+
+    // Now emit our notes.
+    for (auto pair : llvm::enumerate(printResults)) {
+      auto r = pair.value();
+      diagnoseNote(r.loc, diag::regionbasedisolation_named_region_merge,
+                   pair.index(), r.sourceName, r.targetName);
+    }
+  }
+
   void emitNamedFunctionArgumentApplyStronglyTransferred(SILLocation loc,
                                                          Identifier varName) {
     emitNamedOnlyError(loc, varName);
@@ -1305,8 +1458,8 @@ class TransferNonTransferrableDiagnosticInferrer {
 
 public:
   TransferNonTransferrableDiagnosticInferrer(
-      TransferredNonTransferrableInfo info)
-      : diagnosticEmitter(info) {}
+      RegionAnalysisValueMap &valueMap, TransferredNonTransferrableInfo info)
+      : diagnosticEmitter(valueMap, info) {}
 
   /// Gathers diagnostics. Returns false if we emitted a "I don't understand
   /// error". If we emit such an error, we should bail without emitting any
@@ -1365,7 +1518,6 @@ bool TransferNonTransferrableDiagnosticInferrer::run() {
               SILParameterInfo::Transferring)) {
 
         // See if we can infer a name from the value.
-        SmallString<64> resultingName;
         if (auto varName = VariableNameInferrer::inferName(op->get())) {
           diagnosticEmitter.emitNamedFunctionArgumentApplyStronglyTransferred(
               loc, *varName);
@@ -1407,7 +1559,7 @@ bool TransferNonTransferrableDiagnosticInferrer::run() {
     // See if we can infer a name from the value.
     SmallString<64> resultingName;
     if (auto name = VariableNameInferrer::inferName(op->get())) {
-      diagnosticEmitter.emitNamedIsolation(loc, *name, *isolation);
+      diagnosticEmitter.emitNamedIsolationWithHistory(loc, *name, *isolation);
       return true;
     }
 
@@ -1482,7 +1634,8 @@ void TransferNonSendableImpl::emitTransferredNonTransferrableDiagnostics() {
       llvm::dbgs() << "Emitting transfer non transferrable diagnostics.\n");
 
   for (auto info : transferredNonTransferrableInfoList) {
-    TransferNonTransferrableDiagnosticInferrer diagnosticInferrer(info);
+    TransferNonTransferrableDiagnosticInferrer diagnosticInferrer(
+        regionInfo->getValueMap(), info);
     diagnosticInferrer.run();
   }
 }
@@ -1566,7 +1719,8 @@ struct DiagnosticEvaluator final
         info->getValueMap().getRepresentative(transferredVal);
 
     self->transferredNonTransferrable.emplace_back(
-        partitionOp.getSourceOp(), nonTransferrableValue, isolationRegionInfo);
+        partitionOp.getSourceOp(), nonTransferrableValue, isolationRegionInfo,
+        getPartition());
   }
 
   void
@@ -1590,16 +1744,17 @@ struct DiagnosticEvaluator final
             actualNonTransferrableValue)) {
       LLVM_DEBUG(llvm::dbgs()
                  << "        ActualTransfer: " << nonTransferrableValue);
-      self->transferredNonTransferrable.emplace_back(partitionOp.getSourceOp(),
-                                                     nonTransferrableValue,
-                                                     isolationRegionInfo);
+      self->transferredNonTransferrable.emplace_back(
+          partitionOp.getSourceOp(), nonTransferrableValue, isolationRegionInfo,
+          getPartition());
     } else if (auto *nonTransferrableInst =
                    info->getValueMap().maybeGetActorIntroducingInst(
                        actualNonTransferrableValue)) {
       LLVM_DEBUG(llvm::dbgs()
                  << "        ActualTransfer: " << *nonTransferrableInst);
       self->transferredNonTransferrable.emplace_back(
-          partitionOp.getSourceOp(), nonTransferrableInst, isolationRegionInfo);
+          partitionOp.getSourceOp(), nonTransferrableInst, isolationRegionInfo,
+          getPartition());
     } else {
       // Otherwise, just use the actual value.
       //
@@ -1609,7 +1764,7 @@ struct DiagnosticEvaluator final
       self->transferredNonTransferrable.emplace_back(
           partitionOp.getSourceOp(),
           info->getValueMap().getRepresentative(transferredVal),
-          isolationRegionInfo);
+          isolationRegionInfo, getPartition());
     }
   }
 

@@ -1376,11 +1376,6 @@ def disable_strict_concurrency_region_based_isolation : Flag<["-"],
   HelpText<"Disable region based isolation when running with strict concurrency enabled. Only enabled with asserts">,
   Flags<[HelpHidden]>;
 
-def disable_transferring_args_and_results_with_region_isolation : Flag<["-"],
-  "disable-transferring-args-and-results-with-region-based-isolation">,
-  HelpText<"Disable transferring args and results when region based isolation is enabled. Only enabled with asserts">,
-  Flags<[HelpHidden]>;
-
 def disable_sending_args_and_results_with_region_isolation : Flag<["-"],
   "disable-sending-args-and-results-with-region-based-isolation">,
   HelpText<"Disable sending args and results when region based isolation is enabled. Only enabled with asserts">,

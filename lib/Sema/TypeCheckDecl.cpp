@@ -2257,15 +2257,6 @@ ParamSpecifierRequest::evaluate(Evaluator &evaluator,
   if (auto isolated = dyn_cast<IsolatedTypeRepr>(nestedRepr))
     nestedRepr = isolated->getBase();
 
-  if (auto transferring = dyn_cast<TransferringTypeRepr>(nestedRepr)) {
-    // If we do not have an Ownership Repr, return implicit copyable consuming.
-    auto *base = transferring->getBase();
-    if (!isa<OwnershipTypeRepr>(base)) {
-      return ParamSpecifier::ImplicitlyCopyableConsuming;
-    }
-    nestedRepr = base;
-  }
-
   if (auto sending = dyn_cast<SendingTypeRepr>(nestedRepr)) {
     // If we do not have an Ownership Repr, return implicit copyable consuming.
     auto *base = sending->getBase();

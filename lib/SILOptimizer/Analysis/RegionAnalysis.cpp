@@ -1502,7 +1502,8 @@ public:
                function->getName(),
                Demangle::DemangleOptions::SimplifiedUIDemangleOptions())
         << '\n'
-        << PER_FUNCTION_SEP_STR);
+        << PER_FUNCTION_SEP_STR
+        << "Dump:\n"; function->print(llvm::dbgs()));
 
     gatherFlowInsensitiveInformationBeforeDataflow();
 

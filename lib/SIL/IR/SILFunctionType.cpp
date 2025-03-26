@@ -47,6 +47,8 @@
 using namespace swift;
 using namespace swift::Lowering;
 
+#pragma clang optimize off
+
 SILType SILFunctionType::substInterfaceType(SILModule &M,
                                             SILType interfaceType,
                                             TypeExpansionContext context) const {

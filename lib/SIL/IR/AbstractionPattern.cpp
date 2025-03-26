@@ -1731,7 +1731,8 @@ forEachFunctionParam(AnyFunctionType::CanParamArrayRef substParams,
 FunctionParamGenerator::FunctionParamGenerator(
                               AbstractionPattern origFunctionType,
                               AnyFunctionType::CanParamArrayRef substParams,
-                              bool ignoreFinalOrigParam)
+                              bool ignoreFinalOrigParam,
+                              bool ignoreInitialOrigParam)
     : origFunctionType(origFunctionType), allSubstParams(substParams) {
   origFunctionTypeIsOpaque =
     (origFunctionType.isTypeParameterOrOpaqueArchetype() ||
@@ -1745,7 +1746,14 @@ FunctionParamGenerator::FunctionParamGenerator(
       numOrigParams--;
   }
 
-  if (!isFinished()) loadParameter();
+  if (ignoreInitialOrigParam) {
+    // Advance past the first parameter and prime the generator.
+    advance();
+    return;
+  }
+
+  if (!isFinished())
+    loadParameter();
 }
 
 static CanType getOptionalObjectType(CanType type) {

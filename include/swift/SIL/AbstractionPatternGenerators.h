@@ -81,7 +81,8 @@ class FunctionParamGenerator {
 public:
   FunctionParamGenerator(AbstractionPattern origFunctionType,
                          AnyFunctionType::CanParamArrayRef substParams,
-                         bool ignoreFinalOrigParam);
+                         bool ignoreFinalOrigParam,
+                         bool ignoreInitialOrigParam=false);
 
   /// Is the traversal finished?  If so, none of the getters below
   /// are allowed to be called.

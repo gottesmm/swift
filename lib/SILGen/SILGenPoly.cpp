@@ -116,6 +116,8 @@
 using namespace swift;
 using namespace Lowering;
 
+#pragma clang optimize off
+
 static ParameterConvention
 getScalarConventionForPackConvention(ParameterConvention conv) {
   switch (conv) {
@@ -159,6 +161,14 @@ public:
     if (hasAddress()) return getAddress();
     return SGF.emitTemporaryAllocation(loc, getType());
   }
+  void print(llvm::raw_ostream &os) const {
+    if (hasAddress())
+      os << "Address: " << *getAddress();
+    else
+      os << "Type: " << getType();
+  }
+
+  SWIFT_DEBUG_DUMP { print(llvm::dbgs()); llvm::dbgs() << '\n'; }
 };
 
 } // end anonymous namespace
@@ -977,7 +987,8 @@ ManagedValue Transform::transformTuple(ManagedValue inputTuple,
 void SILGenFunction::collectThunkParams(
     SILLocation loc, SmallVectorImpl<ManagedValue> &params,
     SmallVectorImpl<ManagedValue> *indirectResults,
-    SmallVectorImpl<ManagedValue> *indirectErrors) {
+    SmallVectorImpl<ManagedValue> *indirectErrors,
+    ThunkGenOptions options) {
   // Add the indirect results.
   for (auto resultTy : F.getConventions().getIndirectSILResultTypes(
            getTypeExpansionContext())) {
@@ -1013,7 +1024,16 @@ void SILGenFunction::collectThunkParams(
     // be lowered to their underlying type if allowed by resilience.
     auto inContextParamTy = F.getLoweredType(paramTy.getASTType())
                                 .getCategoryType(paramTy.getCategory());
-    params.push_back(B.createInputFunctionArgument(inContextParamTy, loc));
+    auto functionArgument =
+        B.createInputFunctionArgument(inContextParamTy, loc);
+
+    // If we are told to not propagate the isolated parameter and this is the
+    // implicit leading/isolated parameter, continue.
+    if (options.contains(ThunkGenFlag::ConvertingToNonIsolatedCaller) &&
+        param.hasOption(SILParameterInfo::ImplicitLeading) &&
+        param.hasOption(SILParameterInfo::Isolated))
+      continue;
+    params.push_back(functionArgument);
   }
 }
 
@@ -1271,6 +1291,13 @@ public:
            (isIndirectFormalParameter(convention) &&
             SGF.silConv.useLoweredAddresses());
   }
+
+  void print(llvm::raw_ostream &os) const {
+    os << "ParamInfo. Slot: ";
+    slot.print(os);
+  };
+
+  SWIFT_DEBUG_DUMP { print(llvm::dbgs()); llvm::dbgs() << '\n'; }
 };
 
 /// Given a list of inputs that are suited to the parameters of one
@@ -1439,15 +1466,17 @@ class TranslateArguments : public ExpanderBase<TranslateArguments, ParamInfo> {
   CanSILFunctionType InnerTypesFuncTy;
   ArrayRef<SILParameterInfo> InnerTypes;
   InnerPackArgGenerator InnerPacks;
+  SILGenFunction::ThunkGenOptions Options;
 public:
   TranslateArguments(SILGenFunction &SGF, SILLocation loc,
                      ArrayRef<ManagedValue> outerArgs,
                      SmallVectorImpl<ManagedValue> &innerArgs,
                      CanSILFunctionType innerTypesFuncTy,
-                     ArrayRef<SILParameterInfo> innerTypes)
+                     ArrayRef<SILParameterInfo> innerTypes,
+                     SILGenFunction::ThunkGenOptions options = {})
     : ExpanderBase(SGF, loc, outerArgs), InnerArgs(innerArgs),
       InnerTypesFuncTy(innerTypesFuncTy), InnerTypes(innerTypes),
-      InnerPacks(*this) {}
+      InnerPacks(*this), Options(options) {}
 
   void process(AbstractionPattern innerOrigFunctionType,
                AnyFunctionType::CanParamArrayRef innerSubstTypes,
@@ -2894,8 +2923,13 @@ static void forwardFunctionArguments(SILGenFunction &SGF,
                                      SILLocation loc,
                                      CanSILFunctionType fTy,
                                      ArrayRef<ManagedValue> managedArgs,
-                                     SmallVectorImpl<SILValue> &forwardedArgs) {
+                                     SmallVectorImpl<SILValue> &forwardedArgs,
+                                     SILGenFunction::ThunkGenOptions options = {}) {
   auto argTypes = fTy->getParameters();
+  if (options.contains(SILGenFunction::ThunkGenFlag::ConvertingFromNonIsolatedCaller)) {
+    argTypes = argTypes.drop_front();
+  }
+  
   for (auto index : indices(managedArgs)) {
     auto arg = managedArgs[index];
     auto argTy = argTypes[index];
@@ -5409,9 +5443,32 @@ static void buildThunkBody(SILGenFunction &SGF, SILLocation loc,
 
   FullExpr scope(SGF.Cleanups, CleanupLocation(loc));
 
+  using ThunkGenFlag = SILGenFunction::ThunkGenFlag;
+  auto options = SILGenFunction::ThunkGenOptions();
+
+  // If our original function was nonisolated caller and our eventual type is
+  // just nonisolated, pop the isolated argument.
+  //
+  // NOTE: We do this early before thunk params so that we avoid pushing the
+  // isolated parameter preventing us from having to memcpy over the array.
+  if (outputSubstType->isAsync() && inputSubstType->isAsync()) {
+    if (outputSubstType->getIsolation().getKind() ==
+        FunctionTypeIsolation::Kind::NonIsolatedCaller &&
+        inputSubstType->getIsolation().getKind() !=
+        FunctionTypeIsolation::Kind::NonIsolatedCaller)
+      options |= ThunkGenFlag::ConvertingToNonIsolatedCaller;
+
+    if (outputSubstType->getIsolation().getKind() !=
+        FunctionTypeIsolation::Kind::NonIsolatedCaller &&
+        inputSubstType->getIsolation().getKind() ==
+        FunctionTypeIsolation::Kind::NonIsolatedCaller)
+      options |= ThunkGenFlag::ConvertingFromNonIsolatedCaller;
+  }
+
   SmallVector<ManagedValue, 8> params;
   SmallVector<ManagedValue, 4> indirectResultParams;
-  SGF.collectThunkParams(loc, params, &indirectResultParams);
+  SGF.collectThunkParams(loc, params, &indirectResultParams, nullptr,
+                         options);
 
   // Ignore the self parameter at the SIL level. IRGen will use it to
   // recover type metadata.
@@ -5428,6 +5485,11 @@ static void buildThunkBody(SILGenFunction &SGF, SILLocation loc,
   if (expectedType->hasErasedIsolation()) {
     outputErasedIsolation = params.pop_back_val();
   }
+
+  // If we are converting to nonisolated caller, we are going to have an extra
+  // parameter in our argTypes that we need to drop.
+  if (options.contains(ThunkGenFlag::ConvertingFromNonIsolatedCaller))
+    argTypes = argTypes.drop_front();
 
   // We may need to establish the right executor for the input function.
   // If both function types are synchronous, whoever calls this thunk is
@@ -5499,7 +5561,7 @@ static void buildThunkBody(SILGenFunction &SGF, SILLocation loc,
   // other direction (the thunk receives an Int like a T, and passes it
   // like a normal Int when calling the inner function).
   SmallVector<ManagedValue, 8> args;
-  TranslateArguments(SGF, loc, params, args, fnType, argTypes)
+  TranslateArguments(SGF, loc, params, args, fnType, argTypes, options)
     .process(inputOrigType,
              inputSubstType.getParams(),
              outputOrigType,
@@ -5531,8 +5593,31 @@ static void buildThunkBody(SILGenFunction &SGF, SILLocation loc,
                               /*mandatory*/false);
   }
 
+  // If we are thunking a nonisolated caller to nonisolated or global actor, we
+  // need to load the actor.
+  if (options.contains(ThunkGenFlag::ConvertingFromNonIsolatedCaller)) {
+    auto outputIsolation = outputSubstType->getIsolation();
+    switch (outputIsolation.getKind()) {
+    case FunctionTypeIsolation::Kind::NonIsolated:
+      argValues.push_back(SGF.emitNonIsolatedIsolation(loc).getValue());
+      break;
+    case FunctionTypeIsolation::Kind::GlobalActor: {
+      auto globalActor =
+          outputIsolation.getGlobalActorType()->getCanonicalType();
+      argValues.push_back(
+          SGF.emitGlobalActorIsolation(loc, globalActor).getValue());
+      break;
+    }
+    case FunctionTypeIsolation::Kind::Parameter:
+    case FunctionTypeIsolation::Kind::Erased:
+    case FunctionTypeIsolation::Kind::NonIsolatedCaller:
+      llvm_unreachable("Should never see this");
+      break;
+    }
+  }
+
   // Add the rest of the arguments.
-  forwardFunctionArguments(SGF, loc, fnType, args, argValues);
+  forwardFunctionArguments(SGF, loc, fnType, args, argValues, options);
 
   auto fun = fnType->isCalleeGuaranteed() ? fnValue.borrow(SGF, loc).getValue()
                                           : fnValue.forward(SGF);

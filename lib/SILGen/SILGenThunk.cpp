@@ -42,6 +42,8 @@
 
 #include "clang/AST/ASTContext.h"
 
+#pragma clang optimize off
+
 using namespace swift;
 using namespace Lowering;
 

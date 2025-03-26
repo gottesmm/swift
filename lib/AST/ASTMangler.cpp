@@ -531,7 +531,7 @@ std::string ASTMangler::mangleReabstractionThunkHelper(
     appendOperator("Ty");
   else
     appendOperator("TR");
-  
+
   if (GlobalActorBound) {
     appendType(GlobalActorBound, GenSig);
     appendOperator("TU");
@@ -2212,7 +2212,7 @@ void ASTMangler::appendImplFunctionType(SILFunctionType *fn,
   if (!fn->isNoEscape())
     OpArgs.push_back('e');
 
-  switch (fn->getIsolation()) {
+  switch (fn->getIsolation().getKind()) {
   case SILFunctionTypeIsolation::Unknown:
     break;
   case SILFunctionTypeIsolation::Erased:

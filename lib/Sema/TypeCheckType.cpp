@@ -4478,7 +4478,7 @@ NeverNullType TypeResolver::resolveSILFunctionType(FunctionTypeRepr *repr,
   bool sendable = claim<SendableTypeAttr>(attrs);
   bool async = claim<AsyncTypeAttr>(attrs);
   bool unimplementable = claim<UnimplementableTypeAttr>(attrs);
-  auto isolation = SILFunctionTypeIsolation::Unknown;
+  auto isolation = SILFunctionTypeIsolation::forUnknown();
 
   if (auto isolatedAttr = claim<IsolatedTypeAttr>(attrs)) {
     switch (isolatedAttr->getIsolationKind()) {
@@ -4490,7 +4490,7 @@ NeverNullType TypeResolver::resolveSILFunctionType(FunctionTypeRepr *repr,
                         isolatedAttr->getIsolationKindName(),
                         conventionAttr->getConventionName());
       } else {
-        isolation = SILFunctionTypeIsolation::Erased;
+        isolation = SILFunctionTypeIsolation::forErased();
       }
       break;
     }

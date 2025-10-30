@@ -1053,6 +1053,14 @@ BUILTIN_OPERAND_OWNERSHIP(BitwiseEscape, BuildDefaultActorExecutorRef)
 BUILTIN_OPERAND_OWNERSHIP(BitwiseEscape, BuildMainActorExecutorRef)
 
 BUILTIN_OPERAND_OWNERSHIP(TrivialUse, AutoDiffCreateLinearMapContextWithType)
+
+BUILTIN_OPERAND_OWNERSHIP(InstantaneousUse, TaskAddCancellationHandler)
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskRemoveCancellationHandler)
+BUILTIN_OPERAND_OWNERSHIP(InstantaneousUse, TaskAddPriorityEscalationHandler)
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskRemovePriorityEscalationHandler)
+BUILTIN_OPERAND_OWNERSHIP(InstantaneousUse, TaskLocalValuePush)
+BUILTIN_OPERAND_OWNERSHIP(TrivialUse, TaskLocalValuePop)
+
 #undef BUILTIN_OPERAND_OWNERSHIP
 
 #define SHOULD_NEVER_VISIT_BUILTIN(ID)                                         \

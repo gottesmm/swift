@@ -48,6 +48,7 @@ benefit of all Swift developers.
     - [Reproducing the Compiler Driver build steps](#reproducing-the-compiler-driver-build-steps)
     - [Installing the Compiler Driver](#installing-the-compiler-driver)
 - [Debugging Swift Executables](#debugging-swift-executables)
+    - [Debugging xctest Bundles](#debugging-xctest-bundles)
     - [Determining the mangled name of a function in LLDB](#determining-the-mangled-name-of-a-function-in-lldb)
     - [Manually symbolication using LLDB](#manually-symbolication-using-lldb)
     - [Viewing allocation history, references, and page-level info](#viewing-allocation-history-references-and-page-level-info)
@@ -1101,6 +1102,32 @@ individual build actions (`clean`, `build`, `install`), the product build path
 One can use the previous tips for debugging the Swift compiler with Swift
 executables as well. Here are some additional useful techniques that one can use
 in Swift executables.
+
+## Debugging xctest Bundles
+
+xctest bundles are not directly executable. To debug them with lldb from the
+command line, you need to use the `swiftpm-testing-helper` script.
+
+### Using swiftpm-testing-helper
+
+Command line arguments are passed after `--`. The important arguments for
+debugging test bundles are:
+
+* `--test-bundle-path`: Path to the test bundle executable (e.g.,
+  `MyTests.xctest/Contents/MacOS/MyTests`)
+* `--testing-library`: Specify the testing library being used (e.g.,
+  `swift-testing`)
+
+Example usage:
+
+```sh
+lldb -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec/swift/pm/swiftpm-testing-helper \
+  --test-bundle-path MyTests.xctest/Contents/MacOS/MyTests \
+  --testing-library swift-testing
+```
+
+This will launch lldb with the testing helper configured to run your test
+bundle, allowing you to set breakpoints and debug your tests.
 
 ## Determining the mangled name of a function in LLDB
 

@@ -2676,7 +2676,12 @@ public:
 
     // If we do not have a special builtin, just do a multi-assign. Builtins do
     // not cross async boundaries.
-    return translateSILMultiAssign(bi->getResults(),
+    //
+    // TODO: Change this into a large switch so when builtins are added, this
+    // code needs to be updated. We can even use a separate visitor if
+    // needed. The important thing is that in the future, builtins that use
+    // indirect results are passed in the indirect result array.
+    return translateSILMultiAssign(bi->getResults(), ArrayRef<Operand *>(),
                                    makeOperandRefRange(bi->getAllOperands()));
   }
 
@@ -3036,7 +3041,8 @@ public:
   /// isolationInfo is set.
   void translateSILAssignFresh(SILValue val) {
     return translateSILMultiAssign(TinyPtrVector<SILValue>(val),
-                                   TinyPtrVector<Operand *>());
+                                   ArrayRef<Operand *>(),
+                                   ArrayRef<Operand *>());
   }
 
   void translateSILAssignFresh(SILValue val, SILIsolationInfo info) {
@@ -3245,7 +3251,8 @@ public:
                        SILIsolationInfo resultIsolationInfoOverride = {}) {
     argSources.argSources.setFrozen();
     for (auto pair : argSources.argSources.getRange()) {
-      translateSILMultiAssign(TinyPtrVector<SILValue>(pair.first), pair.second,
+      translateSILMultiAssign(TinyPtrVector<SILValue>(pair.first),
+                              ArrayRef<Operand *>(), pair.second,
                               resultIsolationInfoOverride);
     }
   }
@@ -4285,7 +4292,7 @@ TranslationSemantics PartitionOpTranslator::visitCheckedCastAddrBranchInst(
   // differently depending on what the result of checked_cast_addr_br
   // is. For now just keep the current behavior. It is more conservative,
   // but still correct.
-  translateSILMultiAssign(ArrayRef<SILValue>(),
+  translateSILMultiAssign(ArrayRef<SILValue>(), ArrayRef<Operand *>(),
                           makeOperandRefRange(ccabi->getAllOperands()),
                           SILIsolationInfo::getConformanceIsolation(ccabi));
   return TranslationSemantics::Special;

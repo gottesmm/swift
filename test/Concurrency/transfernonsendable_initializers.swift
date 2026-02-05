@@ -46,10 +46,10 @@ actor ActorWithSynchronousNonIsolatedInit {
 
     helper(newK)
 
-    let _ = { @MainActor in
+    let _ = { @MainActor in // expected-error {{pattern that the region-based isolation checker does not understand how to check}}
       // TODO: Second part should say later 'self'-isolated uses
-      print(newK) // expected-error {{sending 'newK' risks causing data races}}
-      // expected-note @-1 {{'self'-isolated 'newK' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
+      print(newK) // xpected-error {{sending 'newK' risks causing data races}}
+      // xpected-note @-1 {{'self'-isolated 'newK' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
     }
   }
 

@@ -33,6 +33,8 @@
 
 #define DEBUG_TYPE "send-non-sendable"
 
+#pragma clang optimize off
+
 namespace swift {
 
 namespace PartitionPrimitives {

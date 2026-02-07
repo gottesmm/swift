@@ -31,6 +31,8 @@
 using namespace swift;
 using namespace swift::PatternMatch;
 
+#pragma clang optimize off
+
 static std::optional<ActorIsolation>
 getGlobalActorInitIsolation(SILFunction *fn) {
   auto block = fn->begin();

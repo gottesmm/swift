@@ -42,14 +42,14 @@ actor ActorWithSynchronousNonIsolatedInit {
   }
 
   init(x newK: NonSendableKlass) {
-    k = newK
+    k = newK // expected-error {{assigning 'newK' to 'self'-isolated 'self.k' risks causing data races}}
+    // expected-note @-1 {{'newK' could become accessible to 'self'-isolated code despite remaining accessible to code in the current task}}
 
     helper(newK)
 
-    let _ = { @MainActor in // expected-error {{pattern that the region-based isolation checker does not understand how to check}}
-      // TODO: Second part should say later 'self'-isolated uses
-      print(newK) // xpected-error {{sending 'newK' risks causing data races}}
-      // xpected-note @-1 {{'self'-isolated 'newK' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
+    let _ = { @MainActor in
+      print(newK) // expected-error {{sending 'newK' risks causing data races}}
+      // expected-note @-1 {{task-isolated 'newK' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
     }
   }
 

@@ -127,7 +127,8 @@ actor Demons {
   let ns: NonSendableType
 
   init(_ x: NonSendableType) {
-    self.ns = x
+    self.ns = x // expected-warning {{assigning 'x' to 'self'-isolated 'self.ns' risks causing data races}}
+    // expected-note @-1 {{'x' could become accessible to 'self'-isolated code despite remaining accessible to code in the current task}}
   }
 
   deinit {

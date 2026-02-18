@@ -8278,14 +8278,34 @@ static bool equivalentIsolationContexts(
   return false;
 }
 
-ActorReferenceResult ActorReferenceResult::forReference(
-    ConcreteDeclRef declRef, SourceLoc declRefLoc, const DeclContext *fromDC,
-    std::optional<VarRefUseEnv> useKind,
-    std::optional<ReferencedActor> actorInstance,
-    std::optional<ActorIsolation> knownDeclIsolation,
-    std::optional<ActorIsolation> knownContextIsolation,
-    llvm::function_ref<ActorIsolation(AbstractClosureExpr *)>
-        getClosureActorIsolation) {
+struct ActorReferenceResult::Builder {
+  ConcreteDeclRef declRef;
+  SourceLoc declRefLoc;
+  const DeclContext *fromDC;
+  std::optional<VarRefUseEnv> useKind;
+  std::optional<ReferencedActor> referencedActor;
+  std::optional<ActorIsolation> knownDeclIsolation;
+  std::optional<ActorIsolation> knownContextIsolation;
+  llvm::function_ref<ActorIsolation(AbstractClosureExpr *)>
+      getClosureActorIsolation;
+
+  Builder(ConcreteDeclRef declRef, SourceLoc declRefLoc,
+          const DeclContext *fromDC, std::optional<VarRefUseEnv> useKind,
+          std::optional<ReferencedActor> referencedActor,
+          std::optional<ActorIsolation> knownDeclIsolation,
+          std::optional<ActorIsolation> knownContextIsolation,
+          llvm::function_ref<ActorIsolation(AbstractClosureExpr *)>
+              getClosureActorIsolation)
+      : declRef(declRef), declRefLoc(declRefLoc), fromDC(fromDC),
+        useKind(useKind), referencedActor(referencedActor),
+        knownDeclIsolation(knownDeclIsolation),
+        knownContextIsolation(knownContextIsolation),
+        getClosureActorIsolation(getClosureActorIsolation) {}
+
+  ActorReferenceResult build();
+};
+
+ActorReferenceResult ActorReferenceResult::Builder::build() {
   auto *const decl = declRef.getDecl();
 
   // If not provided, compute the isolation of the declaration, adjusted
@@ -8350,10 +8370,10 @@ ActorReferenceResult ActorReferenceResult::forReference(
 
   // The declaration we are accessing is actor-isolated. First, check whether
   // we are on the same actor already.
-  if (actorInstance && declIsolation == ActorIsolation::ActorInstance &&
+  if (referencedActor && declIsolation == ActorIsolation::ActorInstance &&
       declIsolation.isActorInstanceForSelfParameter()) {
     // If this instance is isolated, we're in the same concurrency domain.
-    if (actorInstance->isIsolated())
+    if (referencedActor->isIsolated())
       return forSameConcurrencyDomain(declIsolation, options);
   } else if (equivalentIsolationContexts(declIsolation, contextIsolation)) {
     // The context isolation matches, so we are in the same concurrency
@@ -8370,7 +8390,7 @@ ActorReferenceResult ActorReferenceResult::forReference(
       declIsolation.isGlobalActor()) {
     auto *init = dyn_cast<ConstructorDecl>(fromDC);
     if (init && init->isDesignatedInit() && isStoredProperty(decl) &&
-        (!actorInstance || actorInstance->isSelf())) {
+        (!referencedActor || referencedActor->isSelf())) {
       auto type = fromDC->mapTypeIntoEnvironment(decl->getInterfaceType());
       if (!type->isSendableType()) {
         // Treat the decl isolation as 'preconcurrency' to downgrade violations
@@ -8384,23 +8404,23 @@ ActorReferenceResult ActorReferenceResult::forReference(
 
   // If there is an instance and it is checked by flow isolation, treat it
   // as being in the same concurrency domain.
-  if (actorInstance &&
-      checkedByFlowIsolation(fromDC, *actorInstance, decl, declRefLoc, useKind))
+  if (referencedActor && checkedByFlowIsolation(fromDC, *referencedActor, decl,
+                                                declRefLoc, useKind))
     return forSameConcurrencyDomain(declIsolation, options);
 
   // If we are delegating to another initializer, treat them as being in the
   // same concurrency domain.
   // FIXME: This has a lot of overlap with both the stored-property checks
   // below and the flow-isolation checks above.
-  if (actorInstance && actorInstance->isSelf() && isa<ConstructorDecl>(decl) &&
-      isa<ConstructorDecl>(fromDC))
+  if (referencedActor && referencedActor->isSelf() &&
+      isa<ConstructorDecl>(decl) && isa<ConstructorDecl>(fromDC))
     return forSameConcurrencyDomain(declIsolation, options);
 
   // If there is an instance that corresponds to 'self',
   // we are in a constructor or destructor, and we have a stored property of
   // global-actor-qualified type, then we have problems if the stored property
   // type is non-Sendable. Note that if we get here, the type must be Sendable.
-  if (actorInstance && actorInstance->isSelf() &&
+  if (referencedActor && referencedActor->isSelf() &&
       isNonInheritedStorage(decl, fromDC) && declIsolation.isGlobalActor() &&
       (isa<ConstructorDecl>(fromDC) || isa<DestructorDecl>(fromDC)))
     return forSameConcurrencyDomain(declIsolation, options);
@@ -8409,7 +8429,7 @@ ActorReferenceResult ActorReferenceResult::forReference(
   // First, check whether it is something that can be accessed directly,
   // without any kind of promotion.
   if (isAccessibleAcrossActors(decl, declIsolation, fromDC, options,
-                               actorInstance))
+                               referencedActor))
     return forEntersActor(declIsolation, options);
 
   // This is a cross-actor reference.
@@ -8429,8 +8449,8 @@ ActorReferenceResult ActorReferenceResult::forReference(
   // access.
   if (declIsolation.isDistributedActor()) {
     bool needsDistributed;
-    if (actorInstance)
-      needsDistributed = !actorInstance->isKnownToBeLocal();
+    if (referencedActor)
+      needsDistributed = !referencedActor->isKnownToBeLocal();
     else
       needsDistributed = !contextIsolation.isDistributedActor();
 
@@ -8443,6 +8463,20 @@ ActorReferenceResult ActorReferenceResult::forReference(
   }
 
   return forEntersActor(declIsolation, options);
+}
+
+ActorReferenceResult ActorReferenceResult::forReference(
+    ConcreteDeclRef declRef, SourceLoc declRefLoc, const DeclContext *fromDC,
+    std::optional<VarRefUseEnv> useKind,
+    std::optional<ReferencedActor> actorInstance,
+    std::optional<ActorIsolation> knownDeclIsolation,
+    std::optional<ActorIsolation> knownContextIsolation,
+    llvm::function_ref<ActorIsolation(AbstractClosureExpr *)>
+        getClosureActorIsolation) {
+  Builder builder(declRef, declRefLoc, fromDC, useKind, actorInstance,
+                  knownDeclIsolation, knownContextIsolation,
+                  getClosureActorIsolation);
+  return builder.build();
 }
 
 bool swift::diagnoseNonSendableFromDeinit(

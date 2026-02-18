@@ -8364,18 +8364,19 @@ ActorReferenceResult ActorReferenceResult::Builder::build() {
     return forSameConcurrencyDomain(declIsolation, options);
   }
 
-  // The declaration we are accessing is actor-isolated. First, check whether
-  // we are on the same actor already.
-  if (referencedActor && declIsolation == ActorIsolation::ActorInstance &&
-      declIsolation.isActorInstanceForSelfParameter()) {
-    // If this instance is isolated, we're in the same concurrency domain.
-    if (referencedActor->isIsolated())
-      return forSameConcurrencyDomain(declIsolation, options);
-  } else if (equivalentIsolationContexts(declIsolation, contextIsolation)) {
+  // Ok, our declaration is actor-isolated. Before we do anything, see if our
+  // declIsolation and contextIsolation are exactly the same.
+  if (equivalentIsolationContexts(declIsolation, contextIsolation)) {
     // The context isolation matches, so we are in the same concurrency
     // domain.
     return forSameConcurrencyDomain(declIsolation, options);
   }
+
+  // Then see if our declIsolation is for self and the referenced isolation is
+  // that self. In such a case, we are in the same concurrency domain.
+  if (referencedActor && declIsolation == ActorIsolation::ActorInstance &&
+      declIsolation.isActorInstanceForSelfParameter() && referencedActor->isIsolated())
+      return forSameConcurrencyDomain(declIsolation, options);
 
   // Initializing an actor-isolated stored property with a value effectively
   // passes that value from the init context into the actor-isolated context.

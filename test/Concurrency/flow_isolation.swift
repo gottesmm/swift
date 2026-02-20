@@ -1,5 +1,12 @@
 // RUN: %target-swift-frontend -strict-concurrency=complete -swift-version 5 -parse-as-library -emit-sil -verify %s
 
+@globalActor
+actor CustomActor {
+  static let shared = CustomActor()
+}
+
+@CustomActor func requiresCustomActor() -> NonSendableType { NonSendableType() }
+@MainActor func requiresMainActor() -> NonSendableType { NonSendableType() }
 
 func randomBool() -> Bool { return false }
 func logTransaction(_ i: Int) {}
@@ -10,10 +17,10 @@ enum Color: Error {
   case blue
 }
 
-func takeNonSendable(_ ns: NonSendableType) {}
+func takeNonSendable<T>(_ ns: T) {}
 
 @available(SwiftStdlib 5.1, *)
-func takeSendable(_ s: SendableType) {}
+func takeSendable<T : Sendable>(_ s: T) {}
 
 class NonSendableType { // expected-note *{{class 'NonSendableType' does not conform to the 'Sendable' protocol}}
   var x: Int = 0
@@ -844,3 +851,502 @@ actor OtherActor {
     self.parent = parent
   }
 }
+
+////////////////////////////
+// MARK: Mixed Isolations //
+////////////////////////////
+
+@available(SwiftStdlib 5.1, *)
+@MainActor
+struct MainActorStructWithMixedFields {
+  nonisolated let nonisoField: SendableType
+  @CustomActor var customField: NonSendableType // expected-note 4{{}}
+  var mainField: NonSendableType // expected-note 4{{}}
+
+  nonisolated func trigger() {}
+
+  nonisolated init(v1: Void) {
+    self.nonisoField = SendableType()
+    self.customField = NonSendableType() // expected-warning {{can not be mutated}}
+    self.mainField = NonSendableType() // expected-warning {{can not be mutated}}
+
+    trigger()
+
+    _ = self.nonisoField  // OK - explicitly nonisolated
+    self.customField = NonSendableType() // expected-warning {{can not be mutated}}
+    self.mainField = NonSendableType() // expected-warning {{can not be mutated}}
+  }
+
+  @MainActor init(v2: Void) {
+    self.nonisoField = SendableType()
+    self.customField = NonSendableType() // expected-warning {{global actor 'CustomActor'-isolated property 'customField' can not be mutated from the main actor}}
+    self.mainField = NonSendableType()
+
+    trigger()
+
+    _ = self.nonisoField  // OK - explicitly nonisolated
+    self.customField = NonSendableType() // expected-warning {{global actor 'CustomActor'-isolated property 'customField' can not be mutated from the main actor}}
+    self.mainField = NonSendableType()
+  }
+
+  @CustomActor init(v3: Void) {
+    self.nonisoField = SendableType()
+    self.customField = NonSendableType()
+    self.mainField = NonSendableType() // expected-warning {{can not be mutated}}
+
+    trigger()
+
+    _ = self.nonisoField  // OK - explicitly nonisolated
+    self.customField = NonSendableType()
+    self.mainField = NonSendableType() // expected-warning {{can not be mutated}}
+  }
+}
+
+@available(SwiftStdlib 5.1, *)
+@MainActor
+class MainActorClassWithMixedFields {
+  nonisolated let nonisoField: SendableType
+  @CustomActor var customField: NonSendableType // expected-note 4{{}}
+  var mainField: NonSendableType // expected-note 4{{}}
+
+  nonisolated func trigger() {}
+
+  nonisolated init(v1: Void) {
+    self.nonisoField = SendableType()
+    self.customField = NonSendableType() // expected-warning {{can not be mutated}}
+    self.mainField = NonSendableType() // expected-warning {{can not be mutated}}
+
+    trigger() // expected-note 2{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.nonisoField  // OK - explicitly nonisolated
+    self.customField = NonSendableType() // expected-warning {{cannot access property 'customField' here in nonisolated initializer}}
+    // expected-warning @-1 {{can not be mutated}}
+    self.mainField = NonSendableType() // expected-warning {{cannot access property 'mainField' here in nonisolated initializer}}
+    // expected-warning @-1 {{can not be mutated}}
+  }
+
+  @MainActor init(v2: Void) {
+    self.nonisoField = SendableType()
+    self.customField = NonSendableType() // expected-warning {{global actor 'CustomActor'-isolated property 'customField' can not be mutated from the main actor}}
+    self.mainField = NonSendableType()
+
+    trigger()
+
+    _ = self.nonisoField  // OK - explicitly nonisolated
+    self.customField = NonSendableType() // expected-warning {{global actor 'CustomActor'-isolated property 'customField' can not be mutated from the main actor}}
+    self.mainField = NonSendableType()
+  }
+
+  @CustomActor init(v3: Void) {
+    self.nonisoField = SendableType()
+    self.customField = NonSendableType()
+    self.mainField = NonSendableType() // expected-warning {{can not be mutated}}
+
+    trigger()  // expected-note 2{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.nonisoField  // OK - explicitly nonisolated
+    self.customField = NonSendableType() // expected-warning {{cannot access property 'customField' here in nonisolated initializer}}
+    self.mainField = NonSendableType() // expected-warning {{cannot access property 'mainField' here in nonisolated initializer}}
+    // expected-warning @-1 {{can not be mutated}}
+  }
+}
+
+@available(SwiftStdlib 5.1, *)
+actor ActorWithMixedIsolationFields {
+  @MainActor var mainField: NonSendableType // expected-note 2{{}}
+  @CustomActor var customField: NonSendableType // expected-note 4{{}}
+  nonisolated let nonisoField: SendableType
+  var actorField: NonSendableType // expected-note 2{{}}
+
+  nonisolated func trigger() {}
+
+  init(v1: Void) {
+    // Before decay: can assign all fields
+    self.mainField = NonSendableType() // expected-warning {{can not be mutated from a nonisolated context}}
+    self.customField = NonSendableType() // expected-warning {{can not be mutated from a nonisolated context}}
+    self.nonisoField = SendableType()
+    self.actorField = NonSendableType()
+
+    trigger()  // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    // After decay: nonisolated field is accessible, others are not
+    _ = self.nonisoField // OK
+    self.mainField = NonSendableType()  // expected-warning {{cannot access property 'mainField' here in nonisolated initializer}}
+    // expected-warning @-1 {{can not be mutated from a nonisolated context}}
+    self.customField = NonSendableType()  // expected-warning {{cannot access property 'customField' here in nonisolated initializer}}
+    // expected-warning @-1 {{can not be mutated from a nonisolated context}}
+    self.actorField = NonSendableType()  // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+  }
+
+  @MainActor init(v2: Void) {
+    // Before decay: can assign all fields
+    self.mainField = NonSendableType()
+    self.customField = NonSendableType() // expected-warning {{can not be mutated}}
+    self.nonisoField = SendableType()
+    self.actorField = NonSendableType() // expected-warning {{can not be mutated}}
+
+    trigger()  // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    // After decay: nonisolated field is accessible, others are not
+    _ = self.nonisoField // OK
+    self.mainField = NonSendableType()  // expected-warning {{cannot access property 'mainField' here in nonisolated initializer}}
+    self.customField = NonSendableType()  // expected-warning {{cannot access property 'customField' here in nonisolated initializer}}
+    // expected-warning @-1 {{can not be mutated}}
+    self.actorField = NonSendableType()  // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    // expected-warning @-1 {{can not be mutated}}
+  }
+
+}
+
+// MARK: Mixed Default Requirements with Different Default Value Initialization
+// Isolation
+
+// This test has fields that have an explicitly isolated initializer (e.x.:
+// requiresMainActor).
+@available(SwiftStdlib 5.5, *)
+@MainActor
+struct GADTStructWithMixedDefaultRequirements {
+  var mainDefault: NonSendableType = requiresMainActor() // expected-note 3{{mutation of this property is only permitted within the actor}}
+  // expected-note @-1 7{{main actor-isolated default value of 'self.mainDefault' cannot be used in a global actor 'CustomActor'-isolated initializer}}
+  // expected-note @-2 6{{property declared here}}
+  nonisolated let nonisoNoDefault: SendableType
+  @CustomActor var customDefault: NonSendableType = requiresCustomActor() // expected-note 2{{mutation of this property is only permitted within the actor}}
+  // expected-note @-1 3{{global actor 'CustomActor'-isolated default value of 'self.customDefault' cannot be used in a main actor-isolated initializer}}
+  // expected-note @-2 3{{global actor 'CustomActor'-isolated default value of 'self.customDefault' cannot be used in a nonisolated initializer}}
+  // expected-note @-3 4{{property declared here}}
+
+  nonisolated func trigger() {}
+
+  // We do not completely initialize since we cannot run the default init of
+  // customDefault its initializer actually requires us to be on CustomActor.
+  @MainActor init(v1: NonSendableType) {
+    self.nonisoNoDefault = SendableType()
+    _ = self.mainDefault
+
+    trigger() // expected-error {{'self' used before all stored properties are initialized}}
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault
+    _ = self.customDefault // expected-error {{'self' used before all stored properties are initialized}}
+    // expected-warning @-1 {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from the main actor}}
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  // We do completely initialize. With future changes, we should be able to do
+  // this.
+  @MainActor init(v1a: NonSendableType) {
+    self.nonisoNoDefault = SendableType()
+    _ = self.mainDefault
+    self.customDefault = NonSendableType() // expected-warning {{can not be mutated}}
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault
+    _ = self.customDefault
+    // expected-warning @-1 {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from the main actor}}
+  }
+
+  // We do not completely initialize since we cannot run the default init of
+  // mainDefault its initializer actually requires us to be on MainDefault.
+  @CustomActor init(v1b: NonSendableType) {
+    self.nonisoNoDefault = SendableType()
+    _ = self.customDefault
+
+    trigger() // expected-error {{'self' used before all stored properties are initialized}}
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault // expected-error {{'self' used before all stored properties are initialized}}
+    // expected-warning @-1 {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    _ = self.customDefault
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  // We do not completely initialize since we cannot run the default init of
+  // mainDefault its initializer actually requires us to be on MainDefault.
+  @CustomActor init(v1bb: NonSendableType) {
+    self.nonisoNoDefault = SendableType()
+    _ = self.customDefault
+    _ = self.mainDefault // expected-error {{'self' used before all stored properties are initialized}}
+    // expected-warning @-1 {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+
+    trigger() // expected-error {{'self' used before all stored properties are initialized}}
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault // expected-error {{'self' used before all stored properties are initialized}}
+    // expected-warning @-1 {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    _ = self.customDefault
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  // We do completely initialize. With future changes, we should be able to do
+  // this.
+  @CustomActor init(v1c: NonSendableType) {
+    self.nonisoNoDefault = SendableType()
+    self.mainDefault = NonSendableType() // expected-warning {{can not be mutated}}
+    _ = self.customDefault
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault
+    // expected-warning @-1 {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    _ = self.customDefault
+  }
+
+  nonisolated init(v2: Void) {
+    self.mainDefault = NonSendableType() // expected-warning {{can not be mutated from a nonisolated context}}
+    self.nonisoNoDefault = SendableType()
+
+    trigger() // expected-error {{'self' used before all stored properties are initialized}}
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault
+    // expected-warning @-1 {{main actor-isolated property 'mainDefault' can not be referenced}}
+    _ = self.customDefault // expected-error {{'self' used before all stored properties are initialized}}
+    // expected-warning @-1 {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from a nonisolated context}}
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  nonisolated init(v3: Void) {
+    self.mainDefault = NonSendableType() // expected-warning {{can not be mutated from a nonisolated context}}
+    self.customDefault = NonSendableType() // expected-warning {{can not be mutated from a nonisolated context}}
+    self.nonisoNoDefault = SendableType()
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from a nonisolated context}}
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from a nonisolated context}}
+  }
+}
+
+@available(SwiftStdlib 5.5, *)
+@MainActor
+struct GADTStructWithMixedDefaultRequirementsNonIsolatedInits {
+  var mainDefault = NonSendableType() // expected-note 7{{}}
+  nonisolated let nonisoNoDefault: SendableType
+  @CustomActor var customDefault = NonSendableType() // expected-note 5{{}}
+
+  nonisolated func trigger() {}
+
+  @MainActor init(v1: Void) {
+    self.nonisoNoDefault = SendableType()
+    _ = self.mainDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from the main actor}}
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from the main actor}}
+  }
+
+  // OK: explicitly initializes all fields
+  @CustomActor init(v1a: Void) {
+    self.nonisoNoDefault = SendableType()
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    _ = self.customDefault
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    _ = self.customDefault
+  }
+
+  @CustomActor init(v1b: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.mainDefault = NonSendableType() // expected-warning {{main actor-isolated property 'mainDefault' can not be mutated from global actor 'CustomActor'}}
+    self.customDefault = NonSendableType()
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    _ = self.customDefault
+  }
+
+  nonisolated init(v2: Void) {
+    self.nonisoNoDefault = SendableType()
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from a nonisolated context}}
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from a nonisolated context}}
+  }
+
+  nonisolated init(v2a: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.mainDefault = NonSendableType() // expected-warning {{main actor-isolated property 'mainDefault' can not be mutated from a nonisolated context}}
+    self.customDefault = NonSendableType() // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be mutated from a nonisolated context}}
+
+    trigger()
+
+    _ = self.nonisoNoDefault
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from a nonisolated context}}
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from a nonisolated context}}
+  }
+}
+
+@available(SwiftStdlib 5.5, *)
+actor ActorWithMixedDefaultRequirements {
+  @MainActor var mainDefault: NonSendableType = requiresMainActor() // expected-note 6{{property declared here}}
+  // expected-note @-1 4{{mutation of this property is only permitted within the actor}}
+  // expected-note @-2 2{{main actor-isolated default value of 'self.mainDefault' cannot be used in a nonisolated initializer}}
+  // expected-note @-3 2{{main actor-isolated default value of 'self.mainDefault' cannot be used in a global actor 'CustomActor'-isolated initializer}}
+  var actorField: NonSendableType // expected-note 6{{property declared here}}
+  // expected-note @-1 6{{mutation of this property is only permitted within the actor}}
+  nonisolated let nonisoNoDefault: SendableType
+  @CustomActor var customDefault: NonSendableType = requiresCustomActor() // expected-note 6{{property declared here}}
+  // expected-note @-1 2{{mutation of this property is only permitted within the actor}}
+  // expected-note @-2 4{{global actor 'CustomActor'-isolated default value of 'self.customDefault' cannot be used in a nonisolated initializer}}
+  // expected-note @-3 4{{global actor 'CustomActor'-isolated default value of 'self.customDefault' cannot be used in a main actor-isolated initializer}}
+
+  nonisolated func trigger() {}
+
+  init(v1: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType()
+
+    trigger() // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+    // expected-error @-1 {{'self' used in method call 'trigger' before all stored properties are initialized}}
+
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from a nonisolated context}}
+    // expected-error @-1 {{variable 'self.mainDefault' used before being initialized}}
+    // expected-warning @-2 {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from a nonisolated context}}
+    // expected-error @-1 {{variable 'self.customDefault' used before being initialized}}
+    // expected-warning @-2 {{cannot access property 'customDefault' here in nonisolated initializer}}
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  init(v1a: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType()
+    self.mainDefault = NonSendableType() // expected-warning {{main actor-isolated property 'mainDefault' can not be mutated from a nonisolated context}}
+
+    trigger() // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+    // expected-error @-1 {{'self' used in method call 'trigger' before all stored properties are initialized}}
+
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from a nonisolated context}}
+    // expected-warning @-1 {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField  // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from a nonisolated context}}
+    // expected-warning @-1 {{cannot access property 'customDefault' here in nonisolated initializer}}
+    // expected-error @-2 {{variable 'self.customDefault' used before being initialized}}
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  init(v1b: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType()
+    self.mainDefault = NonSendableType() // expected-warning {{main actor-isolated property 'mainDefault' can not be mutated from a nonisolated context}}
+    self.customDefault = NonSendableType() // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be mutated from a nonisolated context}}
+
+    trigger() // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from a nonisolated context}}
+    // expected-warning @-1 {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from a nonisolated context}}
+    // expected-warning @-1 {{cannot access property 'customDefault' here in nonisolated initializer}}
+  }
+
+  @MainActor init(v2: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType() // expected-warning {{actor-isolated property 'actorField' can not be mutated from the main actor}}
+
+    trigger() // expected-error {{'self' used in method call 'trigger' before all stored properties are initialized}}
+    // expected-note @-1 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.mainDefault
+    // expected-warning @-1 {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    // expected-warning @-1 {{actor-isolated property 'actorField' can not be referenced from the main actor}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from the main actor}}
+    // expected-error @-1 {{variable 'self.customDefault' used before being initialized}}
+    // expected-warning @-2 {{cannot access property 'customDefault' here in nonisolated initializer}}
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  @MainActor init(v2a: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType() // expected-warning {{actor-isolated property 'actorField' can not be mutated from the main actor}}
+    self.mainDefault = NonSendableType()
+
+    trigger() // expected-error {{'self' used in method call 'trigger' before all stored properties are initialized}}
+    // expected-note @-1 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.mainDefault // expected-warning {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    // expected-warning @-1 {{actor-isolated property 'actorField' can not be referenced from the main actor}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from the main actor}}
+    // expected-error @-1 {{variable 'self.customDefault' used before being initialized}}
+    // expected-warning @-2 {{cannot access property 'customDefault' here in nonisolated initializer}}
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  @MainActor init(v2b: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType() // expected-warning {{actor-isolated property 'actorField' can not be mutated from the main actor}}
+    self.mainDefault = NonSendableType()
+    self.customDefault = NonSendableType() // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be mutated from the main actor}}
+
+    trigger() // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.mainDefault // expected-warning {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    // expected-warning @-1 {{actor-isolated property 'actorField' can not be referenced from the main actor}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{global actor 'CustomActor'-isolated property 'customDefault' can not be referenced from the main actor}}
+    // expected-warning @-1 {{cannot access property 'customDefault' here in nonisolated initializer}}
+  }
+
+  @CustomActor init(v3: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType() // expected-warning {{actor-isolated property 'actorField' can not be mutated from global actor 'CustomActor'}}
+
+    trigger() // expected-error {{'self' used in method call 'trigger' before all stored properties are initialized}}
+    // expected-note @-1 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    // expected-error @-1 {{variable 'self.mainDefault' used before being initialized}}
+    // expected-warning @-2 {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    // expected-warning @-1 {{actor-isolated property 'actorField' can not be referenced from global actor 'CustomActor'}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{cannot access property 'customDefault' here in nonisolated initializer}}
+  } // expected-error {{return from initializer without initializing all stored properties}}
+
+  @CustomActor init(v3a: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType() // expected-warning {{actor-isolated property 'actorField' can not be mutated from global actor 'CustomActor'}}
+    self.mainDefault = NonSendableType() // expected-warning {{main actor-isolated property 'mainDefault' can not be mutated from global actor 'CustomActor'}}
+
+    trigger() // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    // expected-warning @-1 {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    // expected-warning @-1 {{actor-isolated property 'actorField' can not be referenced from global actor 'CustomActor'}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{cannot access property 'customDefault' here in nonisolated initializer}}
+  }
+
+  @CustomActor init(v3b: Void) {
+    self.nonisoNoDefault = SendableType()
+    self.actorField = NonSendableType() // expected-warning {{actor-isolated property 'actorField' can not be mutated from global actor 'CustomActor'}}
+    self.mainDefault = NonSendableType() // expected-warning {{main actor-isolated property 'mainDefault' can not be mutated from global actor 'CustomActor'}}
+    self.customDefault = NonSendableType()
+
+    trigger() // expected-note 3{{after calling instance method 'trigger()', only nonisolated properties of 'self' can be accessed from this init}}
+
+    _ = self.mainDefault // expected-warning {{main actor-isolated property 'mainDefault' can not be referenced from global actor 'CustomActor'}}
+    // expected-warning @-1 {{cannot access property 'mainDefault' here in nonisolated initializer}}
+    _ = self.actorField // expected-warning {{cannot access property 'actorField' here in nonisolated initializer}}
+    // expected-warning @-1 {{actor-isolated property 'actorField' can not be referenced from global actor 'CustomActor'}}
+    _ = self.nonisoNoDefault
+    _ = self.customDefault // expected-warning {{cannot access property 'customDefault' here in nonisolated initializer}}
+  }
+}
+

@@ -8408,18 +8408,26 @@ ActorReferenceResult ActorReferenceResult::Builder::build() {
   // It's only okay for the value to cross isolation boundaries if the property
   // type is Sendable. Note that if the init is a nonisolated actor init,
   // Sendable checking is already performed on arguments at the call-site.
-  if ((declIsolation.isActorIsolated() && contextIsolation.isGlobalActor()) ||
-      declIsolation.isGlobalActor()) {
-    auto *init = dyn_cast<ConstructorDecl>(fromDC);
-    if (init && init->isDesignatedInit() && isStoredProperty(decl) &&
-        (!referencedActor || referencedActor->isSelf())) {
-      auto type = fromDC->mapTypeIntoEnvironment(decl->getInterfaceType());
-      if (!type->isSendableType()) {
-        // Treat the decl isolation as 'preconcurrency' to downgrade violations
-        // to warnings, because violating Sendable here is accepted by the
-        // Swift 5.9 compiler.
-        options |= Flags::CompatibilityDowngrade;
-        return forEntersActor(declIsolation, options);
+  if (auto *init = dyn_cast<ConstructorDecl>(fromDC)) {
+    if (referencedActor && referencedActor->isSelf()) {
+      if (checkedByFlowIsolation(fromDC, *referencedActor, decl, declRefLoc,
+                                 useKind))
+        return forSameConcurrencyDomain(declIsolation, options);
+      if ((declIsolation.isActorIsolated() &&
+           contextIsolation.isGlobalActor()) ||
+          declIsolation.isGlobalActor()) {
+
+        if (init->isDesignatedInit() && isStoredProperty(decl) &&
+            (!referencedActor || referencedActor->isSelf())) {
+          auto type = fromDC->mapTypeIntoEnvironment(decl->getInterfaceType());
+          if (!type->isSendableType()) {
+            // Treat the decl isolation as 'preconcurrency' to downgrade
+            // violations to warnings, because violating Sendable here is
+            // accepted by the Swift 5.9 compiler.
+            options |= Flags::CompatibilityDowngrade;
+            return forEntersActor(declIsolation, options);
+          }
+        }
       }
     }
   }
@@ -8440,9 +8448,9 @@ ActorReferenceResult ActorReferenceResult::Builder::build() {
 
     // If there is an instance that corresponds to 'self',
     // we are in a constructor or destructor, and we have a stored property of
-    // global-actor-qualified type, then we have problems if the stored property
-    // type is non-Sendable. Note that if we get here, the type must be
-    // Sendable.
+    // global-actor-qualified type, then we have problems if the stored
+    // property type is non-Sendable. Note that if we get here, the type must
+    // be Sendable.
     if (isNonInheritedStorage(decl, fromDC) && declIsolation.isGlobalActor() &&
         (isa<ConstructorDecl>(fromDC) || isa<DestructorDecl>(fromDC)))
       return forSameConcurrencyDomain(declIsolation, options);

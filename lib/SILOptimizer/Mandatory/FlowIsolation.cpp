@@ -53,7 +53,7 @@ static SILFunction* getCallee(SILInstruction *someInst) {
 //
 // While we will be talking about isolated vs nonisolated uses, the only
 // isolated uses that we consider are stored property accesses.
-struct State {
+struct LatticeState {
   // Each state kind, as an integer, is its position in any bit vectors.
   enum Kind {
     Isolated = 0,
@@ -145,7 +145,7 @@ class AnalysisInfo : public BasicBlockData<Info> {
 private:
   /// Isolation state at the start of the entry block to this function.
   /// This should always be `isolated`, unless if this is a `defer`.
-  State::Kind startingIsolation = State::Isolated;
+  LatticeState::Kind startingIsolation = LatticeState::Isolated;
 
 public:
 
@@ -161,14 +161,14 @@ public:
   /// a normal return is reached, along with the block that returns normally.
   /// Only computed after calling solve(), where it remains None if the function
   /// doesn't return normally.
-  std::optional<std::pair<SILBasicBlock *, State::Kind>> normalReturn =
+  std::optional<std::pair<SILBasicBlock *, LatticeState::Kind>> normalReturn =
       std::nullopt;
 
   /// indicates whether the SILFunction is (or contained in) a deinit.
   bool forDeinit;
 
   AnalysisInfo(SILFunction *fn) : BasicBlockData<Info>(fn),
-                                  flow(fn, State::NumStates) {
+                                  flow(fn, LatticeState::NumStates) {
     forDeinit = isWithinDeinit(fn);
   }
 
@@ -234,16 +234,16 @@ public:
   /// \returns true iff the start state has changed from isolated to nonisolated
   bool setNonisolatedStart() {
     // once we enter the nonisolated state, nothing will change that.
-    if (startingIsolation == State::Nonisolated)
+    if (startingIsolation == LatticeState::Nonisolated)
       return false;
 
-    startingIsolation = State::Nonisolated;
+    startingIsolation = LatticeState::Nonisolated;
     return true;
   }
 
   /// Test whether the incoming isolation kind was set to nonisolated.
   bool hasNonisolatedStart() const {
-    return startingIsolation == State::Nonisolated;
+    return startingIsolation == LatticeState::Nonisolated;
   }
 
   /// Records that the instruction accesses an isolated property.
@@ -294,7 +294,7 @@ SILInstruction *AnalysisInfo::findNonisolatedBlame(SILInstruction* startInst) {
     auto &state = flow[block];
 
     // does this block generate non-isolation?
-    if (state.genSet[State::Nonisolated]) {
+    if (state.genSet[LatticeState::Nonisolated]) {
       auto &data = this->operator[](block);
       assert(!data.nonisolatedUses.empty());
 
@@ -315,7 +315,7 @@ SILInstruction *AnalysisInfo::findNonisolatedBlame(SILInstruction* startInst) {
   // whether we should visit a given predecessor block in the search.
   auto shouldVisit = [&](SILBasicBlock *pred) {
     // visit blocks that contribute nonisolation to successors.
-    return flow[pred].exitSet[State::Nonisolated];
+    return flow[pred].exitSet[LatticeState::Nonisolated];
   };
 
   // first check if the nonisolated use precedes the start instruction in
@@ -605,7 +605,7 @@ void AnalysisInfo::analyze(const SILArgument *selfParam) {
               // if it can return normally, and if it does, it carries
               // nonisolation.
               if (defer.normalReturn) {
-                if (defer.normalReturn->second == State::Nonisolated) {
+                if (defer.normalReturn->second == LatticeState::Nonisolated) {
                   markNonIsolated(user);
                 }
               }
@@ -746,8 +746,8 @@ void AnalysisInfo::solve() {
 
     // A nonisolated use "kills" isolation and generates nonisolation.
     if (this->operator[](blk).hasNonisolatedUse()) {
-      data.killSet.set(State::Isolated);
-      data.genSet.set(State::Nonisolated);
+      data.killSet.set(LatticeState::Isolated);
+      data.genSet.set(LatticeState::Nonisolated);
     }
   }
 
@@ -758,10 +758,10 @@ void AnalysisInfo::solve() {
   // in that case. This is needed to implement `defer`.
   if (returnBlk) {
     auto &returnInfo = flow[returnBlk];
-    if (returnInfo.exitSet[State::Nonisolated])
-      normalReturn = std::make_pair(returnBlk, State::Nonisolated);
+    if (returnInfo.exitSet[LatticeState::Nonisolated])
+      normalReturn = std::make_pair(returnBlk, LatticeState::Nonisolated);
     else
-      normalReturn = std::make_pair(returnBlk, State::Isolated);
+      normalReturn = std::make_pair(returnBlk, LatticeState::Isolated);
   }
 }
 
@@ -779,18 +779,18 @@ void AnalysisInfo::verifyIsolation() {
 
     // If flow-analysis determined that we might be `nonisolated` coming
     // into this block, then all isolated uses in this block are invalid.
-    if (flowInfo.entrySet[State::Nonisolated]) {
+    if (flowInfo.entrySet[LatticeState::Nonisolated]) {
       data.diagnoseAll(*this, forDeinit);
       continue;
     }
 
     // Otherwise, we must be starting off isolated.
-    assert(flowInfo.entrySet[State::Isolated]);
+    assert(flowInfo.entrySet[LatticeState::Isolated]);
 
     // If this block doesn't introduce nonisolation, then we can skip it.
     if (data.nonisolatedUses.empty()) {
       // make sure flow analysis agrees.
-      assert(flowInfo.exitSet[State::Nonisolated] == 0);
+      assert(flowInfo.exitSet[LatticeState::Nonisolated] == 0);
       continue;
     }
 

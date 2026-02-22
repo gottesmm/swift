@@ -32,7 +32,11 @@ namespace {
 
 class FunctionInfo;
 
-// MARK: utilities
+} // namespace
+
+//===----------------------------------------------------------------------===//
+//                              MARK: Utilities
+//===----------------------------------------------------------------------===//
 
 static SILFunction* getCallee(SILInstruction *someInst) {
   if (auto apply = ApplySite::isa(someInst))
@@ -41,28 +45,42 @@ static SILFunction* getCallee(SILInstruction *someInst) {
   return nullptr;
 }
 
-// Represents the state of isolation for `self` during the flow-analysis,
-// at entry and exit to a block. The states are part of a semi-lattice,
-// where the extra top element represents a conflict in isolation:
-//
-//         T = "top"
-//        / \
-//      Iso  NonIso
-//        \ /
-//         B = "bottom"
-//
-// While we will be talking about isolated vs nonisolated uses, the only
-// isolated uses that we consider are stored property accesses.
+//===----------------------------------------------------------------------===//
+//                             MARK: LatticeState
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Represents the state of isolation for `self` during the flow-analysis,
+/// at entry and exit to a block. The states are part of a semi-lattice,
+/// where the extra top element represents a conflict in isolation:
+///
+///         T = "top"
+///        / \
+///      Iso  NonIso
+///        \ /
+///         B = "bottom"
+///
+/// While we will be talking about isolated vs nonisolated uses, the only
+/// isolated uses that we consider are stored property accesses.
 struct LatticeState {
-  // Each state kind, as an integer, is its position in any bit vectors.
+  /// Each state kind, as an integer, is its position in any bit vectors.
   enum Kind {
     Isolated = 0,
     Nonisolated = 1
   };
 
-  // Number of states, excluding Top or Bottom, in this flow problem.
+  /// Number of states, excluding Top or Bottom, in this flow problem.
   static constexpr unsigned NumStates = 2;
 };
+
+} // namespace
+
+//===----------------------------------------------------------------------===//
+//                            MARK: Per Block Info
+//===----------------------------------------------------------------------===//
+
+namespace {
 
 /// Information gathered for analysis that is specific to a block.
 struct BlockInfo {
@@ -129,6 +147,8 @@ struct BlockInfo {
   SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
 };
 
+} // namespace
+
 /// \returns true iff the function is a deinit, or a defer of a deinit.
 static bool isWithinDeinit(SILFunction *fn) {
   auto *astFn = fn->getDeclContext()->getAsDecl();
@@ -139,6 +159,12 @@ static bool isWithinDeinit(SILFunction *fn) {
 
   return isa<DestructorDecl>(astFn);
 }
+
+//===----------------------------------------------------------------------===//
+//                          MARK: Per Function Info
+//===----------------------------------------------------------------------===//
+
+namespace {
 
 /// Carries the state of analysis for an entire SILFunction.
 class FunctionInfo : public BasicBlockData<BlockInfo> {
@@ -278,7 +304,11 @@ public:
   SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
 };
 
-// MARK: diagnostics
+} // namespace
+
+//===----------------------------------------------------------------------===//
+//                             MARK: Diagnostics
+//===----------------------------------------------------------------------===//
 
 SILInstruction *FunctionInfo::findNonisolatedBlame(SILInstruction *startInst) {
   assert(startInst);
@@ -509,7 +539,9 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
   }
 }
 
-// MARK: analysis
+//===----------------------------------------------------------------------===//
+//                               MARK: Analysis
+//===----------------------------------------------------------------------===//
 
 /// \returns true iff the access is concurrency-safe in a nonisolated context
 /// without an await.
@@ -830,7 +862,9 @@ void FunctionInfo::verifyIsolation() {
   }
 }
 
-// MARK: high-level setup
+//===----------------------------------------------------------------------===//
+//                            MARK: Top Level Code
+//===----------------------------------------------------------------------===//
 
 /// Performs flow-sensitive actor-isolation checking on the given SILFunction.
 void checkFlowIsolation(SILFunction *fn) {
@@ -875,8 +909,6 @@ class FlowIsolation : public SILFunctionTransform {
   }
 
 }; // class
-
-} // anonymous namespace
 
 /// This pass is known to depend on the following passes having run before it:
 ///   - NoReturnFolding

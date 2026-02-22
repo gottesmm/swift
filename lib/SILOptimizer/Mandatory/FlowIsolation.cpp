@@ -66,15 +66,13 @@ struct State {
 
 /// Information gathered for analysis that is specific to a block.
 struct Info {
-  using UseSet = SmallPtrSet<SILInstruction*, 8>;
-
   /// Records all nonisolated uses of `self` in the block, and their kind of
   /// use to aid diagnostics.
-  UseSet nonisolatedUses;
+  SmallPtrSet<SILInstruction *, 8> nonisolatedUses;
 
   /// Records all stored property uses based on `self` in the block.
   /// These are the only isolated uses that we care about.
-  UseSet propertyUses;
+  SmallPtrSet<Operand *, 8> propertyUses;
 
   Info() : nonisolatedUses(), propertyUses() {}
 
@@ -85,7 +83,7 @@ struct Info {
   /// Returns the block corresponding to this information.
   SILBasicBlock* getBlock() const {
     if (!propertyUses.empty())
-      return (*(propertyUses.begin()))->getParent();
+      return (*(propertyUses.begin()))->getParentBlock();
 
     if (!nonisolatedUses.empty())
       return (*(nonisolatedUses.begin()))->getParent();
@@ -96,12 +94,14 @@ struct Info {
     return nullptr;
   }
 
-  SILInstruction* firstPropertyUse() const {
+  SILInstruction *firstPropertyUse() const {
     auto *blk = getBlock();
 
     for (auto &inst : *blk) {
-      if (propertyUses.count(&inst))
-        return &inst;
+      for (auto &op : inst.getAllOperands()) {
+        if (propertyUses.count(&op))
+          return &inst;
+      }
     }
 
     assert(false && "no first property use found!");
@@ -247,9 +247,9 @@ public:
   }
 
   /// Records that the instruction accesses an isolated property.
-  void markPropertyUse(SILInstruction *i) {
+  void markPropertyUse(Operand *i) {
     LLVM_DEBUG(llvm::dbgs() << "marking as isolated: " << *i);
-    auto &blockData = this->operator[](i->getParent());
+    auto &blockData = this->operator[](i->getParentBlock());
     blockData.propertyUses.insert(i);
   }
 
@@ -463,7 +463,7 @@ void Info::diagnoseAll(AnalysisInfo &info, bool forDeinit,
   for (auto *use : propertyUses) {
     // If the illegal use is a call to a defer, then recursively diagnose
     // all of the defer's uses, if this is the first time encountering it.
-    if (auto *callee = getCallee(use)) {
+    if (auto *callee = getCallee(use->getUser())) {
       if (info.haveDeferInfo(callee)) {
         auto &defer = info.getOrCreateDeferInfo(callee);
         if (defer.setNonisolatedStart()) {
@@ -475,7 +475,7 @@ void Info::diagnoseAll(AnalysisInfo &info, bool forDeinit,
       // Init accessor `setter` use.
       auto *accessor =
           cast<AccessorDecl>(callee->getLocation().getAsDeclContext());
-      auto illegalLoc = use->getDebugLocation().getLocation();
+      auto illegalLoc = use->getUser()->getDebugLocation().getLocation();
       diag.diagnose(illegalLoc.getSourceLoc(),
                     diag::isolated_property_mutation_in_nonisolated_context,
                     accessor->getStorage(), accessor->isSetter())
@@ -483,10 +483,12 @@ void Info::diagnoseAll(AnalysisInfo &info, bool forDeinit,
       continue;
     }
 
-    assert(isa<RefElementAddrInst>(use) && "only expecting one kind of instr.");
+    auto *user = use->getUser();
+    assert(isa<RefElementAddrInst>(user) &&
+           "only expecting one kind of instr.");
 
-    SILLocation illegalLoc = use->getDebugLocation().getLocation();
-    VarDecl *var = cast<RefElementAddrInst>(use)->getField();
+    SILLocation illegalLoc = user->getDebugLocation().getLocation();
+    VarDecl *var = cast<RefElementAddrInst>(user)->getField();
 
     diag.diagnose(illegalLoc.getSourceLoc(), diag::isolated_after_nonisolated,
                   forDeinit, var)
@@ -611,7 +613,7 @@ void AnalysisInfo::analyze(const SILArgument *selfParam) {
               // If the defer body has any stored property uses, we record that
               // in the parent by declaring this call-site being a property use.
               if (defer.hasPropertyUse())
-                markPropertyUse(user);
+                markPropertyUse(operand);
 
               continue;
             }
@@ -643,7 +645,7 @@ void AnalysisInfo::analyze(const SILArgument *selfParam) {
             // an isolated computed property reference.
 
             if (storage->hasInitAccessor()) {
-              markPropertyUse(user);
+              markPropertyUse(operand);
               continue;
             }
           }
@@ -675,7 +677,7 @@ void AnalysisInfo::analyze(const SILArgument *selfParam) {
         if (forDeinit && diagnoseNonSendableFromDeinit(refInst))
           continue;
 
-        markPropertyUse(user);
+        markPropertyUse(operand);
         break;
       }
 
@@ -808,7 +810,9 @@ void AnalysisInfo::verifyIsolation() {
         break;
       }
 
-      data.propertyUses.erase(inst);
+      for (auto &op : inst->getAllOperands()) {
+        data.propertyUses.erase(&op);
+      }
       current++;
     }
 

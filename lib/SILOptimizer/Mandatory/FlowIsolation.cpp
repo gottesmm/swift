@@ -12,7 +12,8 @@
 
 #define DEBUG_TYPE "flow-isolation"
 
-#include "llvm/Support/WithColor.h"
+#include "DiagnosticHelpers.h"
+
 #include "swift/AST/Expr.h"
 #include "swift/AST/ActorIsolation.h"
 #include "swift/AST/DiagnosticsSIL.h"
@@ -26,7 +27,10 @@
 #include "swift/SILOptimizer/PassManager/Transforms.h"
 #include "swift/SIL/OperandDatastructures.h"
 
+#include "llvm/Support/WithColor.h"
+
 using namespace swift;
+using namespace swift::siloptimizer;
 
 namespace {
 
@@ -486,10 +490,6 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
     }
   }
 
-  auto &diag = fn->getASTContext().Diags;
-
-  SILLocation blameLoc = blame->getDebugLocation().getLocation();
-
   for (auto *use : propertyUses) {
     // If the illegal use is a call to a defer, then recursively diagnose
     // all of the defer's uses, if this is the first time encountering it.
@@ -505,8 +505,7 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
       // Init accessor `setter` use.
       auto *accessor =
           cast<AccessorDecl>(callee->getLocation().getAsDeclContext());
-      auto illegalLoc = use->getUser()->getDebugLocation().getLocation();
-      diag.diagnose(illegalLoc.getSourceLoc(),
+      diagnoseError(use,
                     diag::isolated_property_mutation_in_nonisolated_context,
                     accessor->getStorage(), accessor->isSetter())
           .warnUntilLanguageMode(LanguageMode::v6);
@@ -517,12 +516,10 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
     assert(isa<RefElementAddrInst>(user) &&
            "only expecting one kind of instr.");
 
-    SILLocation illegalLoc = user->getDebugLocation().getLocation();
     VarDecl *var = cast<RefElementAddrInst>(user)->getField();
 
-    diag.diagnose(illegalLoc.getSourceLoc(), diag::isolated_after_nonisolated,
-                  forDeinit, var)
-        .highlight(illegalLoc.getSourceRange())
+    diagnoseErrorAndHighlight(user, diag::isolated_after_nonisolated, forDeinit,
+                              var)
         .warnUntilLanguageMode(LanguageMode::v6);
 
     // after <verb><adjective> <subject>, ... can't use self anymore, etc ...
@@ -532,10 +529,8 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
     StringRef adjective;
     DeclName subject;
     std::tie(verb, adjective, subject) = describe(blame);
-
-    diag.diagnose(blameLoc.getSourceLoc(), diag::nonisolated_blame,
-                  forDeinit, verb, adjective, subject)
-      .highlight(blameLoc.getSourceRange());
+    diagnoseNoteAndHighlight(blame, diag::nonisolated_blame, forDeinit, verb,
+                             adjective, subject);
   }
 }
 

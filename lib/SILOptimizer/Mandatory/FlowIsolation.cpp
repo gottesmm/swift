@@ -116,15 +116,17 @@ struct Info {
     return !propertyUses.empty();
   }
 
-  void dump() const LLVM_ATTRIBUTE_USED {
-    llvm::dbgs() << "nonisolatedUses:\n";
+  void print(llvm::raw_ostream &os) const {
+    os << "nonisolatedUses:\n";
     for (auto const *i : nonisolatedUses)
-      i->dump();
+      i->print(os);
 
-    llvm::dbgs() << "propertyUses:\n";
+    os << "propertyUses:\n";
     for (auto const *i : propertyUses)
-      i->dump();
+      i->print(os);
   }
+
+  SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
 };
 
 /// \returns true iff the function is a deinit, or a defer of a deinit.
@@ -258,20 +260,22 @@ public:
     blockData.nonisolatedUses.insert(i);
   }
 
-  void dump() const LLVM_ATTRIBUTE_USED {
-    llvm::dbgs() << "analysis-info for " << getFunction()->getName() << "\n";
+  void print(llvm::raw_ostream &os) const {
+    os << "analysis-info for " << getFunction()->getName() << "\n";
     for (auto const& bnd : *this) {
-      llvm::dbgs() << "bb" << bnd.block.getDebugID() << "\n";
-      bnd.data.dump();
+      os << "bb" << bnd.block.getDebugID() << "\n";
+      bnd.data.print(os);
     }
-    llvm::dbgs() << "flow-problem state:\n";
-    flow.dump();
+    os << "flow-problem state:\n";
+    flow.print(os);
 
     // print the defer information in a different color, if supported.
-    llvm::WithColor color(llvm::dbgs(), raw_ostream::BLUE);
+    llvm::WithColor color(os, raw_ostream::BLUE);
     for (auto const& entry : deferBlocks)
-      entry.second->dump();
+      entry.second->print(os);
   }
+
+  SWIFT_DEBUG_DUMP { print(llvm::dbgs()); }
 };
 
 // MARK: diagnostics
@@ -835,7 +839,7 @@ void checkFlowIsolation(SILFunction *fn) {
   // Step 2 -- Initialize and solve the dataflow problem.
   info.solve();
 
-  LLVM_DEBUG(info.dump());
+  LLVM_DEBUG(info.print(llvm::dbgs()));
 
   // Step 3 -- With the information gathered, check for flow-isolation issues.
   info.verifyIsolation();

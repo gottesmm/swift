@@ -209,7 +209,7 @@ public:
   void solve();
 
   // Verifies uses in this function, assuming solving has been performed.
-  void verifyIsolation();
+  void emitDiagnostics();
 
   /// Finds an appropriate instruction that can be blamed for introducing a
   /// source of `nonisolation` in a control-flow path leading the given
@@ -793,7 +793,7 @@ void FunctionInfo::solve() {
 }
 
 /// Enforces isolation rules, given the flow and block-local information.
-void FunctionInfo::verifyIsolation() {
+void FunctionInfo::emitDiagnostics() {
   // go through all the blocks.
   for (auto entry : *this) {
     auto &block = entry.block;
@@ -853,7 +853,7 @@ void FunctionInfo::verifyIsolation() {
     if (entry.second->hasNonisolatedStart())
       continue;
 
-    entry.second->verifyIsolation();
+    entry.second->emitDiagnostics();
   }
 }
 
@@ -875,7 +875,7 @@ void checkFlowIsolation(SILFunction *fn) {
   LLVM_DEBUG(info.print(llvm::dbgs()));
 
   // Step 3 -- With the information gathered, check for flow-isolation issues.
-  info.verifyIsolation();
+  info.emitDiagnostics();
 }
 
 /// The FlowIsolation pass performs flow-sensitive actor-isolation checking in

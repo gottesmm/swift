@@ -30,7 +30,7 @@ using namespace swift;
 
 namespace {
 
-class AnalysisInfo;
+class FunctionInfo;
 
 // MARK: utilities
 
@@ -65,7 +65,7 @@ struct LatticeState {
 };
 
 /// Information gathered for analysis that is specific to a block.
-struct Info {
+struct BlockInfo {
   /// Records all nonisolated uses of `self` in the block, and their kind of
   /// use to aid diagnostics.
   SmallPtrSet<SILInstruction *, 8> nonisolatedUses;
@@ -74,10 +74,10 @@ struct Info {
   /// These are the only isolated uses that we care about.
   SmallPtrSet<Operand *, 8> propertyUses;
 
-  Info() : nonisolatedUses(), propertyUses() {}
+  BlockInfo() : nonisolatedUses(), propertyUses() {}
 
   // Diagnoses all property uses as being an error.
-  void diagnoseAll(AnalysisInfo &info, bool forDeinit,
+  void diagnoseAll(FunctionInfo &info, bool forDeinit,
                    SILInstruction *blame = nullptr);
 
   /// Returns the block corresponding to this information.
@@ -141,7 +141,7 @@ static bool isWithinDeinit(SILFunction *fn) {
 }
 
 /// Carries the state of analysis for an entire SILFunction.
-class AnalysisInfo : public BasicBlockData<Info> {
+class FunctionInfo : public BasicBlockData<BlockInfo> {
 private:
   /// Isolation state at the start of the entry block to this function.
   /// This should always be `isolated`, unless if this is a `defer`.
@@ -151,8 +151,8 @@ public:
 
   // The deferBlocks information is shared between all blocks of
   // this analysis information's function.
-  llvm::SmallMapVector< SILFunction*,
-                        std::unique_ptr<AnalysisInfo>, 8> deferBlocks;
+  llvm::SmallMapVector<SILFunction *, std::unique_ptr<FunctionInfo>, 8>
+      deferBlocks;
 
   // Only computed after calling solve()
   BitDataflow flow;
@@ -167,8 +167,8 @@ public:
   /// indicates whether the SILFunction is (or contained in) a deinit.
   bool forDeinit;
 
-  AnalysisInfo(SILFunction *fn) : BasicBlockData<Info>(fn),
-                                  flow(fn, LatticeState::NumStates) {
+  FunctionInfo(SILFunction *fn)
+      : BasicBlockData<BlockInfo>(fn), flow(fn, LatticeState::NumStates) {
     forDeinit = isWithinDeinit(fn);
   }
 
@@ -219,14 +219,14 @@ public:
     return deferBlocks.count(someFn) > 0;
   }
 
-  AnalysisInfo& getOrCreateDeferInfo(SILFunction* someFn) {
+  FunctionInfo &getOrCreateDeferInfo(SILFunction *someFn) {
     assert(someFn);
 
     if (haveDeferInfo(someFn))
       return *(deferBlocks[someFn]);
 
     // otherwise, insert fresh info and retry.
-    deferBlocks.insert({someFn, std::make_unique<AnalysisInfo>(someFn)});
+    deferBlocks.insert({someFn, std::make_unique<FunctionInfo>(someFn)});
     return getOrCreateDeferInfo(someFn);
   }
 
@@ -280,7 +280,7 @@ public:
 
 // MARK: diagnostics
 
-SILInstruction *AnalysisInfo::findNonisolatedBlame(SILInstruction* startInst) {
+SILInstruction *FunctionInfo::findNonisolatedBlame(SILInstruction *startInst) {
   assert(startInst);
 
   SILBasicBlock* firstBlk = startInst->getParent();
@@ -426,8 +426,8 @@ describe(SILInstruction *blame) {
 /// search.
 /// \param info the AnalysisInfo corresponding to the function containing this
 /// block.
-void Info::diagnoseAll(AnalysisInfo &info, bool forDeinit,
-                       SILInstruction* blame) {
+void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
+                            SILInstruction *blame) {
   if (propertyUses.empty())
     return;
 
@@ -554,7 +554,7 @@ static bool diagnoseNonSendableFromDeinit(RefElementAddrInst *inst) {
 /// required.
 /// \param selfParam the parameter of \c getFunction() that should be
 /// treated as \c self
-void AnalysisInfo::analyze(const SILArgument *selfParam) {
+void FunctionInfo::analyze(const SILArgument *selfParam) {
   assert(selfParam && "analyzing a function with no self?");
 
   ModuleDecl *module = getFunction()->getModule().getSwiftModule();
@@ -716,7 +716,7 @@ void AnalysisInfo::analyze(const SILArgument *selfParam) {
 
 /// Initialize and solve the dataflow problem, assuming the entry block starts
 /// isolated.
-void AnalysisInfo::solve() {
+void FunctionInfo::solve() {
   SILFunction *fn = getFunction();
   SILBasicBlock *returnBlk = nullptr;
 
@@ -766,7 +766,7 @@ void AnalysisInfo::solve() {
 }
 
 /// Enforces isolation rules, given the flow and block-local information.
-void AnalysisInfo::verifyIsolation() {
+void FunctionInfo::verifyIsolation() {
   // go through all the blocks.
   for (auto entry : *this) {
     auto &block = entry.block;
@@ -837,7 +837,7 @@ void checkFlowIsolation(SILFunction *fn) {
   assert(fn->hasSelfParam() && "cannot analyze without a self param!");
 
   // Step 1 -- Analyze uses of `self` within the function.
-  AnalysisInfo info(fn);
+  FunctionInfo info(fn);
   info.analyze(fn->getSelfArgument());
 
   // Step 2 -- Initialize and solve the dataflow problem.

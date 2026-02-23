@@ -479,10 +479,12 @@ struct DowngradeForPreconcurrency {
   var x: NonSendable
   func createStream() -> AsyncStream<NonSendable> {
     AsyncStream<NonSendable> {
-      self.x // expected-tns-warning {{assigning '$return_value' to task-isolated 'self.x.some' risks causing data races}}
-      // expected-tns-note @-1 {{'$return_value' could become accessible to task-isolated code despite remaining accessible to code in the current task}}
+      self.x // expected-tns-ni-warning {{assigning '$return_value' to task-isolated 'self.x.some' risks causing data races}}
+      // expected-tns-ni-note @-1 {{'$return_value' could become accessible to task-isolated code despite remaining accessible to code in the current task}}
       // expected-warning @-2 {{main actor-isolated property 'x' cannot be accessed from outside of the actor; this is an error in the Swift 6 language mode}} {{7-7=await }}
       // expected-warning @-3 {{non-Sendable type 'NonSendable' of property 'x' cannot exit main actor-isolated context; this is an error in the Swift 6 language mode}}
+      // expected-tns-ni-ns-warning @-4 {{assigning '$return_value' to @concurrent task-isolated 'self.x.some' risks causing data races}}
+      // expected-tns-ni-ns-note @-5 {{'$return_value' could become accessible to @concurrent task-isolated code despite remaining accessible to code in the current task}}
     }
   }
 }

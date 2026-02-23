@@ -749,8 +749,8 @@ ERROR(isolated_after_nonisolated, none,
       "%select{nonisolated initializer|deinitializer}0",
       (bool, const ValueDecl *))
 NOTE(nonisolated_blame, none, "after %1%2 %3, "
-     "only nonisolated properties of 'self' can be accessed from "
-     "%select{this init|a deinit}0", (bool, StringRef, StringRef, DeclName))
+     "only %4 properties of 'self' can be accessed from "
+     "%select{this init|a deinit}0", (bool, StringRef, StringRef, DeclName, StringRef))
 ERROR(isolated_property_mutation_in_nonisolated_context,none,
       "actor-isolated %kind0 can not be %select{referenced|mutated}1 "
       "from a nonisolated context",

@@ -10,22 +10,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "flow-isolation"
+#define DEBUG_TYPE "send-non-sendable"
 
 #include "DiagnosticHelpers.h"
 
-#include "swift/AST/Expr.h"
 #include "swift/AST/ActorIsolation.h"
 #include "swift/AST/DiagnosticsSIL.h"
+#include "swift/AST/Expr.h"
 #include "swift/Basic/Assertions.h"
-#include "swift/Sema/Concurrency.h"
 #include "swift/SIL/ApplySite.h"
-#include "swift/SIL/BitDataflow.h"
 #include "swift/SIL/BasicBlockBits.h"
-#include "swift/SIL/DebugUtils.h"
 #include "swift/SIL/BasicBlockDatastructures.h"
-#include "swift/SILOptimizer/PassManager/Transforms.h"
+#include "swift/SIL/BitDataflow.h"
+#include "swift/SIL/DebugUtils.h"
 #include "swift/SIL/OperandDatastructures.h"
+#include "swift/SILOptimizer/Analysis/RegionAnalysis.h"
+#include "swift/SILOptimizer/PassManager/Transforms.h"
+#include "swift/Sema/Concurrency.h"
 
 #include "llvm/Support/WithColor.h"
 
@@ -170,6 +171,110 @@ static bool isWithinDeinit(SILFunction *fn) {
 
 namespace {
 
+class IsolationInfoCache {
+  RegionAnalysisFunctionInfo *rafi;
+  llvm::DenseMap<std::pair<SILInstruction *, SILValue>,
+                 SILDynamicMergedIsolationInfo>
+      cache;
+
+  struct ComputeEvaluator final
+      : public PartitionOpEvaluatorBaseImpl<ComputeEvaluator> {
+    RegionAnalysisFunctionInfo *rafi;
+    ComputeEvaluator(RegionAnalysisFunctionInfo *rafi,
+                     Partition &workingPartition)
+        : PartitionOpEvaluatorBaseImpl(workingPartition,
+                                       rafi->getOperandSetFactory(),
+                                       rafi->getSendingOperandToStateMap()),
+          rafi(rafi) {}
+
+    SILIsolationInfo getIsolationRegionInfo(Element elt) const {
+      return rafi->getValueMap().getIsolationRegion(elt);
+    }
+
+    std::optional<Element> getElement(SILValue value) const {
+      auto trackableValue = rafi->getValueMap().getTrackableValue(value);
+      if (trackableValue.value.isSendable())
+        return {};
+      return trackableValue.value.getID();
+    }
+
+    SILValue getRepresentative(SILValue value) const {
+      return rafi->getValueMap()
+          .getTrackableValue(value)
+          .value.getRepresentative()
+          .maybeGetValue();
+    }
+
+    SILDynamicMergedIsolationInfo getIsolation(Region reg) const {
+      return PartitionOpEvaluator<ComputeEvaluator>::getIsolationRegionInfo(
+          reg);
+    }
+
+    RepresentativeValue getRepresentativeValue(Element element) const {
+      return rafi->getValueMap().getRepresentativeValue(element);
+    }
+
+    bool isClosureCaptured(Element elt, Operand *op) const {
+      auto iter = rafi->getValueMap().maybeGetRepresentative(elt);
+      if (!iter)
+        return false;
+      return rafi->isClosureCaptured(iter, op);
+    }
+  };
+
+public:
+  IsolationInfoCache(RegionAnalysisFunctionInfo *rafi) : rafi(rafi) {}
+
+  SILDynamicMergedIsolationInfo getIsolationInfoAtInst(SILInstruction *inst,
+                                                       SILValue value) const {
+    // First try_emplace with a default value.
+    auto *self = const_cast<IsolationInfoCache *>(this);
+    auto iter = self->cache.try_emplace({inst, value}, SILIsolationInfo());
+
+    // If we failed to insert, we already have a value... just return that.
+    if (!iter.second)
+      return iter.first->second;
+
+    // Otherwise, we need to find the actual isolation of the value.
+    auto blockState = rafi->getBlockState(inst->getParent());
+    if (blockState.isNull() || !blockState.get()->getLiveness()) {
+      // If our block state is null or we have a dead block, just return
+      // invalid.
+      iter.first->getSecond() = SILIsolationInfo();
+      return iter.first->getSecond();
+    }
+
+    // Grab its entry partition and setup an evaluator for the partition that
+    // has callbacks that emit diagnsotics...
+    Partition workingPartition = blockState.get()->getEntryPartition();
+    ComputeEvaluator eval(rafi, workingPartition);
+
+    // And then evaluate all of our partition ops on the entry partition until
+    // we hit our instruction.
+    auto partitionOps = blockState.get()->getPartitionOps();
+    while (!partitionOps.empty()) {
+      const auto &next = partitionOps.front();
+      if (next.getSourceInst() == inst)
+        break;
+      partitionOps = partitionOps.drop_front();
+      eval.apply(next);
+    }
+
+    // TODO: Should we evaluate the instruction's own partition ops.
+
+    // Now look up the isolation for the value's region.
+    auto elt = eval.getElement(value);
+    // Value is sendable.
+    if (!elt) {
+      iter.first->getSecond() = SILIsolationInfo();
+      return iter.first->getSecond();
+    }
+    auto isolation = eval.getIsolation(workingPartition.getRegion(*elt));
+    iter.first->getSecond() = isolation;
+    return iter.first->getSecond();
+  }
+};
+
 /// Carries the state of analysis for an entire SILFunction.
 class FunctionInfo : public BasicBlockData<BlockInfo> {
 private:
@@ -194,13 +299,18 @@ public:
   std::optional<std::pair<SILBasicBlock *, LatticeState::Kind>> normalReturn =
       std::nullopt;
 
-  /// indicates whether the SILFunction is (or contained in) a deinit.
+  RegionAnalysis *ra;
+  RegionAnalysisFunctionInfo *rafi;
+
+  IsolationInfoCache isolationInfoCache;
+
+  /// Indicates whether the SILFunction is (or contained in) a deinit.
   bool forDeinit;
 
-  FunctionInfo(SILFunction *fn)
-      : BasicBlockData<BlockInfo>(fn), flow(fn, LatticeState::NumStates) {
-    forDeinit = isWithinDeinit(fn);
-  }
+  FunctionInfo(SILFunction *fn, RegionAnalysis *ra)
+      : BasicBlockData<BlockInfo>(fn), flow(fn, LatticeState::NumStates),
+        ra(ra), rafi(ra->get(fn)), isolationInfoCache(rafi),
+        forDeinit(isWithinDeinit(fn)) {}
 
   // analyzes the function for uses of `self`.
   void analyze(const SILArgument* selfParam);
@@ -256,7 +366,7 @@ public:
       return *(deferBlocks[someFn]);
 
     // otherwise, insert fresh info and retry.
-    deferBlocks.insert({someFn, std::make_unique<FunctionInfo>(someFn)});
+    deferBlocks.insert({someFn, std::make_unique<FunctionInfo>(someFn, ra)});
     return getOrCreateDeferInfo(someFn);
   }
 
@@ -278,6 +388,20 @@ public:
 
   /// Records that the instruction accesses an isolated property.
   void markPropertyUse(Operand *i) {
+    // If we have
+    if (auto funcIsolation = rafi->getFunction()->getActorIsolation();
+        funcIsolation && funcIsolation->isActorIsolated()) {
+      if (auto iso = isolationInfoCache.getIsolationInfoAtInst(i->getUser(),
+                                                               i->get())) {
+        if (iso->isActorIsolated() &&
+            iso->getActorIsolation() == *funcIsolation) {
+          LLVM_DEBUG(llvm::dbgs() << "isolated use that is safe b/c value is "
+                                     "isolated to same as constructor: "
+                                  << *i);
+          return;
+        }
+      }
+    }
     LLVM_DEBUG(llvm::dbgs() << "marking as isolated: " << *i);
     auto &blockData = this->operator[](i->getParentBlock());
     blockData.propertyUses.insert(i);
@@ -525,12 +649,24 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
     // after <verb><adjective> <subject>, ... can't use self anymore, etc ...
     //   example:
     // after calling function 'hello()', ...
+    StringRef isolation = "nonisolated";
+    if (auto functionIsolation = user->getFunction()->getActorIsolation();
+        functionIsolation && functionIsolation->isActorIsolated()) {
+      SmallString<64> temp;
+      {
+        llvm::raw_svector_ostream os(temp);
+        functionIsolation->printForDiagnostics(os);
+      }
+
+      isolation =
+          user->getFunction()->getASTContext().getIdentifier(temp).str();
+    }
     StringRef verb;
     StringRef adjective;
     DeclName subject;
     std::tie(verb, adjective, subject) = describe(blame);
     diagnoseNoteAndHighlight(blame, diag::nonisolated_blame, forDeinit, verb,
-                             adjective, subject);
+                             adjective, subject, isolation);
   }
 }
 
@@ -862,11 +998,11 @@ void FunctionInfo::emitDiagnostics() {
 //===----------------------------------------------------------------------===//
 
 /// Performs flow-sensitive actor-isolation checking on the given SILFunction.
-void checkFlowIsolation(SILFunction *fn) {
+void checkFlowIsolation(SILFunction *fn, RegionAnalysis *ra) {
   assert(fn->hasSelfParam() && "cannot analyze without a self param!");
 
   // Step 1 -- Analyze uses of `self` within the function.
-  FunctionInfo info(fn);
+  FunctionInfo info(fn, ra);
   info.analyze(fn->getSelfArgument());
 
   // Step 2 -- Initialize and solve the dataflow problem.
@@ -903,9 +1039,7 @@ class FlowIsolation : public SILFunctionTransform {
     if (auto *dc = fn->getDeclContext())
       if (auto *afd = dyn_cast_or_null<AbstractFunctionDecl>(dc->getAsDecl()))
         if (usesFlowSensitiveIsolation(afd))
-          checkFlowIsolation(fn);
-
-    return;
+          checkFlowIsolation(fn, getAnalysis<RegionAnalysis>());
   }
 
 }; // class

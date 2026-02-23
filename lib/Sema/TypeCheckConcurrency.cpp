@@ -120,7 +120,6 @@ static bool isolatedConstructorRequiresFlowIsolation(ActorIsolation typeIso,
 
   // Otherwise, if it's an actor instance, then it depends on async-ness.
   switch (typeIso.getKind()) {
-  case ActorIsolation::GlobalActor:
   case ActorIsolation::Unspecified:
   case ActorIsolation::Nonisolated:
   case ActorIsolation::NonisolatedUnsafe:
@@ -133,6 +132,7 @@ static bool isolatedConstructorRequiresFlowIsolation(ActorIsolation typeIso,
   case ActorIsolation::Erased:
     llvm_unreachable("constructor cannot have erased isolation");
 
+  case ActorIsolation::GlobalActor:
   case ActorIsolation::ActorInstance:
     return !ctor->hasAsync(); // need flow-isolation for non-async.
   };
@@ -8417,7 +8417,6 @@ ActorReferenceResult ActorReferenceResult::Builder::build() {
   if (auto *init = dyn_cast<ConstructorDecl>(fromDC)) {
     if (referencedActor && referencedActor->isSelf() &&
         referencedActor->actor->isActorSelf() &&
-        !contextIsolation.isGlobalActor() &&
         checkedByFlowIsolation(fromDC, *referencedActor, decl, declRefLoc,
                                useKind))
       return forSameConcurrencyDomain(declIsolation, options);

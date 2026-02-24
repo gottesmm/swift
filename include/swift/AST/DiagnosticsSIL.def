@@ -746,8 +746,12 @@ WARNING(warning_int_to_fp_inexact, none,
 // Flow-isolation diagnostics
 ERROR(isolated_after_nonisolated, none,
       "cannot access %kind1 here in "
-      "%select{nonisolated initializer|deinitializer}0",
-      (bool, const ValueDecl *))
+      "%select{%2 initializer|deinitializer}0",
+      (bool, const ValueDecl *, StringRef))
+ERROR(isolated_after_nonisolated_identifier, none,
+      "cannot access %1 here in "
+      "%select{%2 initializer|deinitializer}0",
+      (bool, Identifier, StringRef))
 NOTE(nonisolated_blame, none, "after %1%2 %3, "
      "only %4 properties of 'self' can be accessed from "
      "%select{this init|a deinit}0", (bool, StringRef, StringRef, DeclName, StringRef))

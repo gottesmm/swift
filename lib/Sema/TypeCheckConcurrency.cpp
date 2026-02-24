@@ -8416,7 +8416,6 @@ ActorReferenceResult ActorReferenceResult::Builder::build() {
   // Sendable checking is already performed on arguments at the call-site.
   if (auto *init = dyn_cast<ConstructorDecl>(fromDC)) {
     if (referencedActor && referencedActor->isSelf() &&
-        referencedActor->actor->isActorSelf() &&
         checkedByFlowIsolation(fromDC, *referencedActor, decl, declRefLoc,
                                useKind))
       return forSameConcurrencyDomain(declIsolation, options);

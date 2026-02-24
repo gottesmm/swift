@@ -15,6 +15,7 @@
 #include "DiagnosticHelpers.h"
 
 #include "swift/AST/ActorIsolation.h"
+#include "swift/SILOptimizer/Utils/VariableNameUtils.h"
 #include "swift/AST/DiagnosticsSIL.h"
 #include "swift/AST/Expr.h"
 #include "swift/Basic/Assertions.h"
@@ -313,7 +314,7 @@ public:
         forDeinit(isWithinDeinit(fn)) {}
 
   // analyzes the function for uses of `self`.
-  void analyze(const SILArgument* selfParam);
+  void analyze(SILValue selfParam);
 
   // Solves the data-flow problem, assuming analysis has been performed.
   void solve();
@@ -637,18 +638,6 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
     }
 
     auto *user = use->getUser();
-    assert(isa<RefElementAddrInst>(user) &&
-           "only expecting one kind of instr.");
-
-    VarDecl *var = cast<RefElementAddrInst>(user)->getField();
-
-    diagnoseErrorAndHighlight(user, diag::isolated_after_nonisolated, forDeinit,
-                              var)
-        .warnUntilLanguageMode(LanguageMode::v6);
-
-    // after <verb><adjective> <subject>, ... can't use self anymore, etc ...
-    //   example:
-    // after calling function 'hello()', ...
     StringRef isolation = "nonisolated";
     if (auto functionIsolation = user->getFunction()->getActorIsolation();
         functionIsolation && functionIsolation->isActorIsolated()) {
@@ -661,6 +650,21 @@ void BlockInfo::diagnoseAll(FunctionInfo &info, bool forDeinit,
       isolation =
           user->getFunction()->getASTContext().getIdentifier(temp).str();
     }
+
+    if (auto *rfi = dyn_cast<RefElementAddrInst>(user)) {
+      diagnoseErrorAndHighlight(rfi, diag::isolated_after_nonisolated,
+                                forDeinit, rfi->getField(), isolation)
+          .warnUntilLanguageMode(LanguageMode::v6);
+    } else {
+      auto name = VariableNameInferrer::inferName(use->get());
+      diagnoseErrorAndHighlight(
+          user, diag::isolated_after_nonisolated_identifier, forDeinit, *name, isolation)
+          .warnUntilLanguageMode(LanguageMode::v6);
+    }    
+
+    // after <verb><adjective> <subject>, ... can't use self anymore, etc ...
+    //   example:
+    // after calling function 'hello()', ...
     StringRef verb;
     StringRef adjective;
     DeclName subject;
@@ -717,8 +721,9 @@ static bool diagnoseNonSendableFromDeinit(RefElementAddrInst *inst) {
 /// required.
 /// \param selfParam the parameter of \c getFunction() that should be
 /// treated as \c self
-void FunctionInfo::analyze(const SILArgument *selfParam) {
-  assert(selfParam && "analyzing a function with no self?");
+void FunctionInfo::analyze(SILValue selfParam) {
+  if (!selfParam)
+    return;
 
   ModuleDecl *module = getFunction()->getModule().getSwiftModule();
 
@@ -843,19 +848,37 @@ void FunctionInfo::analyze(const SILArgument *selfParam) {
         markPropertyUse(operand);
         break;
       }
-
+    case SILInstructionKind::IgnoredUseInst: {
+      markPropertyUse(operand);
+      break;
+    }
+    case SILInstructionKind::StoreInst:
+    case SILInstructionKind::StoreWeakInst:
+      markPropertyUse(operand);
+      break;
       // Look through certian kinds of single-value instructions.
-      case SILInstructionKind::CopyValueInst:
-        // TODO: If we had some actual escape analysis information, we could
-        // avoid marking a trivial copy as a nonisolated use, since it doesn't
-        // actually escape the function. We have to be conservative here
-        // and assume it might.
-        markNonIsolated(user);
-        break;
-
-      case SILInstructionKind::BeginAccessInst:
-      case SILInstructionKind::BeginBorrowInst:
-      case SILInstructionKind::EndInitLetRefInst: {
+    case SILInstructionKind::CopyValueInst:
+      // TODO: If we had some actual escape analysis information, we could
+      // avoid marking a trivial copy as a nonisolated use, since it doesn't
+      // actually escape the function. We have to be conservative here
+      // and assume it might.
+      markNonIsolated(user);
+      break;
+    // While load operations are memory operations, we want to error on the
+    // actual user of the load.
+    case SILInstructionKind::LoadBorrowInst:
+    case SILInstructionKind::LoadInst:
+    case SILInstructionKind::LoadUnownedInst:
+    case SILInstructionKind::LoadWeakInst:
+      worklist.pushResultOperandsIfNotVisited(user);
+      break;
+    case SILInstructionKind::StructElementAddrInst:
+    case SILInstructionKind::TupleElementAddrInst:
+    case SILInstructionKind::UncheckedTakeEnumDataAddrInst:
+    case SILInstructionKind::InitEnumDataAddrInst:
+    case SILInstructionKind::BeginAccessInst:
+    case SILInstructionKind::BeginBorrowInst:
+    case SILInstructionKind::EndInitLetRefInst: {
         auto *svi = cast<SingleValueInstruction>(user);
         worklist.pushResultOperandsIfNotVisited(svi);
         break;
@@ -997,13 +1020,45 @@ void FunctionInfo::emitDiagnostics() {
 //                            MARK: Top Level Code
 //===----------------------------------------------------------------------===//
 
+/// If \p arg is not a metatype, just wrap it in a SILValue and return
+/// it. Otherwise, we need to go look for the alloc_stack that is storing self.
+static SILValue findSelf(const SILArgument *arg) {
+  if (!arg->getType().isMetatype())
+    return arg;
+  // Self will always be defined in the first block. So if we have a metatype,
+  // just walk the first block to find the stack, ref, box that contains it.
+  for (auto &ii : *arg->getParent()) {
+    // TODO: Can we for a non-copyable type use an alloc_box if it is captured?
+    if (auto *abi = dyn_cast<AllocStackInst>(&ii)) {
+      if (auto *decl = abi->getDecl(); decl && decl->isSelfParameter()) {
+        return abi;
+      }
+      continue;
+    }
+
+    if (auto *ari = dyn_cast<AllocRefInst>(&ii)) {
+      if (auto *decl = ari->getDecl(); decl && decl->isSelfParameter())
+        return ari;
+      continue;
+    }
+
+    if (auto *abi = dyn_cast<AllocBoxInst>(&ii)) {
+      if (auto *decl = abi->getDecl(); decl && decl->isSelfParameter())
+        return abi;
+      continue;
+    }
+  }
+  return SILValue();
+}
+
+
 /// Performs flow-sensitive actor-isolation checking on the given SILFunction.
 void checkFlowIsolation(SILFunction *fn, RegionAnalysis *ra) {
   assert(fn->hasSelfParam() && "cannot analyze without a self param!");
 
   // Step 1 -- Analyze uses of `self` within the function.
   FunctionInfo info(fn, ra);
-  info.analyze(fn->getSelfArgument());
+  info.analyze(findSelf(fn->getSelfArgument()));
 
   // Step 2 -- Initialize and solve the dataflow problem.
   info.solve();

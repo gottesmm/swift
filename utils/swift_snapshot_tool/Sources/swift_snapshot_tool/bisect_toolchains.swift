@@ -108,7 +108,7 @@ struct BisectToolchains: AsyncParsableCommand {
 
     let badTagIndex: Int
     if let newDateAsDate = self.newDateAsDate {
-      let b = tags.firstIndex(where: { $0.tag.date(branch: self.branch) < newDateAsDate })
+      let b = tags.firstIndex(where: { $0.tag.date(branch: self.branch) <= newDateAsDate })
       guard let b else {
         log("Failed to find tag newer than date: \(newDateAsDate)")
         fatalError()

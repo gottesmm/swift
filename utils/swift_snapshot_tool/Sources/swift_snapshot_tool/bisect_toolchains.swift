@@ -191,6 +191,7 @@ struct BisectToolchains: AsyncParsableCommand {
 
       if midIsEndIndex {
         log("Last successful value: \(tags[mid+1])")
+        log("First failing value: \(tags[mid])")
         break
       }
     }

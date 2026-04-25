@@ -466,3 +466,41 @@ bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields):
   %9999 = tuple ()
   return %9999 : $()
 }
+
+// Test assign merge: src named, dst unnamed (exercises dst_type diagnostic variant)
+sil [ossa] @regionMergeAssignSrcNamedDstUnnamed : $@convention(thin) (@guaranteed NonisolatedClassWithMixedFields, @guaranteed NonisolatedClassWithMixedFields) -> () {
+bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields, %1 : @guaranteed $NonisolatedClassWithMixedFields):
+  debug_value %0 : $NonisolatedClassWithMixedFields, var, name "named"
+  %2 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.mainField
+  %3 = load [copy] %2
+  %4 = ref_element_addr %1 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.customField
+  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated 'named.mainField' to global actor 'CustomActor'-isolated 'NonSendableKlass' risks causing data races}}
+  // expected-note @-1 {{'named.mainField' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
+  %9999 = tuple ()
+  return %9999 : $()
+}
+
+// Test assign merge: src unnamed, dst named (exercises src_type diagnostic variant)
+sil [ossa] @regionMergeAssignSrcUnnamedDstNamed : $@convention(thin) (@guaranteed NonisolatedClassWithMixedFields, @guaranteed NonisolatedClassWithMixedFields) -> () {
+bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields, %1 : @guaranteed $NonisolatedClassWithMixedFields):
+  debug_value %1 : $NonisolatedClassWithMixedFields, var, name "named"
+  %2 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.mainField
+  %3 = load [copy] %2
+  %4 = ref_element_addr %1 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.customField
+  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated 'NonSendableKlass' to global actor 'CustomActor'-isolated 'named.customField' risks causing data races}}
+  // expected-note @-1 {{'NonSendableKlass' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
+  %9999 = tuple ()
+  return %9999 : $()
+}
+
+// Test assign merge: both unnamed (exercises both_type diagnostic variant)
+sil [ossa] @regionMergeAssignBothUnnamed : $@convention(thin) (@guaranteed NonisolatedClassWithMixedFields, @guaranteed NonisolatedClassWithMixedFields) -> () {
+bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields, %1 : @guaranteed $NonisolatedClassWithMixedFields):
+  %2 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.mainField
+  %3 = load [copy] %2
+  %4 = ref_element_addr %1 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.customField
+  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated 'NonSendableKlass' to global actor 'CustomActor'-isolated 'NonSendableKlass' risks causing data races}}
+  // expected-note @-1 {{'NonSendableKlass' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
+  %9999 = tuple ()
+  return %9999 : $()
+}

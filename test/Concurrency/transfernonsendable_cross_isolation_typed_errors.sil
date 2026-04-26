@@ -1,0 +1,53 @@
+// RUN: %target-sil-opt -send-non-sendable -strict-concurrency=complete -sil-regionbasedisolation-force-use-of-typed-errors=all %s -o /dev/null -verify
+
+// REQUIRES: concurrency
+// REQUIRES: asserts
+
+// This test verifies that the -sil-regionbasedisolation-force-use-of-typed-errors=all
+// flag forces the cross-isolation merge diagnostics to use types instead of names,
+// even when debug_value instructions are present and name inference would normally
+// succeed. This exercises the type-based fallback diagnostic paths.
+
+sil_stage raw
+
+import Swift
+import Builtin
+import _Concurrency
+
+////////////////////////
+// MARK: Declarations //
+////////////////////////
+
+class NonSendableKlass {
+  var klass: NonSendableKlass
+}
+
+actor CustomActorInstance {}
+
+@globalActor
+struct CustomActor {
+  static let shared: CustomActorInstance
+}
+
+class NonisolatedClassWithMixedFields {
+  @MainActor var mainField: NonSendableKlass
+  @CustomActor var customField: NonSendableKlass
+}
+
+/////////////////
+// MARK: Tests //
+/////////////////
+
+// With the force flag, debug_value is present but name inference is overridden.
+// The diagnostics should use types instead of names.
+sil [ossa] @regionMergeAssignForceTyped : $@convention(thin) (@guaranteed NonisolatedClassWithMixedFields) -> () {
+bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields):
+  debug_value %0 : $NonisolatedClassWithMixedFields, var, name "self"
+  %1 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.mainField
+  %2 = load [copy] %1
+  %3 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.customField
+  store %2 to [assign] %3 // expected-warning {{assigning main actor-isolated value of type 'NonSendableKlass' to global actor 'CustomActor'-isolated value of type 'NonSendableKlass' risks causing data races}}
+  // expected-note @-1 {{a value of type 'NonSendableKlass' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
+  %9999 = tuple ()
+  return %9999 : $()
+}

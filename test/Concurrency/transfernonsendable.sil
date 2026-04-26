@@ -474,7 +474,7 @@ bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields, %1 : @guaranteed $Nonisol
   %2 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.mainField
   %3 = load [copy] %2
   %4 = ref_element_addr %1 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.customField
-  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated 'named.mainField' to global actor 'CustomActor'-isolated 'NonSendableKlass' risks causing data races}}
+  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated 'named.mainField' to global actor 'CustomActor'-isolated value of type 'NonSendableKlass' risks causing data races}}
   // expected-note @-1 {{'named.mainField' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
   %9999 = tuple ()
   return %9999 : $()
@@ -487,8 +487,8 @@ bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields, %1 : @guaranteed $Nonisol
   %2 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.mainField
   %3 = load [copy] %2
   %4 = ref_element_addr %1 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.customField
-  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated 'NonSendableKlass' to global actor 'CustomActor'-isolated 'named.customField' risks causing data races}}
-  // expected-note @-1 {{'NonSendableKlass' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
+  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated value of type 'NonSendableKlass' to global actor 'CustomActor'-isolated 'named.customField' risks causing data races}}
+  // expected-note @-1 {{a value of type 'NonSendableKlass' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
   %9999 = tuple ()
   return %9999 : $()
 }
@@ -499,8 +499,8 @@ bb0(%0 : @guaranteed $NonisolatedClassWithMixedFields, %1 : @guaranteed $Nonisol
   %2 = ref_element_addr %0 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.mainField
   %3 = load [copy] %2
   %4 = ref_element_addr %1 : $NonisolatedClassWithMixedFields, #NonisolatedClassWithMixedFields.customField
-  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated 'NonSendableKlass' to global actor 'CustomActor'-isolated 'NonSendableKlass' risks causing data races}}
-  // expected-note @-1 {{'NonSendableKlass' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
+  store %3 to [assign] %4 // expected-warning {{assigning main actor-isolated value of type 'NonSendableKlass' to global actor 'CustomActor'-isolated value of type 'NonSendableKlass' risks causing data races}}
+  // expected-note @-1 {{a value of type 'NonSendableKlass' could become accessible to global actor 'CustomActor'-isolated code despite remaining accessible to main actor-isolated code}}
   %9999 = tuple ()
   return %9999 : $()
 }

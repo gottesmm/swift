@@ -23,6 +23,7 @@ actor MyActor {}
 
 @MainActor func transferToMain<T>(_ t: T) async {}
 func transferToSendingParam<T>(_ x: sending T) {}
+func useNonSendable(_ a: NonSendableKlass, _ b: NonSendableKlass) {}
 
 /////////////////
 // MARK: Tests //
@@ -82,4 +83,29 @@ func sendingTransferNonSendableError(_ x: NonSendableKlass) {
 func sendingTransferNonSendableError(_ x: NonSendableKlass) async {
   await transferToMain(x) // expected-error {{sending value of non-Sendable type 'NonSendableKlass' risks causing data races}}
   // expected-note @-1 {{sending task-isolated value of non-Sendable type 'NonSendableKlass' to main actor-isolated global function 'transferToMain' risks causing races in between task-isolated and main actor-isolated uses}}
+}
+
+///////////////////////////////////////////
+// MARK: Cross-Isolation Merge Tests     //
+///////////////////////////////////////////
+
+@MainActor
+struct MainActorStruct {
+  var x: NonSendableKlass
+  var y: NonSendableKlass
+
+  // Assign merge: both sides use types (src=binding, dst=value)
+  nonisolated init(assign val: NonSendableKlass) {
+    self.x = val // expected-error {{assigning a binding of type 'NonSendableKlass' to main actor-isolated value of type '()' risks causing data races}}
+    // expected-note @-1 {{a binding of type 'NonSendableKlass' could become accessible to main actor-isolated code despite remaining accessible to code in the current task}}
+    self.y = NonSendableKlass()
+  }
+
+  // NonisolatedFunction merge: both sides use types
+  nonisolated init(nonisolatedFunc val: NonSendableKlass) {
+    self.x = NonSendableKlass()
+    self.y = NonSendableKlass()
+    useNonSendable(self.x, val) // expected-error {{passing a binding of type 'NonSendableKlass' and main actor-isolated value of type 'NonSendableKlass' as arguments to global function 'useNonSendable' risks causing data races}}
+    // expected-note @-1 {{a value of type 'NonSendableKlass' could begin referencing a binding of type 'NonSendableKlass' allowing concurrent access to a binding of type 'NonSendableKlass' by main actor-isolated code and code in the current task}}
+  }
 }

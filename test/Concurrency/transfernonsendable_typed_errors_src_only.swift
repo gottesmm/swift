@@ -93,8 +93,8 @@ struct MainActorStruct {
 
   // Assign merge: src uses type (binding), dst uses name
   nonisolated init(assign val: NonSendableKlass) {
-    self.x = val // expected-error {{assigning a binding of type 'NonSendableKlass' to main actor-isolated 'self.x' risks causing data races}}
-    // expected-note @-1 {{a binding of type 'NonSendableKlass' could become accessible to main actor-isolated code despite remaining accessible to code in the current task}}
+    self.x = val // expected-error {{assigning a value of type 'NonSendableKlass' to main actor-isolated 'self.x' risks causing data races}}
+    // expected-note @-1 {{a value of type 'NonSendableKlass' could become accessible to main actor-isolated code despite remaining accessible to code in the current task}}
     self.y = NonSendableKlass()
   }
 
@@ -102,7 +102,7 @@ struct MainActorStruct {
   nonisolated init(nonisolatedFunc val: NonSendableKlass) {
     self.x = NonSendableKlass()
     self.y = NonSendableKlass()
-    useNonSendable(self.x, val) // expected-error {{passing a binding of type 'NonSendableKlass' and main actor-isolated 'self.x' as arguments to global function 'useNonSendable' risks causing data races}}
-    // expected-note @-1 {{'self.x' could begin referencing a binding of type 'NonSendableKlass' allowing concurrent access to a binding of type 'NonSendableKlass' by main actor-isolated code and code in the current task}}
+    useNonSendable(self.x, val) // expected-error {{passing a value of type 'NonSendableKlass' and main actor-isolated 'self.x' as arguments to global function 'useNonSendable' risks causing data races}}
+    // expected-note @-1 {{'self.x' could begin referencing a value of type 'NonSendableKlass' allowing concurrent access to a value of type 'NonSendableKlass' by main actor-isolated code and code in the current task}}
   }
 }

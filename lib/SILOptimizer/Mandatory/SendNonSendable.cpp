@@ -264,28 +264,19 @@ inferNameAndRootHelper(SILValue value, InferRole role = InferRole::Default) {
 
 /// Result of type inference for a SIL value. Carries the inferred type and
 /// whether the value represents a binding (backed by a VarDecl).
-struct InferredType {
-  Type type;
-  bool isBinding;
-};
-
 /// Attempt to infer a type for \p value. Used as a fallback when name inference
 /// fails for cross-isolation merge diagnostics. Prefers AST-level types from
 /// expressions or declarations, then falls back to the SIL value's type.
-static std::optional<InferredType> inferTypeHelper(SILValue value) {
+static std::optional<Type> inferTypeHelper(SILValue value) {
   if (auto *svi = dyn_cast<SingleValueInstruction>(value)) {
-    if (auto *expr = svi->getLoc().getAsASTNode<Expr>()) {
-      bool binding = false;
-      if (auto *dre = dyn_cast<DeclRefExpr>(expr))
-        binding = isa<VarDecl>(dre->getDecl());
-      return InferredType{expr->findOriginalType(), binding};
-    }
+    if (auto *expr = svi->getLoc().getAsASTNode<Expr>())
+      return expr->findOriginalType();
   }
   if (auto *arg = dyn_cast<SILFunctionArgument>(value)) {
     if (auto *decl = arg->getDecl())
-      return InferredType{decl->getInterfaceType(), isa<VarDecl>(decl)};
+      return decl->getInterfaceType();
   }
-  return InferredType{value->getType().getObjectType().getASTType(), false};
+  return value->getType().getObjectType().getASTType();
 }
 
 /// Sometimes we use a store_borrow + temporary to materialize a borrowed value
@@ -4035,24 +4026,24 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitUnknown() {
     return;
   }
 
-  auto srcType = srcName ? std::optional<InferredType>()
+  auto srcType = srcName ? std::optional<Type>()
                          : inferTypeHelper(srcRegionValue.getValue());
-  auto dstType = dstName ? std::optional<InferredType>()
+  auto dstType = dstName ? std::optional<Type>()
                          : inferTypeHelper(dstRegionValue.getValue());
 
   if (srcName && dstType) {
     diagnoseError(
         op->getUser(),
         diag::regionbasedisolation_merge_region_failure_error_unknown_dst_type,
-        *srcName, srcIsolationStr, dstType->type, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), dstType->isBinding)
+        *srcName, srcIsolationStr, *dstType, dstIsolationStr,
+        !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_unknown_dst_type_note,
-        *srcName, srcIsolationStr, dstType->type, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), dstType->isBinding);
+        *srcName, srcIsolationStr, *dstType, dstIsolationStr,
+        !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4060,15 +4051,15 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitUnknown() {
     diagnoseError(
         op->getUser(),
         diag::regionbasedisolation_merge_region_failure_error_unknown_src_type,
-        srcType->type, srcIsolationStr, *dstName, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding)
+        *srcType, srcIsolationStr, *dstName, dstIsolationStr,
+        !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_unknown_src_type_note,
-        srcType->type, srcIsolationStr, *dstName, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding);
+        *srcType, srcIsolationStr, *dstName, dstIsolationStr,
+        !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4076,16 +4067,15 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitUnknown() {
     diagnoseError(
         op->getUser(),
         diag::regionbasedisolation_merge_region_failure_error_unknown_both_type,
-        srcType->type, srcIsolationStr, dstType->type, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding, dstType->isBinding)
+        *srcType, srcIsolationStr, *dstType, dstIsolationStr,
+        !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_unknown_both_type_note,
-        srcType->type, srcIsolationStr, dstType->type, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding,
-        dstType->isBinding);
+        *srcType, srcIsolationStr, *dstType, dstIsolationStr,
+        !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4132,17 +4122,17 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitAssign() {
     return;
   }
 
-  auto srcType = srcName ? std::optional<InferredType>()
+  auto srcType = srcName ? std::optional<Type>()
                          : inferTypeHelper(srcRegionValue.getValue());
-  auto dstType = dstName ? std::optional<InferredType>()
+  auto dstType = dstName ? std::optional<Type>()
                          : inferTypeHelper(dstRegionValue.getValue());
 
   if (srcName && dstType) {
     diagnoseError(
         op->getUser(),
         diag::regionbasedisolation_merge_region_failure_error_assign_dst_type,
-        *srcName, srcIsolationStr, dstType->type, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), dstType->isBinding)
+        *srcName, srcIsolationStr, *dstType, dstIsolationStr,
+        !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
@@ -4156,15 +4146,15 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitAssign() {
     diagnoseError(
         op->getUser(),
         diag::regionbasedisolation_merge_region_failure_error_assign_src_type,
-        srcType->type, srcIsolationStr, *dstName, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding)
+        *srcType, srcIsolationStr, *dstName, dstIsolationStr,
+        !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_assign_src_type_note,
-        srcType->type, srcIsolationStr, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding);
+        *srcType, srcIsolationStr, dstIsolationStr,
+        !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4172,15 +4162,15 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitAssign() {
     diagnoseError(
         op->getUser(),
         diag::regionbasedisolation_merge_region_failure_error_assign_both_type,
-        srcType->type, srcIsolationStr, dstType->type, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding, dstType->isBinding)
+        *srcType, srcIsolationStr, *dstType, dstIsolationStr,
+        !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_assign_src_type_note,
-        srcType->type, srcIsolationStr, dstIsolationStr,
-        !srcIsolation->isTaskIsolated(), srcType->isBinding);
+        *srcType, srcIsolationStr, dstIsolationStr,
+        !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4235,9 +4225,9 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitNonisolatedFunction() {
     return;
   }
 
-  auto srcType = srcName ? std::optional<InferredType>()
+  auto srcType = srcName ? std::optional<Type>()
                          : inferTypeHelper(srcRegionValue.getValue());
-  auto dstType = dstName ? std::optional<InferredType>()
+  auto dstType = dstName ? std::optional<Type>()
                          : inferTypeHelper(dstRegionValue.getValue());
 
   if (srcName && dstType) {
@@ -4245,15 +4235,15 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitNonisolatedFunction() {
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_nonisolatedfunction_dst_type,
-        *srcName, srcIsolationStr, dstType->type, dstIsolationStr,
-        declRef.getDecl(), !srcIsolation->isTaskIsolated(), dstType->isBinding)
+        *srcName, srcIsolationStr, *dstType, dstIsolationStr,
+        declRef.getDecl(), !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_nonisolatedfunction_dst_type_note,
-        *srcName, srcIsolationStr, dstType->type, dstIsolationStr,
-        declRef.getDecl(), !srcIsolation->isTaskIsolated(), dstType->isBinding);
+        *srcName, srcIsolationStr, *dstType, dstIsolationStr,
+        declRef.getDecl(), !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4262,15 +4252,15 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitNonisolatedFunction() {
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_nonisolatedfunction_src_type,
-        srcType->type, srcIsolationStr, *dstName, dstIsolationStr,
-        declRef.getDecl(), !srcIsolation->isTaskIsolated(), srcType->isBinding)
+        *srcType, srcIsolationStr, *dstName, dstIsolationStr,
+        declRef.getDecl(), !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_nonisolatedfunction_src_type_note,
-        srcType->type, srcIsolationStr, *dstName, dstIsolationStr,
-        declRef.getDecl(), !srcIsolation->isTaskIsolated(), srcType->isBinding);
+        *srcType, srcIsolationStr, *dstName, dstIsolationStr,
+        declRef.getDecl(), !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4279,17 +4269,15 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitNonisolatedFunction() {
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_nonisolatedfunction_both_type,
-        srcType->type, srcIsolationStr, dstType->type, dstIsolationStr,
-        declRef.getDecl(), !srcIsolation->isTaskIsolated(), srcType->isBinding,
-        dstType->isBinding)
+        *srcType, srcIsolationStr, *dstType, dstIsolationStr,
+        declRef.getDecl(), !srcIsolation->isTaskIsolated())
         .limitBehaviorIf(getBehaviorLimit());
     diagnoseNote(
         op->getUser(),
         diag::
             regionbasedisolation_merge_region_failure_error_nonisolatedfunction_both_type_note,
-        srcType->type, srcIsolationStr, dstType->type, dstIsolationStr,
-        declRef.getDecl(), !srcIsolation->isTaskIsolated(), srcType->isBinding,
-        dstType->isBinding);
+        *srcType, srcIsolationStr, *dstType, dstIsolationStr,
+        declRef.getDecl(), !srcIsolation->isTaskIsolated());
     return;
   }
 
@@ -4330,8 +4318,8 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitIsolatedFunction() {
           op->getUser(),
           diag::
               regionbasedisolation_merge_region_failure_error_functionisolation_type,
-          srcType->type, srcIsolationStr, declRef.getDecl(), dstIsolationStr,
-          !srcIsolation->isTaskIsolated(), srcType->isBinding)
+          *srcType, srcIsolationStr, declRef.getDecl(), dstIsolationStr,
+          !srcIsolation->isTaskIsolated())
           .limitBehaviorIf(getBehaviorLimit());
       return;
     }
@@ -4390,8 +4378,8 @@ void IncompatibleRegionMergeDiagnosticEmitter::emitCast() {
       diagnoseError(
           op->getUser(),
           diag::regionbasedisolation_merge_region_failure_error_cast_type,
-          srcType->type, srcIsolationStr, cast.getTargetFormalType(),
-          dstIsolationStr, !srcIsolation->isTaskIsolated(), srcType->isBinding)
+          *srcType, srcIsolationStr, cast.getTargetFormalType(),
+          dstIsolationStr, !srcIsolation->isTaskIsolated())
           .limitBehaviorIf(getBehaviorLimit());
       return;
     }

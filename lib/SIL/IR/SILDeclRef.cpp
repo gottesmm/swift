@@ -2072,9 +2072,14 @@ ActorIsolation SILDeclRef::getActorIsolation() const {
     return param->getInitializerIsolation();
   }
 
-  // If we have a stored property initializer for a VarDecl with an explicit
-  // isolation, match that explicit isolation.
-  if (isStoredPropertyInitializer()) {
+  // If we have a stored property initializer or property wrapper backing
+  // initializer for a VarDecl, use the initializer's isolation rather than
+  // the enclosing type context's isolation. This ensures that a property
+  // wrapper backing initializer on a @MainActor type does not spuriously
+  // inherit MainActor isolation when the initializer expression itself is
+  // nonisolated — which would cause false region isolation errors in the
+  // synthesized memberwise init.
+  if (isStoredPropertyInitializer() || isPropertyWrapperBackingInitializer()) {
     return cast<VarDecl>(getDecl())->getInitializerIsolation();
   }
 

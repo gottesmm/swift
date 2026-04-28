@@ -1043,6 +1043,18 @@ SILIsolationInfo SILIsolationInfo::get(SILArgument *arg) {
   // Otherwise, see if we need to handle this isolation computation specially
   // due to information from the decl ref if we have one.
   if (auto declRef = func->getDeclRef()) {
+    // Property wrapper backing initializers are synthesized functions that
+    // wrap a value in its property wrapper type (e.g., ObservedObject). Their
+    // parameters should be disconnected so that when the backing init is
+    // nonisolated (because its initializer expression has no isolation
+    // requirements), the call to the wrapper's init (which may be
+    // global-actor isolated with @preconcurrency) is treated as a send of a
+    // disconnected value rather than a merge of task-isolated regions. This
+    // matches the behavior of direct user calls to the same wrapper init.
+    if (declRef.isPropertyWrapperBackingInitializer()) {
+      return SILIsolationInfo::getDisconnected(false /*nonisolated(unsafe)*/);
+    }
+
     if (auto funcIsolation = func->getActorIsolation()) {
       // First check if we have an allocator decl ref. If we do and we have an
       // actor instance isolation, then we know that we are actively just

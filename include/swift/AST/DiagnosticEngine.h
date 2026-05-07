@@ -31,6 +31,7 @@
 #include "swift/Localization/LocalizationFormat.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Allocator.h"
@@ -619,6 +620,15 @@ namespace swift {
     /// fatal error
     bool showDiagnosticsAfterFatalError = false;
 
+    /// Trap when any error diagnostic is emitted.
+    bool assertOnError = false;
+
+    /// Trap when any warning diagnostic is emitted.
+    bool assertOnWarning = false;
+
+    /// Trap when a diagnostic belonging to one of these groups is emitted.
+    llvm::SmallSet<DiagGroupID, 1> assertOnGroupIDs;
+
     /// Don't emit any warnings
     bool suppressWarnings = false;
 
@@ -674,6 +684,14 @@ namespace swift {
     }
     bool getShowDiagnosticsAfterFatalError() {
       return showDiagnosticsAfterFatalError;
+    }
+
+    void setAssertOnError(bool val = true) { assertOnError = val; }
+    void setAssertOnWarning(bool val = true) { assertOnWarning = val; }
+    void addAssertOnGroupID(DiagGroupID id) { assertOnGroupIDs.insert(id); }
+
+    bool shouldAssertOnGroup(DiagGroupID id) const {
+      return assertOnGroupIDs.count(id);
     }
 
     void setCheckSyntacticControls(bool val = true) {
@@ -738,6 +756,8 @@ namespace swift {
     void swap(DiagnosticState &other) {
       std::swap(showDiagnosticsAfterFatalError,
                 other.showDiagnosticsAfterFatalError);
+      std::swap(assertOnError, other.assertOnError);
+      std::swap(assertOnWarning, other.assertOnWarning);
       std::swap(suppressWarnings, other.suppressWarnings);
       std::swap(suppressNotes, other.suppressNotes);
       std::swap(suppressRemarks, other.suppressRemarks);
@@ -933,6 +953,10 @@ namespace swift {
     bool getShowDiagnosticsAfterFatalError() {
       return state.getShowDiagnosticsAfterFatalError();
     }
+
+    void setAssertOnError(bool val = true) { state.setAssertOnError(val); }
+    void setAssertOnWarning(bool val = true) { state.setAssertOnWarning(val); }
+    void addAssertOnGroupID(DiagGroupID id) { state.addAssertOnGroupID(id); }
 
     void flushConsumers() {
       ASSERT(NumActiveDiags == 0 && "Expected in-flight diags to be flushed");

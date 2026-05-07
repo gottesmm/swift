@@ -2748,6 +2748,15 @@ static bool ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
   Opts.SkipDiagnosticPasses |= Args.hasArg(OPT_disable_diagnostic_passes);
   Opts.ShowDiagnosticsAfterFatalError |=
     Args.hasArg(OPT_show_diagnostics_after_fatal);
+  Opts.AssertOnError |= Args.hasArg(OPT_swift_diagnostics_assert_on_error);
+  Opts.AssertOnWarning |= Args.hasArg(OPT_swift_diagnostics_assert_on_warning);
+  for (const Arg *A : Args.filtered(OPT_swift_diagnostics_assert_on_group)) {
+    if (auto groupID = getDiagGroupIDByName(A->getValue())) {
+      Opts.AssertOnGroupIDs.insert(*groupID);
+    } else {
+      Opts.UnknownWarningGroups.push_back(A->getValue());
+    }
+  }
 
   auto enablesSyntacticWarningControl = [&](const Arg *A) {
     if (!A->getOption().matches(options::OPT_enable_experimental_feature))
@@ -2917,6 +2926,15 @@ static void configureDiagnosticEngine(
     StringRef mainExecutablePath, DiagnosticEngine &Diagnostics) {
   if (Options.ShowDiagnosticsAfterFatalError) {
     Diagnostics.setShowDiagnosticsAfterFatalError();
+  }
+  if (Options.AssertOnError) {
+    Diagnostics.setAssertOnError();
+  }
+  if (Options.AssertOnWarning) {
+    Diagnostics.setAssertOnWarning();
+  }
+  for (auto groupID : Options.AssertOnGroupIDs) {
+    Diagnostics.addAssertOnGroupID(groupID);
   }
   if (Options.CheckSyntacticControls) {
     Diagnostics.setCheckSyntacticControls();
@@ -3310,6 +3328,8 @@ static bool ParseSILArgs(SILOptions &Opts, ArgList &Args,
   Opts.VerifyAll |= Args.hasArg(OPT_sil_verify_all);
   Opts.VerifyNone |= Args.hasArg(OPT_sil_verify_none);
   Opts.VerifyOwnershipAll |= Args.hasArg(OPT_sil_ownership_verify_all);
+  Opts.AbortOnUnknownRegionIsolationPatternError |=
+      Args.hasArg(OPT_sil_region_isolation_assert_on_unknown_pattern);
   Opts.DebugSerialization |= Args.hasArg(OPT_sil_debug_serialization);
   Opts.EmitVerboseSIL |= Args.hasArg(OPT_emit_verbose_sil);
   Opts.EmitSortedSIL |= Args.hasArg(OPT_emit_sorted_sil);

@@ -110,7 +110,7 @@ actor CastTest<T, U : NonSendableProtocol, V : AnyObject, V2 : NonSendableKlassP
     guard let c = await cnx3 else { fatalError() } // expected-swift5-warning {{non-Sendable type 'U?' of property 'cnx3' cannot exit main actor-isolated context}}
     // expected-swift6-error @-1 {{non-Sendable type 'U?' of property 'cnx3' cannot exit main actor-isolated context}}
     guard let q = c as? NonSendableProtocol else { fatalError() } // expected-warning {{conditional cast from 'U' to 'any NonSendableProtocol' always succeeds}}
-    return q // expected-swift5-warning {{assigning main actor-isolated 'q' to 'self'-isolated '$return_value' risks causing data races; this is an error in the Swift 6 language mode}}
+    return q // expected-swift5-warning {{assigning main actor-isolated 'q' to 'self'-isolated '$return_value' risks causing data races; '$return_value' is accessible to code in the current task; this is an error in the Swift 6 language mode}}
     // expected-swift5-note @-1 {{'q' could become accessible to 'self'-isolated code despite remaining accessible to main actor-isolated code}}
   }
 
@@ -134,7 +134,7 @@ actor CastTest<T, U : NonSendableProtocol, V : AnyObject, V2 : NonSendableKlassP
     guard let c = await cnx3 else { fatalError() } // expected-swift5-warning {{non-Sendable type 'U?' of property 'cnx3' cannot exit main actor-isolated context}}
     // expected-swift6-error @-1 {{non-Sendable type 'U?' of property 'cnx3' cannot exit main actor-isolated context}}
     let q = c as! NonSendableProtocol // expected-warning {{forced cast from 'U' to 'any NonSendableProtocol' always succeeds; did you mean to use 'as'}}
-    return q // expected-swift5-warning {{assigning main actor-isolated 'q' to 'self'-isolated '$return_value' risks causing data races; this is an error in the Swift 6 language mode}}
+    return q // expected-swift5-warning {{assigning main actor-isolated 'q' to 'self'-isolated '$return_value' risks causing data races; '$return_value' is accessible to code in the current task; this is an error in the Swift 6 language mode}}
     // expected-swift5-note @-1 {{'q' could become accessible to 'self'-isolated code despite remaining accessible to main actor-isolated code}}
   }
 

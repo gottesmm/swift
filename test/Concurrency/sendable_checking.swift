@@ -291,11 +291,11 @@ final class NonSendable {
   func call() async {
     await update()
     // expected-tns-warning @-1 {{sending 'self' risks causing data races}}
-    // expected-tns-note @-2 {{sending task-isolated 'self' to main actor-isolated instance method 'update()' risks causing data races between main actor-isolated and task-isolated uses}}
+    // expected-tns-note @-2 {{sending 'self' to main actor-isolated instance method 'update()' risks causing data races between main actor-isolated code and code in the current task}}
 
     await self.update()
     // expected-tns-warning @-1 {{sending 'self' risks causing data races}}
-    // expected-tns-note @-2 {{sending task-isolated 'self' to main actor-isolated instance method 'update()' risks causing data races between main actor-isolated and task-isolated uses}}
+    // expected-tns-note @-2 {{sending 'self' to main actor-isolated instance method 'update()' risks causing data races between main actor-isolated code and code in the current task}}
 
     _ = await x // expected-tns-warning {{passing 'self' to main actor-isolated getter for property 'x' risks causing data races}}
     // expected-warning@-1 {{non-Sendable type 'NonSendable' cannot be sent into main actor-isolated context in call to property 'x'}}
@@ -479,10 +479,10 @@ struct DowngradeForPreconcurrency {
   var x: NonSendable
   func createStream() -> AsyncStream<NonSendable> {
     AsyncStream<NonSendable> {
-      self.x // expected-tns-ni-warning {{assigning '$return_value' to task-isolated 'self.x.some' risks causing data races}}
-      // expected-tns-ni-note @-1 {{'$return_value' could become accessible to task-isolated code despite remaining accessible to code in the current task}}
-      // expected-tns-ni-ns-warning @-2 {{assigning '$return_value' to @concurrent task-isolated 'self.x.some' risks causing data races}}
-      // expected-tns-ni-ns-note @-3 {{'$return_value' could become accessible to @concurrent task-isolated code despite remaining accessible to code in the current task}}
+      self.x // expected-tns-ni-warning {{assigning '$return_value' to 'self.x.some' risks causing data races; 'self.x.some' is accessible to code in the current task; this is an error in the Swift 6 language mode}}
+      // expected-tns-ni-note @-1 {{'$return_value' could become accessible to code in the current task}}
+      // expected-tns-ni-ns-warning @-2 {{assigning '$return_value' to 'self.x.some' risks causing data races; 'self.x.some' is accessible to code in the current task; this is an error in the Swift 6 language mode}}
+      // expected-tns-ni-ns-note @-3 {{'$return_value' could become accessible to code in the current task}}
       // expected-warning @-4 {{main actor-isolated property 'x' cannot be accessed from outside of the actor; this is an error in the Swift 6 language mode}} {{7-7=await }}
       // expected-warning @-5 {{non-Sendable type 'NonSendable' of property 'x' cannot exit main actor-isolated context; this is an error in the Swift 6 language mode}}
     }

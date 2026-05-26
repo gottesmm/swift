@@ -289,13 +289,13 @@ func unspecifiedCallingVariousNonisolated(_ x: NonSendableKlass) async {
   await x.nonisolatedCaller()
   await x.nonisolatedNonSendingCaller()
   await x.concurrentCaller() // expected-enabled-error {{sending 'x' risks causing data races}}
-  // expected-enabled-note @-1 {{sending task-isolated 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent and task-isolated uses}}
+  // expected-enabled-note @-1 {{sending 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent code and code in the current task}}
 
   await unspecifiedAsyncUse(x)
   await nonisolatedAsyncUse(x)
   await nonisolatedNonSendingAsyncUse(x)
   await concurrentAsyncUse(x) // expected-enabled-error {{sending 'x' risks causing data races}}
-  // expected-enabled-note @-1 {{sending task-isolated 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent and task-isolated uses}}
+  // expected-enabled-note @-1 {{sending 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent code and code in the current task}}
 }
 
 nonisolated func nonisolatedCallingVariousNonisolated(_ x: NonSendableKlass) async {
@@ -303,33 +303,33 @@ nonisolated func nonisolatedCallingVariousNonisolated(_ x: NonSendableKlass) asy
   await x.nonisolatedCaller()
   await x.nonisolatedNonSendingCaller()
   await x.concurrentCaller() // expected-enabled-error {{sending 'x' risks causing data races}}
-  // expected-enabled-note @-1 {{sending task-isolated 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent and task-isolated uses}}
+  // expected-enabled-note @-1 {{sending 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent code and code in the current task}}
 
   await unspecifiedAsyncUse(x)
   await nonisolatedAsyncUse(x)
   await nonisolatedNonSendingAsyncUse(x)
   await concurrentAsyncUse(x) // expected-enabled-error {{sending 'x' risks causing data races}}
-  // expected-enabled-note @-1 {{sending task-isolated 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent and task-isolated uses}}
+  // expected-enabled-note @-1 {{sending 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent code and code in the current task}}
 }
 
 nonisolated(nonsending) func nonisolatedNonSendingCallingVariousNonisolated(_ x: NonSendableKlass) async {
   await x.unspecifiedCaller() // expected-disabled-error {{sending 'x' risks causing data races}}
-  // expected-disabled-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent instance method 'unspecifiedCaller()' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
+  // expected-disabled-note @-1 {{sending 'x' to @concurrent instance method 'unspecifiedCaller()' risks causing data races between @concurrent code and code in the current task}}
   await x.nonisolatedCaller() // expected-disabled-error {{sending 'x' risks causing data races}}
-  // expected-disabled-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent instance method 'nonisolatedCaller()' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
+  // expected-disabled-note @-1 {{sending 'x' to @concurrent instance method 'nonisolatedCaller()' risks causing data races between @concurrent code and code in the current task}}
   await x.nonisolatedNonSendingCaller()
   await x.concurrentCaller() // expected-error {{sending 'x' risks causing data races}}
-  // expected-disabled-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
-  // expected-enabled-note @-2 {{sending task-isolated 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent and task-isolated uses}}
+  // expected-disabled-note @-1 {{sending 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent code and code in the current task}}
+  // expected-enabled-note @-2 {{sending 'x' to @concurrent instance method 'concurrentCaller()' risks causing data races between @concurrent code and code in the current task}}
 
   await unspecifiedAsyncUse(x) // expected-disabled-error {{sending 'x' risks causing data races}}
-  // expected-disabled-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent global function 'unspecifiedAsyncUse' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
+  // expected-disabled-note @-1 {{sending 'x' to @concurrent global function 'unspecifiedAsyncUse' risks causing data races between @concurrent code and code in the current task}}
   await nonisolatedAsyncUse(x) // expected-disabled-error {{sending 'x' risks causing data races}}
-  // expected-disabled-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent global function 'nonisolatedAsyncUse' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
+  // expected-disabled-note @-1 {{sending 'x' to @concurrent global function 'nonisolatedAsyncUse' risks causing data races between @concurrent code and code in the current task}}
   await nonisolatedNonSendingAsyncUse(x)
   await concurrentAsyncUse(x) // expected-error {{sending 'x' risks causing data races}}
-  // expected-disabled-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
-  // expected-enabled-note @-2 {{sending task-isolated 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent and task-isolated uses}}
+  // expected-disabled-note @-1 {{sending 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent code and code in the current task}}
+  // expected-enabled-note @-2 {{sending 'x' to @concurrent global function 'concurrentAsyncUse' risks causing data races between @concurrent code and code in the current task}}
 }
 
 @concurrent func concurrentCallingVariousNonisolated(_ x: NonSendableKlass) async {

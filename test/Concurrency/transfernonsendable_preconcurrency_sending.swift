@@ -137,17 +137,17 @@ func testNeverTransfer(_ x: PreCUncheckedNonSendableKlass) async {
 func testNeverTransferExplicit(_ x: PreCUncheckedExplicitlyNonSendableKlass) async {
   transferArg(x)
   // expected-swift-5-warning @-1 {{sending 'x' risks causing data races}}
-  // expected-swift-5-note @-2 {{task-isolated 'x' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-swift-5-note @-2 {{'x' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
   // expected-swift-6-warning @-3 {{sending 'x' risks causing data races}}
-  // expected-swift-6-note @-4 {{task-isolated 'x' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-swift-6-note @-4 {{'x' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
 }
 
 func testNeverTransferNormal(_ x: PostCUncheckedNonSendableKlass) async {
   transferArg(x)
   // expected-swift-5-warning @-1 {{sending 'x' risks causing data races}}
-  // expected-swift-5-note @-2 {{task-isolated 'x' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-swift-5-note @-2 {{'x' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
   // expected-swift-6-error @-3 {{sending 'x' risks causing data races}}
-  // expected-swift-6-note @-4 {{task-isolated 'x' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-swift-6-note @-4 {{'x' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
 }
 
 // Inexact match => normal behavior.
@@ -165,9 +165,9 @@ func testNeverTransferInexactMatch(_ x: (PreCUncheckedNonSendableKlass, PreCUnch
 func testNeverTransferInexactMatchExplicit(_ x: (PreCUncheckedExplicitlyNonSendableKlass, PreCUncheckedExplicitlyNonSendableKlass)) async {
   transferArg(x)
   // expected-swift-5-warning @-1 {{sending 'x' risks causing data races}}
-  // expected-swift-5-note @-2 {{task-isolated 'x' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-swift-5-note @-2 {{'x' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
   // expected-swift-6-warning @-3 {{sending 'x' risks causing data races}}
-  // expected-swift-6-note @-4 {{task-isolated 'x' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-swift-6-note @-4 {{'x' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
 }
 
 ////////////////////////////////////////

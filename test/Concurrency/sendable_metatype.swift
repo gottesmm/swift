@@ -155,14 +155,14 @@ func dynamicCastingExistential(
 ) {
   if let s1p = s1 as? any P { // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
     acceptSendingP(s1p) // expected-warning{{sending 's1p' risks causing data races}}
-    // expected-note@-1{{task-isolated 's1p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+    // expected-note@-1{{'s1p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
   } else {
     print(s1)
   }
 
   if let s2p = s2 as? any AnyObject & P { // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
     acceptSendingAnyObjectP(s2p) // expected-warning{{sending 's2p' risks causing data races}}
-    // expected-note@-1{{task-isolated 's2p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+    // expected-note@-1{{'s2p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
   } else {
     print(s2)
   }
@@ -193,14 +193,14 @@ func dynamicCastingGeneric(
 ) {
   if let s1p = s1 as? any P { // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
     acceptSendingP(s1p) // expected-warning{{sending 's1p' risks causing data races}}
-    // expected-note@-1{{task-isolated 's1p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+    // expected-note@-1{{'s1p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
   } else {
     print(s1)
   }
 
   if let s2p = s2 as? any AnyObject & P { // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
     acceptSendingAnyObjectP(s2p) // expected-warning{{sending 's2p' risks causing data races}}
-    // expected-note@-1{{task-isolated 's2p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+    // expected-note@-1{{'s2p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
   } else {
     print(s2)
   }
@@ -246,11 +246,11 @@ func forceCastingExistential(
 ) {
   let s1p = s1 as! any P // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
   acceptSendingP(s1p) // expected-warning{{sending 's1p' risks causing data races}}
-  // expected-note@-1{{task-isolated 's1p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-note@-1{{'s1p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
 
   let s2p = s2 as! any AnyObject & P // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
   acceptSendingAnyObjectP(s2p) // expected-warning{{sending 's2p' risks causing data races}}
-  // expected-note@-1{{task-isolated 's2p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-note@-1{{'s2p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
 }
 
 @MainActor func forceCastingExistentialGood(
@@ -270,11 +270,11 @@ func forceCastingGeneric(
 ) {
   let s1p = s1 as! any P // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
   acceptSendingP(s1p) // expected-warning{{sending 's1p' risks causing data races}}
-  // expected-note@-1{{task-isolated 's1p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-note@-1{{'s1p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
 
   let s2p = s2 as! any AnyObject & P // expected-note{{isolated conformance to protocol 'P' can be introduced here}}
   acceptSendingAnyObjectP(s2p) // expected-warning{{sending 's2p' risks causing data races}}
-  // expected-note@-1{{task-isolated 's2p' is passed as a 'sending' parameter; Uses in callee may race with later task-isolated uses}}
+  // expected-note@-1{{'s2p' is passed as a 'sending' parameter; Uses in callee may race with code in the current task}}
 }
 
 @MainActor func forceCastingGenericMainActor(

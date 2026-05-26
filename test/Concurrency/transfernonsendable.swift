@@ -512,7 +512,7 @@ func testNoncopyableNonsendableStructWithNonescapingMainActorAsync() {
   let _ = {
     nonescapingAsyncClosure { @MainActor in
       useValueNoncopyable(x) // expected-warning {{sending 'x' risks causing data races}}
-      // expected-note @-1 {{task-isolated 'x' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
+      // expected-note @-1 {{'x' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against code in the current task}}
     }
   }
 }
@@ -534,7 +534,7 @@ func testConversionsAndSendable(a: MyActor, f: @Sendable () -> Void, f2: () -> V
   await a.useNonSendableFunction(f2)
 
   // expected-warning @-2 {{sending 'f2' risks causing data races}}
-  // expected-note @-3 {{sending task-isolated 'f2' to actor-isolated instance method 'useNonSendableFunction' risks causing data races between actor-isolated and task-isolated uses}}
+  // expected-note @-3 {{sending 'f2' to actor-isolated instance method 'useNonSendableFunction' risks causing data races between actor-isolated code and code in the current task}}
 }
 
 func testSendableClosureCapturesNonSendable(a: MyActor) {
@@ -1468,7 +1468,7 @@ final actor FinalActorWithSetter {
 func functionArgumentIntoClosure(_ x: @escaping () -> ()) async {
   let _ = { @MainActor in
     let _ = x // expected-warning {{sending 'x' risks causing data races}}
-    // expected-note @-1 {{task-isolated 'x' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
+    // expected-note @-1 {{'x' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against code in the current task}}
 
 
   }
@@ -1825,7 +1825,7 @@ func offByOneWithImplicitPartialApply() {
           let asdf = ""
           Task { @MainActor in
             a.description = asdf // expected-warning {{sending 'self' risks causing data races}}
-            // expected-note @-1 {{task-isolated 'self' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
+            // expected-note @-1 {{'self' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against code in the current task}}
           }
       }
   }
@@ -1885,7 +1885,7 @@ extension NonIsolatedFinalKlass {
   // here. Make sure we do not crash.
   func testGetIsolationInfoOfField() async {
     await transferToMain(ns) // expected-warning {{sending 'self.ns' risks causing data races}}
-    // expected-note @-1 {{sending task-isolated 'self.ns' to main actor-isolated global function 'transferToMain' risks causing data races between main actor-isolated and task-isolated uses}}
+    // expected-note @-1 {{sending 'self.ns' to main actor-isolated global function 'transferToMain' risks causing data races between main actor-isolated code and code in the current task}}
   }
 }
 
@@ -1998,7 +1998,7 @@ func inferLocationOfCapturedTaskIsolatedSelfCorrectly() {
     func d() {
       a.block = c
       // expected-warning @-1 {{sending 'self' risks causing data races}}
-      // expected-note @-2 {{task-isolated 'self' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses}}
+      // expected-note @-2 {{'self' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against code in the current task}}
     }
 
     @MainActor
@@ -2008,10 +2008,10 @@ func inferLocationOfCapturedTaskIsolatedSelfCorrectly() {
 
 nonisolated(nonsending) func testCallNonisolatedNonsending(_ x: NonSendableKlass) async {
   await useValueAsync(x) // expected-ni-warning {{sending 'x' risks causing data races}}
-  // expected-ni-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent global function 'useValueAsync' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
+  // expected-ni-note @-1 {{sending 'x' to @concurrent global function 'useValueAsync' risks causing data races between @concurrent code and code in the current task}}
   await useValueAsyncConcurrent(x) // expected-warning {{sending 'x' risks causing data races}}
-  // expected-ni-note @-1 {{sending nonisolated(nonsending) task-isolated 'x' to @concurrent global function 'useValueAsyncConcurrent' risks causing data races between @concurrent and nonisolated(nonsending) task-isolated uses}}
-  // expected-ni-ns-note @-2 {{sending task-isolated 'x' to @concurrent global function 'useValueAsyncConcurrent' risks causing data races between @concurrent and task-isolated uses}}
+  // expected-ni-note @-1 {{sending 'x' to @concurrent global function 'useValueAsyncConcurrent' risks causing data races between @concurrent code and code in the current task}}
+  // expected-ni-ns-note @-2 {{sending 'x' to @concurrent global function 'useValueAsyncConcurrent' risks causing data races between @concurrent code and code in the current task}}
 }
 
 func avoidThinkingClosureParameterIsSending() {
@@ -2071,8 +2071,8 @@ extension Optional where Wrapped: ~Copyable {
   mutating func takeSending() -> sending Self {
     let result = self
     self = nil
-    return result // expected-warning {{returning task-isolated 'result' as a 'sending' result risks causing data races}}
-    // expected-note @-1 {{returning task-isolated 'result' risks causing data races since the caller assumes that 'result' can be safely sent to other isolation domains}}
+    return result // expected-warning {{returning 'result' as a 'sending' result risks causing data races; this is an error in the Swift 6 language mode}}
+    // expected-note @-1 {{returning 'result' risks causing data races since the caller assumes that 'result' can be safely sent to other isolation domains}}
   }
 }
 
@@ -2086,7 +2086,7 @@ struct IndirectAssignTests {
       if let v = value {
         self.value = nil
         return v // expected-warning {{sending 'v' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'v' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'v' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2106,7 +2106,7 @@ struct IndirectAssignTests {
       if let value {
         self.value = nil
         return value // expected-warning {{sending 'value' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2119,8 +2119,8 @@ struct IndirectAssignTests {
     mutating func take() -> sending T {
       if let value {
         self.value = nil
-        return value // expected-warning {{returning task-isolated 'value' as a 'sending' result risks causing data races}}
-        // expected-note @-1 {{returning task-isolated 'value' risks causing data races since the caller assumes that 'value' can be safely sent to other isolation domains}}
+        return value // expected-warning {{returning 'value' as a 'sending' result risks causing data races; this is an error in the Swift 6 language mode}}
+        // expected-note @-1 {{returning 'value' risks causing data races since the caller assumes that 'value' can be safely sent to other isolation domains}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2136,7 +2136,7 @@ struct IndirectAssignTests {
       }
       self.value = nil
       return value // expected-warning {{sending 'value' risks causing data races}}
-      // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+      // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
     }
   }
 
@@ -2157,7 +2157,7 @@ struct IndirectAssignTests {
       if let value {
         self.value = nil
         return value.0 // expected-warning {{sending 'value.0' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value.0' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value.0' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2171,7 +2171,7 @@ struct IndirectAssignTests {
       if let value {
         self.value = nil
         return value // expected-warning {{sending 'value' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2200,7 +2200,7 @@ struct IndirectAssignTests {
       if let value {
         self.value = nil
         return value // expected-warning {{sending 'value' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2229,7 +2229,7 @@ struct IndirectAssignTests {
       if let value {
         self.value = nil
         return value // expected-warning {{sending 'value' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2243,7 +2243,7 @@ struct IndirectAssignTests {
       if let value, let innerValue = value {
         self.value = nil
         return innerValue // expected-warning {{sending 'innerValue' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'innerValue' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'innerValue' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2261,7 +2261,7 @@ struct IndirectAssignTests {
       case .full(let value):
         self = .empty
         return value // expected-warning {{sending 'value' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       }
     }
   }
@@ -2272,7 +2272,7 @@ struct IndirectAssignTests {
     consuming func take() -> sending NonSendableKlass {
       if let value {
         return value // expected-warning {{sending 'value' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }
@@ -2303,7 +2303,7 @@ struct IndirectAssignTests {
       let value = values.removeFirst()
       values = []
       return value // expected-warning {{sending 'value' risks causing data races}}
-      // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+      // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
     }
   }
 
@@ -2316,7 +2316,7 @@ struct IndirectAssignTests {
       }
       values = [:]
       return value // expected-warning {{sending 'value' risks causing data races}}
-      // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+      // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
     }
   }
 
@@ -2336,7 +2336,7 @@ struct IndirectAssignTests {
       }
       // TODO: The warning should be on the user itself.
     } // expected-warning {{sending 'value2' risks causing data races}}
-    // expected-note @-1 {{task-isolated 'value2' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+    // expected-note @-1 {{'value2' cannot be a 'sending' result. Code in the current task may race with caller uses}}
   }
 
   struct LazyBox {
@@ -2352,7 +2352,7 @@ struct IndirectAssignTests {
       _value = nil
       initialized = false
       return result // expected-warning {{sending 'result' risks causing data races}}
-      // expected-note @-1 {{task-isolated 'result' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+      // expected-note @-1 {{'result' cannot be a 'sending' result. Code in the current task may race with caller uses}}
     }
   }
 
@@ -2364,7 +2364,7 @@ struct IndirectAssignTests {
     if let value = box.value {
       box.value = nil
       return value // expected-warning {{sending 'value' risks causing data races}}
-      // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+      // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
     } else {
       preconditionFailure("Consumed twice")
     }
@@ -2391,7 +2391,7 @@ struct IndirectAssignTests {
       if let value {
         self.value = nil
         return value // expected-warning {{sending 'value' risks causing data races}}
-        // expected-note @-1 {{task-isolated 'value' cannot be a 'sending' result. task-isolated uses may race with caller uses}}
+        // expected-note @-1 {{'value' cannot be a 'sending' result. Code in the current task may race with caller uses}}
       } else {
         preconditionFailure("Consumed twice")
       }

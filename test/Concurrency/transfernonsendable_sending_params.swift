@@ -155,7 +155,7 @@ func testNonStrongTransferDoesntMerge() async {
 func testTransferringParameter_canTransfer(_ x: sending NonSendableKlass, _ y: NonSendableKlass) async {
   await transferToMain(x)
   await transferToMain(y) // expected-warning {{sending 'y' risks causing data races}}
-  // expected-note @-1 {{sending task-isolated 'y' to main actor-isolated global function 'transferToMain' risks causing data races between main actor-isolated and task-isolated uses}}
+  // expected-note @-1 {{sending 'y' to main actor-isolated global function 'transferToMain' risks causing data races between main actor-isolated code and code in the current task}}
 }
 
 func testTransferringParameter_cannotTransferTwice(_ x: sending NonSendableKlass, _ y: NonSendableKlass) async {
@@ -433,12 +433,12 @@ func taskIsolatedInsideError(_ x: @escaping @MainActor () async -> ()) {
 }
 
 // Make sure we error here on only the second since x by being assigned a part
-// of y becomes task-isolated
+// of y becomes accessible to code in the current task
 func testMergeWithTaskIsolated(_ x: sending NonSendableKlass, y: NonSendableKlass) async {
   await transferToMain(x)
   x = y
   await transferToMain(x) // expected-warning {{sending 'x' risks causing data races}}
-  // expected-note @-1 {{sending task-isolated 'x' to main actor-isolated global function 'transferToMain' risks causing data races between main actor-isolated and task-isolated uses}}
+  // expected-note @-1 {{sending 'x' to main actor-isolated global function 'transferToMain' risks causing data races between main actor-isolated code and code in the current task}}
 }
 
 @MainActor func testMergeWithActorIsolated(_ x: sending NonSendableKlass, y: NonSendableKlass) async {

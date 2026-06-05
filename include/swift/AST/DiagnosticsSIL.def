@@ -1178,6 +1178,15 @@ NOTE(regionbasedisolation_inout_sending_cannot_be_returned_note_actor_value, non
 NOTE(regionbasedisolation_inout_sending_cannot_be_returned_note_actor_return_value, none,
      "returning result of %kind0 risks concurrent access to 'inout sending' parameter %1 as caller assumes %1 is not actor-isolated and result is %2",
      (const ValueDecl *, Identifier, StringRef))
+GROUPED_ERROR(regionbasedisolation_inout_sending_cannot_be_returned_closure_captures_value, RegionIsolation, none,
+      "result of closure cannot be returned because it captures %0",
+      (Identifier))
+NOTE(regionbasedisolation_inout_sending_cannot_be_returned_note_closure_captures_value, none,
+     "returning a closure that captures %0 risks concurrent access to 'inout sending' parameter %1 as caller assumes %1 and result can be sent to different isolation domains",
+     (Identifier, Identifier))
+NOTE(regionbasedisolation_inout_sending_cannot_be_returned_note_actor_closure_captures_value, none,
+     "returning a closure that captures %0 risks concurrent access to 'inout sending' parameter %1 as caller assumes %1 is not actor-isolated and result is %2",
+     (Identifier, Identifier, StringRef))
 
 //===
 // Out Sending

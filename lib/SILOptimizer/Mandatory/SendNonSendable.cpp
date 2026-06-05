@@ -2703,6 +2703,17 @@ public:
                                pushToFuture);
   }
 
+  /// Try to recognize the case where the returned value is a closure literal
+  /// (a `partial_apply` of a `ClosureExpr`) that captures a value in the same
+  /// region as the inout-sending parameter. If so, emit a closure-aware
+  /// error+note that names the offending capture and the inout-sending
+  /// parameter. Returns true on success; on false the caller should fall back
+  /// to the unknown-pattern path.
+  bool
+  tryEmitClosureCapturesValueError(SILValue value, Identifier inoutSendingParamName,
+                                   SILDynamicMergedIsolationInfo isolationInfo,
+                                   SILLocation loc);
+
   void emit();
 
   /// Called if we return the actual inout sending value.
@@ -2749,10 +2760,15 @@ public:
       // We could not infer a name for the returned value. The most common
       // cause is that `value` is a `partial_apply` of a real Swift closure
       // body (i.e. a closure literal) — closures are anonymous and have no
-      // source-level name. This path is a known-incomplete case; the proper
-      // closure-aware diagnostic is tracked as a follow-up. For now, push
-      // this catch-all to a future Swift language mode so users are not
-      // blocked by an error today.
+      // source-level name. Try to recognize that specific shape and emit a
+      // closure-aware error+note that names the capture instead.
+      if (tryEmitClosureCapturesValueError(value, *inoutSendingParamName,
+                                           isolationInfo, loc))
+        return;
+      // Otherwise this is a known-incomplete case; the proper closure-aware
+      // diagnostic for it is tracked as a follow-up. For now, push this
+      // catch-all to a future Swift language mode so users are not blocked
+      // by an error today.
       return emitUnknownPatternError(/*pushToFuture=*/true);
     }
 
@@ -3253,6 +3269,68 @@ void InOutSendingReturnedDiagnosticEmitter::emit() {
   for (auto finalValue : finalValues) {
     emitOutParamIncomingValueError(finalValue);
   }
+}
+
+bool InOutSendingReturnedDiagnosticEmitter::tryEmitClosureCapturesValueError(
+    SILValue value, Identifier inoutSendingParamName,
+    SILDynamicMergedIsolationInfo isolationInfo, SILLocation loc) {
+  auto *pai = dyn_cast<PartialApplyInst>(stripFunctionConversions(value));
+  if (!pai)
+    return false;
+
+  if (!pai->getLoc().getAsASTNode<ClosureExpr>() &&
+      !pai->getLoc().getAsASTNode<AutoClosureExpr>())
+    return false;
+
+  auto &valueMap = raFuncInfo->getValueMap();
+  std::optional<Identifier> capturedName;
+  Operand *capturedOp = nullptr;
+  for (auto &captureOp : pai->getArgumentOperands()) {
+    auto trackable = valueMap.getTrackableValue(captureOp.get());
+    if (trackable.value.isSendable())
+      continue;
+    if (trackable.value.getIsolationRegionInfo().isUnsafeNonIsolated())
+      continue;
+    if (auto name = inferNameHelper(captureOp.get())) {
+      capturedName = name;
+      capturedOp = &captureOp;
+      break;
+    }
+  }
+
+  if (!capturedName)
+    return false;
+
+  // Try to point the note at the actual use of the captured value inside the
+  // closure body (e.g. the `callback()` call site) rather than the return
+  // statement. Falls back to `loc` if the inner use can't be located.
+  SILLocation noteLoc = loc;
+  if (auto closureUse = findClosureUse(capturedOp))
+    noteLoc = closureUse->first->getUser()->getLoc();
+
+  diagnoseError(
+      loc,
+      diag::
+          regionbasedisolation_inout_sending_cannot_be_returned_closure_captures_value,
+      *capturedName)
+      .limitBehaviorIf(getBehaviorLimit());
+
+  if (isolationInfo->isActorIsolated()) {
+    diagnoseNote(
+        noteLoc,
+        diag::
+            regionbasedisolation_inout_sending_cannot_be_returned_note_actor_closure_captures_value,
+        *capturedName, inoutSendingParamName,
+        isolationInfo->printForDiagnostics(getFunction()));
+  } else {
+    diagnoseNote(
+        noteLoc,
+        diag::
+            regionbasedisolation_inout_sending_cannot_be_returned_note_closure_captures_value,
+        *capturedName, inoutSendingParamName);
+  }
+
+  return true;
 }
 
 bool InOutSendingReturnedDiagnosticEmitter::LastValueEnum::

@@ -71,3 +71,22 @@ func testMutexWithLockAssignsToCapture() {
     // expected-note @-3 {{returning 'state' risks causing data races since the caller assumes that 'state' can be safely sent to other isolation domains}}
   }
 }
+
+// MARK: - Closure returned from withLock that captures a value derived from
+// the inout sending state. Diagnostic is downgraded to a warning under the
+// Mutex.withLock pattern.
+
+struct MutexState {
+  var callback: () -> Void = { }
+}
+
+func testMutexWithLockReturnsClosureCapturingCallback() {
+  let state: Mutex<MutexState> = Mutex(MutexState())
+  let cb = state.withLock { state in
+    let callback = state.callback
+    return { // expected-warning {{result of closure cannot be returned because it captures 'callback'}}
+      callback() // expected-note {{returning a closure that captures 'callback' risks concurrent access to 'inout sending' parameter 'state' as caller assumes 'state' and result can be sent to different isolation domains}}
+    }
+  }
+  _ = cb
+}

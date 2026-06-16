@@ -246,12 +246,24 @@ extension ApplySite {
     let builder = Builder(before: self, context)
     let calleeRef = builder.createFunctionRef(callee)
 
+    // Preserve any per-argument SILLocations stored on the original apply.
+    // The bridged Builder factories accept this as an optional source-apply
+    // hint and silently drop the locations when the count doesn't match the
+    // rewritten argument list (e.g., callee shape change). Without this,
+    // mandatory passes that rebuild applies via this helper — most notably
+    // the Swift-side AllocBoxToStack — would unconditionally fall back to
+    // the apply's anchor and weaken IsolationHistory's per-argument note
+    // attribution. See SILBridgingImpl.h:getBridgedArgLocsFrom for the
+    // count-match guard.
+    let argLocsFrom: ApplySite? = self
+
     switch self {
     case let applyInst as ApplyInst:
       let newApply = builder.createApply(function: calleeRef,
                                          applyInst.substitutionMap,
                                          arguments: newArguments,
-                                         isNonThrowing: applyInst.isNonThrowing)
+                                         isNonThrowing: applyInst.isNonThrowing,
+                                         argumentLocationsFrom: argLocsFrom)
       applyInst.replace(with: newApply, context)
 
     case let partialAp as PartialApplyInst:
@@ -261,20 +273,23 @@ extension ApplySite {
                                                 calleeConvention: partialAp.calleeConvention,
                                                 hasUnknownResultIsolation: partialAp.hasUnknownResultIsolation,
                                                 isOnStack: partialAp.isOnStack,
-                                                isNested:  partialAp.isNested)
+                                                isNested:  partialAp.isNested,
+                                                argumentLocationsFrom: argLocsFrom)
       partialAp.replace(with: newApply, context)
 
     case let tryApply as TryApplyInst:
       builder.createTryApply(function: calleeRef,
                              tryApply.substitutionMap,
                              arguments: newArguments,
-                             normalBlock: tryApply.normalBlock, errorBlock: tryApply.errorBlock)
+                             normalBlock: tryApply.normalBlock, errorBlock: tryApply.errorBlock,
+                             argumentLocationsFrom: argLocsFrom)
       context.erase(instruction: tryApply)
 
     case let beginApply as BeginApplyInst:
       let newApply = builder.createBeginApply(function: calleeRef,
                                               beginApply.substitutionMap,
-                                              arguments: newArguments)
+                                              arguments: newArguments,
+                                              argumentLocationsFrom: argLocsFrom)
       beginApply.replace(with: newApply, context)
 
     default:

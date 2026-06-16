@@ -315,6 +315,15 @@ public:
     return asImpl().remapLocation(Loc);
   }
 
+  /// Remap a per-argument SILLocation taken from an apply instruction.
+  /// \p argIdx identifies which argument the location is attached to so
+  /// inliner-style subclasses can correlate it with a parameter binding
+  /// site if they need to. Default behaviour is identical to
+  /// `getOpLocation`.
+  SILLocation getOpArgumentLocation(SILLocation Loc, unsigned argIdx) {
+    return asImpl().remapArgumentLocation(Loc, argIdx);
+  }
+
   const SILDebugScope *getOpScope(const SILDebugScope *DS) {
     return asImpl().remapScope(DS);
   }
@@ -546,6 +555,14 @@ protected:
   // the result.
 
   SILLocation remapLocation(SILLocation Loc) { return Loc; }
+
+  /// Customisation point for remapping the per-argument location attached
+  /// to apply argument \p argIdx. Defaults to `remapLocation` (identity in
+  /// the base cloner). Subclasses such as the inliner override this to
+  /// re-anchor cross-function locations.
+  SILLocation remapArgumentLocation(SILLocation Loc, unsigned argIdx) {
+    return asImpl().remapLocation(Loc);
+  }
   const SILDebugScope *remapScope(const SILDebugScope *DS) { return DS; }
 
   bool shouldSubstOpaqueArchetypes() const { return false; }
@@ -1277,43 +1294,66 @@ template<typename ImplClass>
 void
 SILCloner<ImplClass>::visitApplyInst(ApplyInst *Inst) {
   auto Args = getOpValueArray<8>(Inst->getArguments());
+  // Remap per-argument locations when the source apply has them. With
+  // the new "all-or-nothing" invariant, every slot is a valid location
+  // — no null fallback needed. When the source has no per-arg locs,
+  // the clone is constructed without storage too.
+  SmallVector<SILLocation, 8> ArgLocs;
+  if (auto srcLocs = Inst->getArgumentLocs()) {
+    ArgLocs.reserve(srcLocs->size());
+    for (auto en : llvm::enumerate(*srcLocs))
+      ArgLocs.push_back(getOpArgumentLocation(en.value(), en.index()));
+  }
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   recordClonedInstruction(
       Inst, getBuilder().createApply(
                 getOpLocation(Inst->getLoc()), getOpValue(Inst->getCallee()),
                 getOpSubstitutionMap(Inst->getSubstitutionMap()), Args,
                 Inst->getApplyOptions(),
-                GenericSpecializationInformation::create(Inst, getBuilder())));
+                GenericSpecializationInformation::create(Inst, getBuilder()),
+                /*isolationCrossing=*/std::nullopt, ArgLocs));
 }
 
 template<typename ImplClass>
 void
 SILCloner<ImplClass>::visitTryApplyInst(TryApplyInst *Inst) {
   auto Args = getOpValueArray<8>(Inst->getArguments());
+  SmallVector<SILLocation, 8> ArgLocs;
+  if (auto srcLocs = Inst->getArgumentLocs()) {
+    ArgLocs.reserve(srcLocs->size());
+    for (auto en : llvm::enumerate(*srcLocs))
+      ArgLocs.push_back(getOpArgumentLocation(en.value(), en.index()));
+  }
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   recordClonedInstruction(
       Inst, getBuilder().createTryApply(
                 getOpLocation(Inst->getLoc()), getOpValue(Inst->getCallee()),
                 getOpSubstitutionMap(Inst->getSubstitutionMap()), Args,
                 getOpBasicBlock(Inst->getNormalBB()),
-                getOpBasicBlock(Inst->getErrorBB()),
-                Inst->getApplyOptions(),
-                GenericSpecializationInformation::create(Inst, getBuilder())));
+                getOpBasicBlock(Inst->getErrorBB()), Inst->getApplyOptions(),
+                GenericSpecializationInformation::create(Inst, getBuilder()),
+                /*isolationCrossing=*/std::nullopt,
+                /*normalCount=*/ProfileCounter(),
+                /*errorCount=*/ProfileCounter(), ArgLocs));
 }
 
 template<typename ImplClass>
 void
 SILCloner<ImplClass>::visitPartialApplyInst(PartialApplyInst *Inst) {
   auto Args = getOpValueArray<8>(Inst->getArguments());
+  SmallVector<SILLocation, 8> ArgLocs;
+  if (auto srcLocs = Inst->getArgumentLocs()) {
+    ArgLocs.reserve(srcLocs->size());
+    for (auto en : llvm::enumerate(*srcLocs))
+      ArgLocs.push_back(getOpArgumentLocation(en.value(), en.index()));
+  }
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   auto NewInst = getBuilder().createPartialApply(
-                getOpLocation(Inst->getLoc()), getOpValue(Inst->getCallee()),
-                getOpSubstitutionMap(Inst->getSubstitutionMap()), Args,
-                Inst->getCalleeConvention(),
-                Inst->getResultIsolation(),
-                Inst->isOnStack(),
-                Inst->isStackAllocationNested(),
-                GenericSpecializationInformation::create(Inst, getBuilder()));
+      getOpLocation(Inst->getLoc()), getOpValue(Inst->getCallee()),
+      getOpSubstitutionMap(Inst->getSubstitutionMap()), Args,
+      Inst->getCalleeConvention(), Inst->getResultIsolation(),
+      Inst->isOnStack(), Inst->isStackAllocationNested(),
+      GenericSpecializationInformation::create(Inst, getBuilder()), ArgLocs);
   recordClonedInstruction(Inst, NewInst);
 }
 
@@ -1321,13 +1361,20 @@ template<typename ImplClass>
 void
 SILCloner<ImplClass>::visitBeginApplyInst(BeginApplyInst *Inst) {
   auto Args = getOpValueArray<8>(Inst->getArguments());
+  SmallVector<SILLocation, 8> ArgLocs;
+  if (auto srcLocs = Inst->getArgumentLocs()) {
+    ArgLocs.reserve(srcLocs->size());
+    for (auto en : llvm::enumerate(*srcLocs))
+      ArgLocs.push_back(getOpArgumentLocation(en.value(), en.index()));
+  }
   getBuilder().setCurrentDebugScope(getOpScope(Inst->getDebugScope()));
   recordClonedInstruction(
       Inst, getBuilder().createBeginApply(
                 getOpLocation(Inst->getLoc()), getOpValue(Inst->getCallee()),
                 getOpSubstitutionMap(Inst->getSubstitutionMap()), Args,
                 Inst->getApplyOptions(),
-                GenericSpecializationInformation::create(Inst, getBuilder())));
+                GenericSpecializationInformation::create(Inst, getBuilder()),
+                /*isolationCrossing=*/std::nullopt, ArgLocs));
 }
 
 template<typename ImplClass>
